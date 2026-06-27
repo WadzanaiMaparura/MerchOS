@@ -1,0 +1,24 @@
+{
+  "name": "@merch-os/infrastructure",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AWS CDK infrastructure for the MerchOS platform",
+  "scripts": {
+    "build": "tsc",
+    "synth": "cdk synth --all",
+    "deploy:dev": "cdk deploy --all --context env=dev",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint 'lib/**/*.ts' 'bin/**/*.ts'"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.155.0",
+    "constructs": "10.3.0"
+  },
+  "devDependencies": {
+    "aws-cdk": "2.155.0",
+    "typescript": "5.4.5",
+    "vitest": "1.6.0",
+    "@types/node": "20.14.9"
+  }
+}
