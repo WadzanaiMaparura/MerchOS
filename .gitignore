@@ -4,14 +4,22 @@ node_modules/
 # Build output
 dist/
 .next/
-*.js
-*.d.ts
-*.js.map
+out/
+
+# TypeScript build output (services)
+services/**/*.js
+services/**/*.d.ts
+services/**/*.js.map
+packages/**/*.d.ts
+packages/**/*.js.map
+
+# Config files that should be kept
 !jest.config.js
 !next.config.js
 !vitest.config.ts
 !cdk.json
 !tailwind.config.ts
+!postcss.config.js
 
 # CDK
 cdk.out/
