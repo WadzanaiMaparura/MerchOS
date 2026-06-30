@@ -27,7 +27,7 @@ The platform is AWS-native, serverless-first, API-first, and event-driven. All i
 │                              MERCH OS PLATFORM                                  │
 │                                                                                 │
 │  ┌──────────────────┐      ┌──────────────────┐      ┌──────────────────────┐  │
-│  │   Seller         │      │   Admin          │      │  External            │  │
+│  │   Sellers         │      │   Admin          │      │  External            │  │
 │  │   Dashboard      │      │   Dashboard      │      │  Integrations        │  │
 │  │ (Next.js/Amplify)│      │ (Next.js/Amplify)│      │ (Shopify/WooComm.)  │  │
 │  └────────┬─────────┘      └────────┬─────────┘      └──────────┬───────────┘  │

@@ -2,7 +2,7 @@
 
 ## Introduction
 
-MerchOS is a production-grade, multi-tenant SaaS platform designed to serve thousands of eCommerce sellers across multiple marketplaces. Sellers upload raw supplier information — images, PDFs, WhatsApp photos, catalog screenshots, URLs, and text — and MerchOS transforms that information into marketplace-ready product listings, compliant images, category mappings, inventory records, and channel-specific exports.
+MerchOS is a production-grade, multi-tenant SaaS platform designed to serve thousands of eCommerce sellers across multiple marketplacess. Sellers upload raw supplier information — images, PDFs, WhatsApp photos, catalog screenshots, URLs, and text — and MerchOS transforms that information into marketplace-ready product listings, compliant images, category mappings, inventory records, and channel-specific exports.
 
 The platform operates across six sales channels: Takealot, Amazon, Makro Marketplace, Shopify, WooCommerce, and custom eCommerce websites. It is AWS-native, serverless-first, API-first, and built on event-driven architecture using AWS CDK for infrastructure as code.
 

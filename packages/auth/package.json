@@ -1,0 +1,25 @@
+{
+  "name": "@merch-os/auth",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@aws-amplify/auth": "^6.3.0",
+    "@aws-amplify/core": "^6.3.0",
+    "react": "^18.3.0",
+    "@merch-os/types": "*"
+  },
+  "peerDependencies": {
+    "next": "^14.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0",
+    "next": "^14.2.0",
+    "typescript": "^5.4.0"
+  }
+}
