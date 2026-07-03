@@ -87,5 +87,61 @@ export {
   useSetHeroImage,
 } from './hooks/useProducts';
 
+// Admin Health hooks
+export {
+  adminHealthKeys,
+  useHealthMetrics,
+  useHealthSummary,
+} from './hooks/useAdminHealth';
+export type { TimeRange } from './hooks/useAdminHealth';
+
+// Admin Tenants hooks
+export {
+  adminTenantKeys,
+  useAdminTenants,
+  useAdminTenantDetail,
+  useSuspendTenant,
+  useActivateTenant,
+} from './hooks/useAdminTenants';
+export type { TenantListParams } from './hooks/useAdminTenants';
+
+// Admin Compliance hooks
+export {
+  adminComplianceKeys,
+  useComplianceChannels,
+  useComplianceRuleSet,
+  useSaveComplianceRules,
+} from './hooks/useAdminCompliance';
+
+// Admin Taxonomy hooks
+export {
+  adminTaxonomyKeys,
+  useTaxonomyList,
+  useTriggerTaxonomyRefresh,
+} from './hooks/useAdminTaxonomy';
+
+// Admin Audit Log hooks
+export {
+  adminAuditKeys,
+  useAuditLog,
+} from './hooks/useAdminAuditLog';
+
+// Admin Alerts hooks
+export {
+  adminAlertKeys,
+  useAlerts,
+  useUnresolvedAlertCount,
+  useResolveAlert,
+} from './hooks/useAdminAlerts';
+
+// Admin Billing hooks
+export {
+  adminBillingKeys,
+  useAdminBillingList,
+  useAdminBillingDetail,
+  usePlanOverride,
+} from './hooks/useAdminBilling';
+export type { AdminBillingListParams, SubscriptionStatus } from './hooks/useAdminBilling';
+
 // Notifications
 export { WebSocketManager } from './notifications/websocket-manager';

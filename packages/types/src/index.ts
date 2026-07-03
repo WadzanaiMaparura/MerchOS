@@ -71,3 +71,32 @@ export type {
   MfaChallengeResult,
   AuthContextValue,
 } from './auth';
+
+// Admin Dashboard types
+export type {
+  AdminUser,
+  AdminTenantStatus,
+  TenantSummary,
+  TenantDetail,
+  SuspendTenantPayload,
+  ActivateTenantPayload,
+  MetricDatapoint,
+  MetricSeries,
+  HealthMetrics,
+  HealthSummary,
+  ComplianceChannelSummary,
+  ComplianceRuleSet,
+  SaveCompliancePayload,
+  TaxonomyStatusValue,
+  TaxonomyStatus,
+  AuditEvent,
+  AuditListParams,
+  AlertItem,
+  ResolveAlertPayload,
+  AlertStatusFilter,
+  AdminBillingSummary,
+  AdminBillingDetail,
+  PlanOverridePayload,
+  TimeRange,
+  AdminBillingListParams,
+} from './admin';
