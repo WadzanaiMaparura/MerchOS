@@ -39,7 +39,7 @@ interface JsonSchemaObject {
 function buildZodSchema(
   jsonSchema: Record<string, unknown>
 ): z.ZodObject<Record<string, z.ZodTypeAny>> {
-  const schema = jsonSchema as JsonSchemaObject;
+  const schema = jsonSchema as unknown as JsonSchemaObject;
   const properties = schema.properties ?? {};
   const required = schema.required ?? [];
 
