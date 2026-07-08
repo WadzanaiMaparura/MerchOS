@@ -1,23 +1,37 @@
 'use client';
 
-import React from 'react';
-
 /**
- * Placeholder dashboard layout for the admin (dashboard) route group.
+ * Dashboard Layout — Composes all shell and resilience components.
  *
- * This will be fully implemented in task 5.10 with:
- * - AdminAppShell (sidebar + topbar + error boundary)
- * - AdminRouteGuard (auth enforcement + inactivity timeout)
- * - Offline indicator
- * - Loading indicator
+ * Composition order:
+ * 1. AdminRouteGuard — Redirects to /login if unauthenticated
+ * 2. AdminAppShell — Sidebar + top bar + error boundary around content
+ * 3. InactivityTimer — 30-min idle logout
+ * 4. OfflineIndicator — Persistent banner when network is lost
  *
- * For now it renders children directly so that individual dashboard pages
- * can be developed and tested independently.
+ * Requirements: 1.1, 1.9, 2.1, 10.5, 10.6
  */
+
+import React from 'react';
+import { AdminRouteGuard } from '../../components/AdminRouteGuard';
+import { AdminAppShell } from '../../components/AdminAppShell';
+import { InactivityTimer } from '../../components/InactivityTimer';
+import { OfflineIndicator } from '../../components/OfflineIndicator';
+
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return <>{children}</>;
+  return (
+    <AdminRouteGuard>
+      <AdminAppShell>
+        {/* Offline banner appears above page content */}
+        <OfflineIndicator />
+        {children}
+      </AdminAppShell>
+      {/* Inactivity timer renders nothing — just mounts the hook */}
+      <InactivityTimer />
+    </AdminRouteGuard>
+  );
 }
