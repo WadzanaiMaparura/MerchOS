@@ -283,7 +283,7 @@ export function ComplianceFormRenderer({
   isSubmitting = false,
   submitTrigger,
 }: ComplianceFormRendererProps) {
-  const schema = ruleSet.jsonSchema as JsonSchemaObject;
+  const schema = ruleSet.jsonSchema as unknown as JsonSchemaObject;
   const properties = schema.properties ?? {};
   const required = schema.required ?? [];
 
