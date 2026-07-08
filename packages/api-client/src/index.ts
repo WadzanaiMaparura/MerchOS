@@ -125,6 +125,7 @@ export {
   adminAuditKeys,
   useAuditLog,
 } from './hooks/useAdminAuditLog';
+export type { AuditListParams } from './hooks/useAdminAuditLog';
 
 // Admin Alerts hooks
 export {
@@ -133,6 +134,7 @@ export {
   useUnresolvedAlertCount,
   useResolveAlert,
 } from './hooks/useAdminAlerts';
+export type { AlertStatusFilter } from './hooks/useAdminAlerts';
 
 // Admin Billing hooks
 export {

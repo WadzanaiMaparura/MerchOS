@@ -33,6 +33,7 @@ export function useTaxonomyList(): UseQueryResult<TaxonomyStatus[], ApiError> {
       const response = await client.get<TaxonomyStatus[]>('/admin/taxonomy');
       return response.data;
     },
+    staleTime: 30_000,
     refetchInterval: (query) => {
       const data = query.state.data;
       return data?.some((t) => t.status === 'REFRESHING') ? 10_000 : false;

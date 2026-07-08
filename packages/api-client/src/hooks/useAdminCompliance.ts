@@ -39,6 +39,7 @@ export function useComplianceChannels(): UseQueryResult<ComplianceChannelSummary
       );
       return response.data;
     },
+    staleTime: 30_000,
   });
 }
 
@@ -60,6 +61,7 @@ export function useComplianceRuleSet(
       );
       return response.data;
     },
+    staleTime: 30_000,
     enabled: !!channelId,
   });
 }

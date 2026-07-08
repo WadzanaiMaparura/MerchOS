@@ -48,6 +48,7 @@ export function useAdminBillingList(
       );
       return response.data;
     },
+    staleTime: 30_000,
   });
 }
 
@@ -69,6 +70,7 @@ export function useAdminBillingDetail(
       );
       return response.data;
     },
+    staleTime: 30_000,
     enabled: !!tenantId,
   });
 }
