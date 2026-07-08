@@ -12,6 +12,9 @@ import type {
   AlertStatusFilter,
   ResolveAlertPayload,
 } from '@merch-os/types';
+
+// Re-export for consumers
+export type { AlertStatusFilter };
 import type { ApiError } from '../errors';
 import { useApiClient } from '../context';
 
@@ -45,6 +48,7 @@ export function useAlerts(
       });
       return response.data;
     },
+    staleTime: 30_000,
   });
 }
 

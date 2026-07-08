@@ -10,6 +10,9 @@ import type {
   AuditListParams,
   PaginatedResponse,
 } from '@merch-os/types';
+
+// Re-export for consumers
+export type { AuditListParams };
 import type { ApiError } from '../errors';
 import { useApiClient } from '../context';
 
@@ -39,6 +42,7 @@ export function useAuditLog(
       );
       return response.data;
     },
+    staleTime: 30_000,
     placeholderData: keepPreviousData,
   });
 }

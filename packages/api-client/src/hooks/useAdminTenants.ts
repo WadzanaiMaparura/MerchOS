@@ -61,6 +61,7 @@ export function useAdminTenants(
       );
       return response.data;
     },
+    staleTime: 30_000,
   });
 }
 
@@ -80,6 +81,7 @@ export function useAdminTenantDetail(
       const response = await client.get<TenantDetail>(`/admin/tenants/${tenantId}`);
       return response.data;
     },
+    staleTime: 30_000,
     enabled: !!tenantId,
   });
 }
