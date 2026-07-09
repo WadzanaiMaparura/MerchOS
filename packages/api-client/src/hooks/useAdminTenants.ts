@@ -120,7 +120,7 @@ export function useSuspendTenant(): UseMutationResult<
       if (previousDetail) {
         queryClient.setQueryData<TenantDetail>(
           adminTenantKeys.detail(payload.tenantId),
-          { ...previousDetail, status: 'suspended' as AdminTenantStatus }
+          (old) => old ? { ...old, status: 'suspended' as AdminTenantStatus } : undefined
         );
       }
 
@@ -174,7 +174,7 @@ export function useActivateTenant(): UseMutationResult<
       if (previousDetail) {
         queryClient.setQueryData<TenantDetail>(
           adminTenantKeys.detail(payload.tenantId),
-          { ...previousDetail, status: 'active' as AdminTenantStatus }
+          (old) => old ? { ...old, status: 'active' as AdminTenantStatus } : undefined
         );
       }
 

@@ -39,7 +39,7 @@ interface JsonSchemaObject {
 function buildZodSchema(
   jsonSchema: Record<string, unknown>
 ): z.ZodObject<Record<string, z.ZodTypeAny>> {
-  const schema = jsonSchema as JsonSchemaObject;
+  const schema = jsonSchema as unknown as JsonSchemaObject;
   const properties = schema.properties ?? {};
   const required = schema.required ?? [];
 
@@ -283,7 +283,7 @@ export function ComplianceFormRenderer({
   isSubmitting = false,
   submitTrigger,
 }: ComplianceFormRendererProps) {
-  const schema = ruleSet.jsonSchema as JsonSchemaObject;
+  const schema = ruleSet.jsonSchema as unknown as JsonSchemaObject;
   const properties = schema.properties ?? {};
   const required = schema.required ?? [];
 
