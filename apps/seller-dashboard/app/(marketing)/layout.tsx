@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'MerchOS — Turn Supplier Catalogues into Marketplace-Ready Listings',
+  title: 'MerchOS — List Multiple Products in a Few Clicks',
   description:
     'MerchOS extracts, enriches and validates product information from PDFs, spreadsheets, images and WhatsApp catalogues — then generates marketplace-ready listings for Takealot, Amazon, Makro and more.',
 };

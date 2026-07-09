@@ -32,12 +32,12 @@ const steps = [
   },
   {
     number: '2',
-    title: 'AI Processing',
+    title: 'Processing',
     description: 'Extract product data, specifications, pricing and images automatically.',
   },
   {
     number: '3',
-    title: 'AI Enrichment',
+    title: 'Enrichment',
     description: 'Generate optimised titles, descriptions, attributes and keywords.',
   },
   {
@@ -57,7 +57,7 @@ const metrics = [
   { value: '2,000+', label: 'Products published monthly using the same team' },
   { value: '60–75%', label: 'Lower listing administration costs' },
   { value: '70%', label: 'Fewer upload errors and rejected listings' },
-  { value: '~R0.35', label: 'Estimated AI processing cost per product' },
+  { value: '~R0.35', label: 'Estimated processing cost per product' },
 ];
 
 const pricingTiers = [
@@ -66,7 +66,7 @@ const pricingTiers = [
     price: 'R499',
     period: '/mo',
     idealFor: 'New marketplace sellers',
-    features: ['500 products processed/mo', '1,000 AI credits', '1 team member', '2 marketplace integrations'],
+    features: ['500 products processed/mo', '1,000 automation credits', '1 team member', '2 marketplace integrations'],
     highlighted: false,
   },
   {
@@ -74,7 +74,7 @@ const pricingTiers = [
     price: 'R1,299',
     period: '/mo',
     idealFor: 'Growing businesses',
-    features: ['2,500 products processed/mo', '5,000 AI credits', '5 team members', '4 marketplace integrations'],
+    features: ['2,500 products processed/mo', '5,000 automation credits', '5 team members', '4 marketplace integrations'],
     highlighted: false,
   },
   {
@@ -82,7 +82,7 @@ const pricingTiers = [
     price: 'R2,999',
     period: '/mo',
     idealFor: 'High-volume sellers',
-    features: ['10,000 products processed/mo', '25,000 AI credits', '15 team members', 'All marketplace integrations'],
+    features: ['10,000 products processed/mo', '25,000 automation credits', '15 team members', 'All marketplace integrations'],
     highlighted: true,
   },
   {
@@ -90,7 +90,7 @@ const pricingTiers = [
     price: 'Custom',
     period: '',
     idealFor: 'Large retailers',
-    features: ['Unlimited products', 'Unlimited AI credits', 'Unlimited team members', 'All integrations + dedicated support'],
+    features: ['Unlimited products', 'Unlimited automation credits', 'Unlimited team members', 'All integrations + dedicated support'],
     highlighted: false,
   },
 ];
@@ -110,8 +110,7 @@ export default function MarketingPage() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-20 sm:py-28 lg:py-36">
           <div className="text-center max-w-4xl mx-auto">
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-gray-900 leading-tight">
-              Turn Supplier Catalogues into Marketplace-Ready Listings{' '}
-              <span className="text-primary-600">in Minutes</span>
+              List Multiple Products in a Few Clicks
             </h1>
             <p className="mt-6 text-lg sm:text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
               MerchOS extracts, enriches and validates product information from PDFs, spreadsheets,
@@ -155,10 +154,12 @@ export default function MarketingPage() {
               </div>
             </div>
 
-            {/* Arrow / AI transformation */}
+            {/* Arrow / transformation */}
             <div className="flex flex-col items-center gap-2 py-4">
               <div className="w-12 h-12 rounded-full bg-primary-600 flex items-center justify-center">
-                <span className="text-white text-lg font-bold">AI</span>
+                <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
               </div>
               <svg className="w-6 h-6 text-primary-600 hidden md:block" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
