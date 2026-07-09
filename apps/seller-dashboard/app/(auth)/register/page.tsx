@@ -88,7 +88,7 @@ export default function RegisterPage() {
       <div className="mb-6 text-center">
         <h1 className="text-2xl font-bold text-gray-900">Create an account</h1>
         <p className="mt-2 text-sm text-gray-600">
-          Register your organisation to start selling on MerchOS
+          Register your organisation to start managing your product listings
         </p>
       </div>
 
