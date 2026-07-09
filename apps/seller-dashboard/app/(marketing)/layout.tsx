@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'MerchOS — Manage Products Across Every Marketplace',
+  title: 'MerchOS — List Multiple Products in a Few Clicks',
   description:
-    'MerchOS helps South African sellers list, enrich, and publish products to Takealot, Amazon, Shopify, and more from one dashboard.',
+    'MerchOS extracts, enriches and validates product information from PDFs, spreadsheets, images and WhatsApp catalogues — then generates marketplace-ready listings for Takealot, Amazon, Makro and more.',
 };
 
 export default function MarketingLayout({
@@ -25,8 +25,8 @@ export default function MarketingLayout({
             </a>
             <ul className="hidden md:flex items-center gap-6 text-sm font-medium text-gray-600">
               <li>
-                <a href="#features" className="hover:text-primary-600 transition-colors">
-                  Features
+                <a href="#how-it-works" className="hover:text-primary-600 transition-colors">
+                  How it Works
                 </a>
               </li>
               <li>
@@ -35,8 +35,8 @@ export default function MarketingLayout({
                 </a>
               </li>
               <li>
-                <a href="#how-it-works" className="hover:text-primary-600 transition-colors">
-                  How it Works
+                <a href="#early-access" className="hover:text-primary-600 transition-colors">
+                  Early Access
                 </a>
               </li>
             </ul>
@@ -49,10 +49,10 @@ export default function MarketingLayout({
               Sign In
             </a>
             <a
-              href="/register"
+              href="#early-access"
               className="inline-flex items-center rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-700 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
             >
-              Get Started
+              Get Early Access
             </a>
           </div>
         </nav>
@@ -70,7 +70,7 @@ export default function MarketingLayout({
             <div className="col-span-1 md:col-span-2">
               <span className="text-xl font-bold text-white">MerchOS</span>
               <p className="mt-3 text-sm text-gray-400 max-w-md">
-                The multi-tenant marketplace product management platform built for South African sellers.
+                We transform messy supplier data into marketplace-ready product data — for South African sellers.
               </p>
               <div className="mt-4 flex items-center gap-2 text-sm text-gray-400">
                 <span aria-label="South African flag">🇿🇦</span>
@@ -80,9 +80,9 @@ export default function MarketingLayout({
             <div>
               <h3 className="text-sm font-semibold text-white uppercase tracking-wider">Product</h3>
               <ul className="mt-4 space-y-2 text-sm">
-                <li><a href="#features" className="hover:text-white transition-colors">Features</a></li>
-                <li><a href="#pricing" className="hover:text-white transition-colors">Pricing</a></li>
                 <li><a href="#how-it-works" className="hover:text-white transition-colors">How it Works</a></li>
+                <li><a href="#pricing" className="hover:text-white transition-colors">Pricing</a></li>
+                <li><a href="#early-access" className="hover:text-white transition-colors">Early Access</a></li>
               </ul>
             </div>
             <div>
