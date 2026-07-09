@@ -194,10 +194,6 @@ export default function MarketingPage() {
             <h2 className="text-3xl sm:text-4xl font-bold text-gray-900">
               The Problem Every Marketplace Seller Knows
             </h2>
-            <p className="mt-4 text-lg text-gray-600">
-              Your suppliers send WhatsApp photos, PDFs, Excel files and messy catalogues.
-              You spend hours copying, cleaning and formatting product information.
-            </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {painPoints.map((point) => (
