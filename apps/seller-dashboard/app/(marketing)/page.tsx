@@ -1,34 +1,25 @@
-const channels = ['Takealot', 'Amazon', 'Makro', 'Shopify', 'WooCommerce'];
-
-const features = [
+const painPoints = [
   {
-    title: 'Product Lifecycle Management',
-    description: 'Track products from draft to published across all channels.',
-    icon: '📦',
+    title: 'Manual Product Listings',
+    description: 'Uploading hundreds of products one by one wastes valuable selling time.',
+    icon: '⏱️',
   },
   {
-    title: 'AI-Powered Enrichment',
-    description: 'Automatically generate titles, descriptions, and attributes.',
-    icon: '✨',
+    title: 'Supplier Data Is Messy',
+    description:
+      'Product information arrives as PDFs, WhatsApp images, spreadsheets and inconsistent catalogues.',
+    icon: '📋',
   },
   {
-    title: 'Multi-Channel Publishing',
-    description: 'Publish to Takealot, Amazon, Shopify, and more simultaneously.',
-    icon: '🚀',
-  },
-  {
-    title: 'Inventory Sync',
-    description: 'Real-time stock levels across all warehouses and channels.',
+    title: 'Marketplace Requirements Keep Changing',
+    description:
+      'Each marketplace has different formatting, categories and CSV requirements.',
     icon: '🔄',
   },
   {
-    title: 'Compliance Automation',
-    description: "Auto-validate against each marketplace's rules before publishing.",
-    icon: '✅',
-  },
-  {
-    title: 'Team Collaboration',
-    description: 'Role-based access for your whole team (viewer, editor, admin, owner).',
+    title: 'Scaling Requires More People',
+    description:
+      'Growing your catalogue often means hiring more staff just to manage listings.',
     icon: '👥',
   },
 ];
@@ -36,21 +27,37 @@ const features = [
 const steps = [
   {
     number: '1',
-    title: 'Upload your products',
-    description: 'Import via CSV or add products manually. We handle the heavy lifting.',
+    title: 'Import',
+    description: 'Upload supplier catalogues from almost any format — PDFs, images, spreadsheets, WhatsApp.',
   },
   {
     number: '2',
-    title: 'AI enriches and validates',
-    description:
-      'Our AI generates optimised titles, descriptions, and attributes — then validates against marketplace rules.',
+    title: 'AI Processing',
+    description: 'Extract product data, specifications, pricing and images automatically.',
   },
   {
     number: '3',
-    title: 'Publish everywhere in one click',
-    description:
-      'Push your enriched listings to all connected channels simultaneously. Done.',
+    title: 'AI Enrichment',
+    description: 'Generate optimised titles, descriptions, attributes and keywords.',
   },
+  {
+    number: '4',
+    title: 'Marketplace Validation',
+    description: 'Validate every listing against marketplace rules before publishing.',
+  },
+  {
+    number: '5',
+    title: 'Export',
+    description: 'Download marketplace-ready CSV files or publish directly to your channels.',
+  },
+];
+
+const metrics = [
+  { value: '80–90%', label: 'Reduction in product listing time' },
+  { value: '2,000+', label: 'Products published monthly using the same team' },
+  { value: '60–75%', label: 'Lower listing administration costs' },
+  { value: '70%', label: 'Fewer upload errors and rejected listings' },
+  { value: '~R0.35', label: 'Estimated AI processing cost per product' },
 ];
 
 const pricingTiers = [
@@ -58,34 +65,41 @@ const pricingTiers = [
     name: 'Starter',
     price: 'R499',
     period: '/mo',
-    description: 'For sellers getting started with multi-channel.',
-    features: ['100 products', '2 channels', '1 user', 'Email support'],
+    idealFor: 'New marketplace sellers',
+    features: ['500 products processed/mo', '1,000 AI credits', '1 team member', '2 marketplace integrations'],
     highlighted: false,
   },
   {
     name: 'Growth',
-    price: 'R999',
+    price: 'R1,299',
     period: '/mo',
-    description: 'For growing businesses scaling their reach.',
-    features: ['1,000 products', '4 channels', '5 users', 'Priority support'],
+    idealFor: 'Growing businesses',
+    features: ['2,500 products processed/mo', '5,000 AI credits', '5 team members', '4 marketplace integrations'],
     highlighted: false,
   },
   {
     name: 'Professional',
-    price: 'R2,499',
+    price: 'R2,999',
     period: '/mo',
-    description: 'For established sellers managing large catalogues.',
-    features: ['10,000 products', 'All channels', '15 users', 'Dedicated account manager'],
+    idealFor: 'High-volume sellers',
+    features: ['10,000 products processed/mo', '25,000 AI credits', '15 team members', 'All marketplace integrations'],
     highlighted: true,
   },
   {
     name: 'Enterprise',
     price: 'Custom',
     period: '',
-    description: 'For large operations with bespoke requirements.',
-    features: ['Unlimited products', 'All channels', 'Unlimited users', 'Dedicated support & SLA'],
+    idealFor: 'Large retailers',
+    features: ['Unlimited products', 'Unlimited AI credits', 'Unlimited team members', 'All integrations + dedicated support'],
     highlighted: false,
   },
+];
+
+const earlyAccessBenefits = [
+  'Founding customer pricing',
+  'Priority onboarding',
+  'Shape future features',
+  'Direct access to the founders',
 ];
 
 export default function MarketingPage() {
@@ -96,74 +110,106 @@ export default function MarketingPage() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-20 sm:py-28 lg:py-36">
           <div className="text-center max-w-4xl mx-auto">
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-gray-900 leading-tight">
-              Manage your products across every marketplace —{' '}
-              <span className="text-primary-600">from one dashboard</span>
+              Turn Supplier Catalogues into Marketplace-Ready Listings{' '}
+              <span className="text-primary-600">in Minutes</span>
             </h1>
             <p className="mt-6 text-lg sm:text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
-              MerchOS helps South African sellers list, enrich, and publish products to Takealot,
-              Amazon, Shopify, and more. AI-powered enrichment. Automated compliance. Zero
-              spreadsheets.
+              MerchOS extracts, enriches and validates product information from PDFs, spreadsheets,
+              images and WhatsApp catalogues — then generates marketplace-ready listings and CSV
+              files for Takealot, Amazon, Makro and more.
             </p>
             <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
               <a
-                href="/register"
+                href="#early-access"
                 className="w-full sm:w-auto inline-flex items-center justify-center rounded-lg bg-primary-600 px-8 py-3.5 text-base font-semibold text-white shadow-lg hover:bg-primary-700 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
               >
-                Start Free Trial
+                Join Early Access
               </a>
               <a
                 href="#how-it-works"
                 className="w-full sm:w-auto inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-8 py-3.5 text-base font-semibold text-gray-700 shadow-sm hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
               >
-                See How It Works
+                Watch Demo
               </a>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Trusted By / Channels Section */}
-      <section className="border-y border-gray-100 bg-gray-50/50 py-10">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <p className="text-center text-sm font-medium text-gray-500 uppercase tracking-wider mb-6">
-            Publish to all major marketplaces
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6">
-            {channels.map((channel) => (
-              <span
-                key={channel}
-                className="inline-flex items-center rounded-full bg-white border border-gray-200 px-5 py-2 text-sm font-semibold text-gray-700 shadow-sm"
-              >
-                {channel}
-              </span>
-            ))}
+      {/* Transformation Visual */}
+      <section className="py-16 sm:py-20 border-y border-gray-100 bg-white">
+        <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-8 items-center">
+            {/* Input: Messy supplier data */}
+            <div className="text-center md:text-left">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">What you receive</p>
+              <div className="flex flex-wrap justify-center md:justify-start gap-2">
+                {['Supplier PDFs', 'WhatsApp Images', 'Excel Files', 'Messy Catalogues'].map((item) => (
+                  <span
+                    key={item}
+                    className="inline-flex items-center rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm font-medium text-red-700"
+                  >
+                    {item}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Arrow / AI transformation */}
+            <div className="flex flex-col items-center gap-2 py-4">
+              <div className="w-12 h-12 rounded-full bg-primary-600 flex items-center justify-center">
+                <span className="text-white text-lg font-bold">AI</span>
+              </div>
+              <svg className="w-6 h-6 text-primary-600 hidden md:block" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+              </svg>
+              <svg className="w-6 h-6 text-primary-600 md:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+              </svg>
+            </div>
+
+            {/* Output: Marketplace-ready */}
+            <div className="text-center md:text-right">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">What you get</p>
+              <div className="flex flex-wrap justify-center md:justify-end gap-2">
+                {['Takealot CSV', 'Amazon Listing', 'Makro Upload', 'Shopify Product', 'WooCommerce'].map((item) => (
+                  <span
+                    key={item}
+                    className="inline-flex items-center rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-sm font-medium text-green-700"
+                  >
+                    {item}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Features Grid */}
-      <section id="features" className="py-20 sm:py-28">
+      {/* The Problem */}
+      <section className="py-20 sm:py-28 bg-gray-50">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-2xl mx-auto mb-16">
             <h2 className="text-3xl sm:text-4xl font-bold text-gray-900">
-              Everything you need to sell everywhere
+              The Problem Every Marketplace Seller Knows
             </h2>
             <p className="mt-4 text-lg text-gray-600">
-              From product creation to multi-channel publishing — MerchOS handles it all.
+              Your suppliers send WhatsApp photos, PDFs, Excel files and messy catalogues.
+              You spend hours copying, cleaning and formatting product information.
             </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {features.map((feature) => (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {painPoints.map((point) => (
               <div
-                key={feature.title}
-                className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm hover:shadow-md transition-shadow"
+                key={point.title}
+                className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
               >
                 <div className="text-3xl mb-4" aria-hidden="true">
-                  {feature.icon}
+                  {point.icon}
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900">{feature.title}</h3>
+                <h3 className="text-lg font-semibold text-gray-900">{point.title}</h3>
                 <p className="mt-2 text-sm text-gray-600 leading-relaxed">
-                  {feature.description}
+                  {point.description}
                 </p>
               </div>
             ))}
@@ -171,26 +217,58 @@ export default function MarketingPage() {
         </div>
       </section>
 
-      {/* How It Works */}
-      <section id="how-it-works" className="py-20 sm:py-28 bg-gray-50">
+      {/* How MerchOS Solves It */}
+      <section id="how-it-works" className="py-20 sm:py-28">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-2xl mx-auto mb-16">
             <h2 className="text-3xl sm:text-4xl font-bold text-gray-900">
-              How it works
+              How MerchOS Solves It
             </h2>
             <p className="mt-4 text-lg text-gray-600">
-              Go from spreadsheet chaos to multi-channel selling in three simple steps.
+              From messy supplier data to marketplace-ready product listings in five steps.
             </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 lg:gap-12">
-            {steps.map((step) => (
-              <div key={step.number} className="text-center">
-                <div className="mx-auto w-14 h-14 rounded-full bg-primary-600 text-white flex items-center justify-center text-xl font-bold mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
+            {steps.map((step, idx) => (
+              <div key={step.number} className="relative text-center">
+                <div className="mx-auto w-12 h-12 rounded-full bg-primary-600 text-white flex items-center justify-center text-lg font-bold mb-4">
                   {step.number}
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900">{step.title}</h3>
-                <p className="mt-3 text-sm text-gray-600 leading-relaxed">
+                <h3 className="text-base font-semibold text-gray-900">{step.title}</h3>
+                <p className="mt-2 text-sm text-gray-600 leading-relaxed">
                   {step.description}
+                </p>
+                {/* Connector arrow (hidden on last item and mobile) */}
+                {idx < steps.length - 1 && (
+                  <div className="hidden lg:block absolute top-6 -right-3 text-gray-300" aria-hidden="true">
+                    →
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Why Sellers Choose MerchOS — Quantified Impact */}
+      <section className="py-20 sm:py-28 bg-gray-900 text-white">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="text-center max-w-2xl mx-auto mb-16">
+            <h2 className="text-3xl sm:text-4xl font-bold">
+              Why Sellers Choose MerchOS
+            </h2>
+            <p className="mt-4 text-lg text-gray-300">
+              We transform messy supplier data into marketplace-ready product data.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-8">
+            {metrics.map((metric) => (
+              <div key={metric.label} className="text-center">
+                <div className="text-3xl sm:text-4xl font-bold text-primary-400">
+                  {metric.value}
+                </div>
+                <p className="mt-2 text-sm text-gray-400">
+                  {metric.label}
                 </p>
               </div>
             ))}
@@ -198,15 +276,15 @@ export default function MarketingPage() {
         </div>
       </section>
 
-      {/* Pricing Section */}
+      {/* Pricing */}
       <section id="pricing" className="py-20 sm:py-28">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-2xl mx-auto mb-16">
             <h2 className="text-3xl sm:text-4xl font-bold text-gray-900">
-              Simple, transparent pricing
+              Simple, usage-based pricing
             </h2>
             <p className="mt-4 text-lg text-gray-600">
-              Start free for 14 days. No credit card required.
+              Pay for what you use. Start free for 14 days.
             </p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -225,11 +303,11 @@ export default function MarketingPage() {
                   </span>
                 )}
                 <h3 className="text-lg font-semibold text-gray-900">{tier.name}</h3>
-                <div className="mt-3 flex items-baseline">
+                <p className="text-sm text-gray-500 mt-1">{tier.idealFor}</p>
+                <div className="mt-4 flex items-baseline">
                   <span className="text-3xl font-bold text-gray-900">{tier.price}</span>
                   <span className="text-sm text-gray-500 ml-1">{tier.period}</span>
                 </div>
-                <p className="mt-2 text-sm text-gray-600">{tier.description}</p>
                 <ul className="mt-6 space-y-3 flex-1" role="list">
                   {tier.features.map((feature) => (
                     <li key={feature} className="flex items-start gap-2 text-sm text-gray-700">
@@ -250,14 +328,14 @@ export default function MarketingPage() {
                   ))}
                 </ul>
                 <a
-                  href="/register"
+                  href="#early-access"
                   className={`mt-8 inline-flex items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 ${
                     tier.highlighted
                       ? 'bg-primary-600 text-white hover:bg-primary-700'
                       : 'border border-primary-600 text-primary-600 hover:bg-primary-50'
                   }`}
                 >
-                  Start Free Trial
+                  Join Early Access
                 </a>
               </div>
             ))}
@@ -265,36 +343,30 @@ export default function MarketingPage() {
         </div>
       </section>
 
-      {/* Testimonial / Social Proof */}
-      <section className="py-16 sm:py-20 bg-gray-50">
-        <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 text-center">
-          <blockquote>
-            <p className="text-xl sm:text-2xl font-medium text-gray-900 italic leading-relaxed">
-              &ldquo;MerchOS saved us 20 hours a week managing listings across Takealot and
-              Shopify. The AI enrichment is a game-changer for our catalogue.&rdquo;
-            </p>
-            <footer className="mt-6">
-              <p className="text-base font-semibold text-gray-900">Sarah M.</p>
-              <p className="text-sm text-gray-500">E-commerce Manager, Cape Town</p>
-            </footer>
-          </blockquote>
-        </div>
-      </section>
-
-      {/* Final CTA */}
-      <section className="py-20 sm:py-28 bg-primary-600">
+      {/* Early Access CTA */}
+      <section id="early-access" className="py-20 sm:py-28 bg-primary-600">
         <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-3xl sm:text-4xl font-bold text-white">
-            Ready to streamline your marketplace operations?
+            Join the Early Access Programme
           </h2>
           <p className="mt-4 text-lg text-primary-100">
-            Join hundreds of South African sellers managing products smarter with MerchOS.
+            Be among the first sellers to transform how you manage marketplace listings.
           </p>
+          <ul className="mt-8 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-primary-100">
+            {earlyAccessBenefits.map((benefit) => (
+              <li key={benefit} className="flex items-center gap-2 text-sm">
+                <svg className="w-4 h-4 text-primary-200" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+                {benefit}
+              </li>
+            ))}
+          </ul>
           <a
             href="/register"
-            className="mt-8 inline-flex items-center justify-center rounded-lg bg-white px-8 py-3.5 text-base font-semibold text-primary-600 shadow-lg hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary-600"
+            className="mt-10 inline-flex items-center justify-center rounded-lg bg-white px-8 py-3.5 text-base font-semibold text-primary-600 shadow-lg hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary-600"
           >
-            Start Free Trial
+            Get Early Access
           </a>
         </div>
       </section>
