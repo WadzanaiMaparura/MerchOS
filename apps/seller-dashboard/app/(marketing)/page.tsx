@@ -113,9 +113,9 @@ export default function MarketingPage() {
               List Multiple Products in a Few Clicks
             </h1>
             <p className="mt-6 text-lg sm:text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
-              MerchOS extracts, enriches and validates product information from PDFs, spreadsheets,
-              images and WhatsApp catalogues — then generates marketplace-ready listings and CSV
-              files for Takealot, Amazon, Makro and more.
+              Your suppliers send WhatsApp photos, PDFs, Excel files and messy catalogues.
+              MerchOS extracts, enriches information then generates marketplace-ready listings
+              and CSV files for Takealot, Amazon, Makro and more.
             </p>
             <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
               <a
