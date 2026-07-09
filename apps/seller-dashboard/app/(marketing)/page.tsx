@@ -156,15 +156,10 @@ export default function MarketingPage() {
 
             {/* Arrow / transformation */}
             <div className="flex flex-col items-center gap-2 py-4">
-              <div className="w-12 h-12 rounded-full bg-primary-600 flex items-center justify-center">
-                <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-              </div>
-              <svg className="w-6 h-6 text-primary-600 hidden md:block" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <svg className="w-8 h-8 text-primary-600 hidden md:block" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
               </svg>
-              <svg className="w-6 h-6 text-primary-600 md:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <svg className="w-8 h-8 text-primary-600 md:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
               </svg>
             </div>
@@ -235,12 +230,7 @@ export default function MarketingPage() {
                 <p className="mt-2 text-sm text-gray-600 leading-relaxed">
                   {step.description}
                 </p>
-                {/* Connector arrow (hidden on last item and mobile) */}
-                {idx < steps.length - 1 && (
-                  <div className="hidden lg:block absolute top-6 -right-3 text-gray-300" aria-hidden="true">
-                    →
-                  </div>
-                )}
+                {/* Connector removed */}
               </div>
             ))}
           </div>
