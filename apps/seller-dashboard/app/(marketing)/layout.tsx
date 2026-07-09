@@ -70,7 +70,7 @@ export default function MarketingLayout({
             <div className="col-span-1 md:col-span-2">
               <span className="text-xl font-bold text-white">MerchOS</span>
               <p className="mt-3 text-sm text-gray-400 max-w-md">
-                We transform messy supplier data into marketplace-ready product data — for South African sellers.
+                We transform messy supplier data into marketplace-ready product data for South African sellers.
               </p>
               <div className="mt-4 flex items-center gap-2 text-sm text-gray-400">
                 <span aria-label="South African flag">🇿🇦</span>
