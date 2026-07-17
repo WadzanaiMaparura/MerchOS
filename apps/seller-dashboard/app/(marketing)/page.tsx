@@ -113,9 +113,9 @@ export default function MarketingPage() {
               List Multiple Products in a Few Clicks
             </h1>
             <p className="mt-6 text-lg sm:text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
-              MerchOS extracts, enriches and validates product information from PDFs, spreadsheets,
-              images and WhatsApp catalogues — then generates marketplace-ready listings and CSV
-              files for Takealot, Amazon, Makro and more.
+              Your suppliers send WhatsApp photos, PDFs, Excel files and messy catalogues.
+              MerchOS extracts, enriches information then generates marketplace-ready listings
+              and CSV files for Takealot, Amazon, Makro and more.
             </p>
             <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
               <a
@@ -156,15 +156,10 @@ export default function MarketingPage() {
 
             {/* Arrow / transformation */}
             <div className="flex flex-col items-center gap-2 py-4">
-              <div className="w-12 h-12 rounded-full bg-primary-600 flex items-center justify-center">
-                <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-              </div>
-              <svg className="w-6 h-6 text-primary-600 hidden md:block" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <svg className="w-8 h-8 text-primary-600 hidden md:block" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
               </svg>
-              <svg className="w-6 h-6 text-primary-600 md:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <svg className="w-8 h-8 text-primary-600 md:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
               </svg>
             </div>
@@ -194,10 +189,6 @@ export default function MarketingPage() {
             <h2 className="text-3xl sm:text-4xl font-bold text-gray-900">
               The Problem Every Marketplace Seller Knows
             </h2>
-            <p className="mt-4 text-lg text-gray-600">
-              Your suppliers send WhatsApp photos, PDFs, Excel files and messy catalogues.
-              You spend hours copying, cleaning and formatting product information.
-            </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {painPoints.map((point) => (
@@ -239,12 +230,7 @@ export default function MarketingPage() {
                 <p className="mt-2 text-sm text-gray-600 leading-relaxed">
                   {step.description}
                 </p>
-                {/* Connector arrow (hidden on last item and mobile) */}
-                {idx < steps.length - 1 && (
-                  <div className="hidden lg:block absolute top-6 -right-3 text-gray-300" aria-hidden="true">
-                    →
-                  </div>
-                )}
+                {/* Connector removed */}
               </div>
             ))}
           </div>

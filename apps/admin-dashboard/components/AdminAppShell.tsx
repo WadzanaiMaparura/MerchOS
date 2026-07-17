@@ -5,24 +5,29 @@
  *
  * Provides:
  * - Sidebar with 7 nav items (Health, Tenants, Compliance, Taxonomy, Audit Log, Alerts, Billing)
+ * - RBAC-based navigation filtering using @merch-os/rbac permission registry
  * - Sidebar collapse/expand toggle (icon-only when collapsed)
  * - Responsive hamburger menu at < 768px viewport
  * - Active nav item: distinct background + vertical accent indicator (via Sidebar component)
  * - Unresolved alert count badge on the Alerts nav item (useUnresolvedAlertCount)
  * - Top bar: operator email truncated at 30 chars + role "operator"
  * - Non-blocking loading indicator within 200ms of API requests
+ * - Loading state while permissions are resolving
  * - Content area wrapped in ErrorBoundaryFallback
  *
- * Requirements: 2.1, 2.2, 2.3, 2.4, 2.6, 8.6
+ * Requirements: 2.1, 2.2, 2.3, 2.4, 2.6, 8.1, 8.2, 8.3, 8.4, 8.5, 8.6
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useIsFetching, useIsMutating } from '@tanstack/react-query';
 import { Sidebar } from '@merch-os/ui';
 import type { SidebarItem } from '@merch-os/ui';
 import { useUnresolvedAlertCount } from '@merch-os/api-client';
+import { PermissionRegistry, defaultPermissionConfig, filterNavigationItems } from '@merch-os/rbac';
+import type { NavigationItem } from '@merch-os/rbac';
 import { useAdminAuth } from '../hooks/useAdminAuth';
+import { usePlatformRole } from '../hooks/usePlatformRole';
 import { useAdminUIStore } from '../stores/ui-store';
 import { ErrorBoundaryFallback } from './ErrorBoundaryFallback';
 
@@ -88,6 +93,35 @@ const LogOutIcon = (
 );
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Permission registry instance (singleton, data-driven) */
+const registry = new PermissionRegistry(defaultPermissionConfig);
+
+/**
+ * Admin navigation items annotated with requiredResource for RBAC filtering.
+ * Each item maps to a resource in the permission registry.
+ * Requirements: 8.1, 8.2, 8.3
+ */
+const ADMIN_NAV_ITEMS: NavigationItem[] = [
+  { id: 'health', label: 'Health', href: '/health', requiredResource: 'infrastructure' },
+  { id: 'tenants', label: 'Tenants', href: '/tenants', requiredResource: 'tenants' },
+  { id: 'compliance', label: 'Compliance', href: '/compliance', requiredResource: 'compliance' },
+  { id: 'taxonomy', label: 'Taxonomy', href: '/taxonomy', requiredResource: 'taxonomy' },
+  { id: 'audit-log', label: 'Audit Log', href: '/audit-log', requiredResource: 'audit-log' },
+  { id: 'alerts', label: 'Alerts', href: '/alerts', requiredResource: 'alerts' },
+  { id: 'billing', label: 'Billing', href: '/billing', requiredResource: 'billing' },
+];
+
+/** Icon map for admin nav items */
+const NAV_ICONS: Record<string, React.ReactNode> = {
+  health: ActivityIcon,
+  tenants: UsersIcon,
+  compliance: ShieldIcon,
+  taxonomy: TreeIcon,
+  'audit-log': FileTextIcon,
+  alerts: AlertIcon,
+  billing: CreditCardIcon,
+};
 
 /**
  * Truncate a string to maxLength characters, appending '…' if truncated.
@@ -181,6 +215,7 @@ export function AdminAppShell({ children }: AdminAppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useAdminAuth();
+  const { platformRole, isResolved } = usePlatformRole();
 
   const sidebarCollapsed = useAdminUIStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useAdminUIStore((s) => s.toggleSidebar);
@@ -190,52 +225,22 @@ export function AdminAppShell({ children }: AdminAppShellProps) {
   // Unresolved alert count for badge on Alerts nav item (Requirement 8.6)
   const { data: unresolvedCount = 0 } = useUnresolvedAlertCount();
 
-  // Build nav items; badge only on Alerts item
-  const navItems: SidebarItem[] = [
-    {
-      label: 'Health',
-      href: '/health',
-      icon: ActivityIcon,
-      active: pathname === '/health' || pathname.startsWith('/health/'),
-    },
-    {
-      label: 'Tenants',
-      href: '/tenants',
-      icon: UsersIcon,
-      active: pathname === '/tenants' || pathname.startsWith('/tenants/'),
-    },
-    {
-      label: 'Compliance',
-      href: '/compliance',
-      icon: ShieldIcon,
-      active: pathname === '/compliance' || pathname.startsWith('/compliance/'),
-    },
-    {
-      label: 'Taxonomy',
-      href: '/taxonomy',
-      icon: TreeIcon,
-      active: pathname === '/taxonomy' || pathname.startsWith('/taxonomy/'),
-    },
-    {
-      label: 'Audit Log',
-      href: '/audit-log',
-      icon: FileTextIcon,
-      active: pathname === '/audit-log' || pathname.startsWith('/audit-log/'),
-    },
-    {
-      label: 'Alerts',
-      href: '/alerts',
-      icon: AlertIcon,
-      active: pathname === '/alerts' || pathname.startsWith('/alerts/'),
-      badge: unresolvedCount > 0 ? unresolvedCount : undefined,
-    },
-    {
-      label: 'Billing',
-      href: '/billing',
-      icon: CreditCardIcon,
-      active: pathname === '/billing' || pathname.startsWith('/billing/'),
-    },
-  ];
+  // Filter nav items based on the user's platform role (Requirements 8.1, 8.2, 8.3)
+  const permittedNavItems = useMemo<NavigationItem[]>(() => {
+    if (!isResolved || !platformRole) return [];
+    return filterNavigationItems(ADMIN_NAV_ITEMS, platformRole, registry);
+  }, [platformRole, isResolved]);
+
+  // Build SidebarItem[] from the filtered NavigationItems
+  const navItems: SidebarItem[] = useMemo(() => {
+    return permittedNavItems.map((item) => ({
+      label: item.label,
+      href: item.href,
+      icon: NAV_ICONS[item.id] ?? ActivityIcon,
+      active: pathname === item.href || pathname.startsWith(item.href + '/'),
+      badge: item.id === 'alerts' && unresolvedCount > 0 ? unresolvedCount : undefined,
+    }));
+  }, [permittedNavItems, pathname, unresolvedCount]);
 
   const handleNavigate = (href: string) => {
     router.push(href);
@@ -262,6 +267,7 @@ export function AdminAppShell({ children }: AdminAppShellProps) {
       )}
 
       {/* Sidebar — hidden on mobile unless open (Requirement 2.6) */}
+      {/* Loading state while permissions are resolving (Requirement 8.5) */}
       <nav
         className={[
           'fixed inset-y-0 left-0 z-50 md:relative md:z-0',
@@ -271,12 +277,25 @@ export function AdminAppShell({ children }: AdminAppShellProps) {
         ].join(' ')}
         aria-label="Primary navigation"
       >
-        <Sidebar
-          items={navItems}
-          collapsed={sidebarCollapsed}
-          onToggleCollapse={toggleSidebar}
-          onNavigate={handleNavigate}
-        />
+        {!isResolved ? (
+          <div
+            className={[
+              'flex flex-col items-center justify-center h-full bg-white border-r border-gray-200',
+              sidebarCollapsed ? 'w-16' : 'w-64',
+            ].join(' ')}
+            role="status"
+            aria-label="Loading navigation"
+          >
+            <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 border-t-blue-500" />
+          </div>
+        ) : (
+          <Sidebar
+            items={navItems}
+            collapsed={sidebarCollapsed}
+            onToggleCollapse={toggleSidebar}
+            onNavigate={handleNavigate}
+          />
+        )}
       </nav>
 
       {/* Main content column */}

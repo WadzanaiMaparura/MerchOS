@@ -29,7 +29,8 @@
     "@merch-os/types": "*",
     "@merch-os/auth": "*",
     "@merch-os/api-client": "*",
-    "@merch-os/ui": "*"
+    "@merch-os/ui": "*",
+    "@merch-os/rbac": "*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
