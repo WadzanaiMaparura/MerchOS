@@ -162,7 +162,7 @@ The following components require **zero modifications** when a new role is added
 - API endpoint implementations
 - Database schemas
 
-This is documented in detail in the [RBAC Blueprint — Section 5.2](./rbac-blueprint.md).
+This is documented in detail in the [RBAC Blueprint — Section 5.2](./rbac-blueprint.md#52-no-source-code-modifications-required).
 
 ---
 
@@ -179,7 +179,7 @@ If a new role requires permissions that do not yet exist in the permission regis
 
 ### 2.2 Adding a New Permission Domain
 
-Follow the process documented in the [RBAC Specification — Permission Domain Addition Process](./rbac-specification.md) which requires:
+Follow the process documented in the [RBAC Specification — Permission Domain Addition Process](./rbac-specification.md#4-permission-domain-addition-process) which requires:
 
 - Domain name and description
 - Complete permission list within the domain
@@ -556,7 +556,7 @@ Roles are not permanent by default. The governance process includes ongoing life
 
 ## 5. Scalability and Constraints
 
-The MerchOS RBAC architecture supports a minimum of **20 distinct Platform Roles** without degradation of authorization performance or configuration complexity. This is documented in detail in the [RBAC Blueprint — Section 5.5](./rbac-blueprint.md).
+The MerchOS RBAC architecture supports a minimum of **20 distinct Platform Roles** without degradation of authorization performance or configuration complexity. This is documented in detail in the [RBAC Blueprint — Section 5.5](./rbac-blueprint.md#55-scalability-minimum-20-distinct-platform_roles).
 
 **Key architectural guarantees:**
 
@@ -571,15 +571,19 @@ The MerchOS RBAC architecture supports a minimum of **20 distinct Platform Roles
 
 | Topic | Document | Section |
 |-------|----------|---------|
-| Middleware pipeline stages and ordering | [RBAC Blueprint](./rbac-blueprint.md) | Section 3 |
-| Tenant isolation principles and flow | [RBAC Blueprint](./rbac-blueprint.md) | Section 1 |
-| Ownership validation architecture | [RBAC Blueprint](./rbac-blueprint.md) | Section 2 |
-| Shared library (`@merch-os/rbac`) API | [RBAC Blueprint](./rbac-blueprint.md) | Section 4 |
-| Future-proofing architectural guarantees | [RBAC Blueprint](./rbac-blueprint.md) | Section 5 |
-| Permission naming standard | [RBAC Specification](./rbac-specification.md) | Section 1 |
-| Expanded permission domains | [RBAC Specification](./rbac-specification.md) | Section 2 |
-| Role-permission matrix | [RBAC Specification](./rbac-specification.md) | Section 3 |
-| API documentation standard | [RBAC Specification](./rbac-specification.md) | Section 4 |
+| Middleware pipeline stages and ordering | [RBAC Blueprint](./rbac-blueprint.md) | [Section 3](./rbac-blueprint.md#3-middleware-pipeline-specification) |
+| Tenant isolation principles and flow | [RBAC Blueprint](./rbac-blueprint.md) | [Section 1](./rbac-blueprint.md#1-tenant-isolation-principles) |
+| Security Principle — Never Trust the Client | [RBAC Blueprint](./rbac-blueprint.md) | [Security Principle](./rbac-blueprint.md#security-principle--never-trust-the-client) |
+| Authorization Context field reference | [RBAC Blueprint](./rbac-blueprint.md) | [Authorization Context](./rbac-blueprint.md#authorization-context) |
+| Lambda vs. Middleware responsibility boundary | [RBAC Blueprint](./rbac-blueprint.md) | [Lambda Responsibilities](./rbac-blueprint.md#lambda-responsibilities) |
+| 10-step authorization lifecycle | [RBAC Blueprint](./rbac-blueprint.md) | [Authorization Lifecycle Sequence](./rbac-blueprint.md#authorization-lifecycle-sequence) |
+| Ownership validation architecture | [RBAC Blueprint](./rbac-blueprint.md) | [Section 2](./rbac-blueprint.md#2-ownership-validation-architecture) |
+| Shared library (`@merch-os/rbac`) API | [RBAC Blueprint](./rbac-blueprint.md) | [Section 4](./rbac-blueprint.md#4-shared-authorization-library) |
+| Future-proofing architectural guarantees | [RBAC Blueprint](./rbac-blueprint.md) | [Section 5](./rbac-blueprint.md#5-future-proofing-guide) |
+| Permission naming standard | [RBAC Specification](./rbac-specification.md) | [Section 1](./rbac-specification.md#1-permission-naming-standard) |
+| Expanded permission domains | [RBAC Specification](./rbac-specification.md) | [Section 2](./rbac-specification.md#2-expanded-permission-domains) |
+| Role-permission matrix | [RBAC Specification](./rbac-specification.md) | [Section 3](./rbac-specification.md#3-role-permission-matrix) |
+| API documentation standard | [RBAC Specification](./rbac-specification.md) | [Section 5](./rbac-specification.md#5-api-documentation-standard) |
 | Centralized middleware decision rationale | [ADR-001](./adr/ADR-001-centralized-middleware-authorization.md) | Full document |
 | Approved RBAC baseline | `.kiro/specs/rbac-platform-access-control/` | Full spec |
 

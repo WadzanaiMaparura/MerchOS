@@ -8,6 +8,21 @@ This specification extends the approved RBAC baseline (`.kiro/specs/rbac-platfor
 
 ---
 
+### Canonical Authorization Flow
+
+```mermaid
+flowchart LR
+    A[Request] --> B[JWT Validation]
+    B --> C[Role Resolution]
+    C --> D[Tenant Resolution]
+    D --> E[Ownership Validation]
+    E --> F[Permission Validation]
+    F --> G[Business Logic]
+    G --> H[DynamoDB]
+```
+
+---
+
 ## 1. Permission Naming Standard
 
 All permission identifiers on the MerchOS platform follow the **Permission Naming Standard**. This ensures consistency across engineering teams, audit logs, API annotations, and the central permission registry.
@@ -601,3 +616,17 @@ The API_Documentation_Standard entry for the same endpoint captures the full aut
 3. **Both must reference the same canonical permission identifier.** If a code annotation uses `products.create.own`, the documentation entry's `required_permission` must be `products.create.own` — never a paraphrase or abbreviation.
 4. **Drift between code and documentation is a compliance violation.** When a code annotation changes (e.g., permission renamed or role added), the corresponding API documentation entry must be updated in the same pull request.
 5. **Automated validation is encouraged.** Teams should implement CI checks that compare code-level permission annotations against API documentation entries to detect drift automatically.
+
+---
+
+## Related Documents
+
+For detailed architectural context beyond the scope of this specification, refer to the following companion documents:
+
+| Document | Section | Relationship |
+|----------|---------|--------------|
+| [RBAC Blueprint — Authorization Context](./rbac-blueprint.md#authorization-context) | Authorization Context | Defines the trusted context object constructed by middleware and passed to Lambda handlers. This specification's permission identifiers populate the `permissions` field within that context. |
+| [RBAC Blueprint — Middleware Pipeline Specification](./rbac-blueprint.md#3-middleware-pipeline-specification) | Pipeline Specification | Describes the runtime enforcement pipeline that evaluates the permissions defined in this specification. |
+| [RBAC Blueprint — Lambda Responsibilities](./rbac-blueprint.md#lambda-responsibilities) | Lambda Responsibilities | Documents the boundary between middleware (which enforces permissions from this specification) and Lambda business logic. |
+
+> **Note:** The Authorization Context field reference table — including field types, presence conditions, and descriptions — is maintained exclusively in the [RBAC Blueprint](./rbac-blueprint.md#authorization-context). This specification does not restate that content to avoid drift between documents.
