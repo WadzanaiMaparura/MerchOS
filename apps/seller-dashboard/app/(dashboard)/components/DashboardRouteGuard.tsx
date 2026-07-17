@@ -1,31 +1,48 @@
 'use client';
 
 /**
- * DashboardRouteGuard — Per-route role-based access control within the dashboard.
+ * DashboardRouteGuard — Per-route permission-based access control for the seller dashboard.
  *
- * Wraps page content and checks the current route against the route permission map.
- * If the user's role does not meet the required minimum, redirects to /dashboard
- * and dispatches an access denied notification that auto-dismisses after 5 seconds.
+ * Wraps page content and checks the current route against the PermissionRegistry.
+ * Uses the platform role (Seller) and checks whether the user has permission to
+ * the route's required resource.
  *
- * This is used inside the dashboard layout to enforce route-level permissions
- * after the initial authentication check by the outer RouteGuard.
+ * Behavior:
+ * - While auth is loading: render nothing (no flash of protected content).
+ * - If the user's platform role lacks permission for the route: redirect to /access-denied?path={pathname}.
+ * - If authorized: render children.
  *
- * Validates: Requirements 3.1, 3.2, 3.3, 3.4, 3.5, 3.6
+ * Props:
+ * - requiredResource (optional): The resource identifier to check permissions against.
+ * - requiredAction (optional, default 'read'): The action to check for the resource.
+ *
+ * When no requiredResource is specified, the guard falls back to the legacy
+ * tenant-role-based route check for backwards compatibility.
+ *
+ * Requirements: 9.1, 9.3, 9.4
  */
 
 import React, { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { useRole } from '@merch-os/auth';
+import { useAuth, useRole } from '@merch-os/auth';
+import { PermissionRegistry, defaultPermissionConfig } from '@merch-os/rbac';
+import type { Action, PlatformRole } from '@merch-os/rbac';
 import type { SellerRole } from '@merch-os/types';
 import { canAccessRoute } from '../../config/route-permissions';
 
+// Singleton registry instance
+const registry = new PermissionRegistry(defaultPermissionConfig);
+
 interface DashboardRouteGuardProps {
   children: React.ReactNode;
+  /** The resource identifier to check permissions against (optional) */
+  requiredResource?: string;
+  /** The action to check for the resource (defaults to 'read') */
+  requiredAction?: Action;
 }
 
 /**
  * Dispatch an access denied notification that auto-dismisses after 5 seconds.
- * Requirement 3.6: redirect to Dashboard with access denied notification.
  */
 function dispatchAccessDeniedNotification(): void {
   if (typeof window === 'undefined') return;
@@ -40,20 +57,47 @@ function dispatchAccessDeniedNotification(): void {
   window.dispatchEvent(event);
 }
 
-export function DashboardRouteGuard({ children }: DashboardRouteGuardProps) {
+export function DashboardRouteGuard({
+  children,
+  requiredResource,
+  requiredAction = 'read',
+}: DashboardRouteGuardProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const { isLoading: isAuthLoading, user } = useAuth();
   const role = useRole();
   const [authorized, setAuthorized] = useState(false);
   const redirectingRef = useRef(false);
+
+  // The seller dashboard always uses the 'Seller' platform role
+  const platformRole: PlatformRole = 'Seller';
+  const isAuthenticated = !!user;
+  const isLoading = isAuthLoading;
 
   useEffect(() => {
     // Reset redirect flag on route change
     redirectingRef.current = false;
 
-    const userRole: SellerRole = role ?? 'viewer';
+    if (isLoading) return;
 
-    // Check if the user can access the current route
+    // If a requiredResource is specified, use the PermissionRegistry for RBAC checks
+    if (requiredResource) {
+      const result = registry.hasPermission(platformRole, requiredResource, requiredAction);
+      if (result.granted) {
+        setAuthorized(true);
+      } else {
+        setAuthorized(false);
+        if (!redirectingRef.current) {
+          redirectingRef.current = true;
+          dispatchAccessDeniedNotification();
+          router.replace(`/access-denied?path=${encodeURIComponent(pathname)}`);
+        }
+      }
+      return;
+    }
+
+    // Fallback: Use legacy tenant-role-based route check (backwards compatible)
+    const userRole: SellerRole = role ?? 'viewer';
     if (canAccessRoute(pathname, userRole)) {
       setAuthorized(true);
     } else {
@@ -61,12 +105,13 @@ export function DashboardRouteGuard({ children }: DashboardRouteGuardProps) {
       if (!redirectingRef.current) {
         redirectingRef.current = true;
         dispatchAccessDeniedNotification();
-        router.replace('/dashboard');
+        router.replace(`/access-denied?path=${encodeURIComponent(pathname)}`);
       }
     }
-  }, [pathname, role, router]);
+  }, [pathname, role, router, isLoading, requiredResource, requiredAction, platformRole]);
 
-  if (!authorized) {
+  // Show nothing while loading or unauthorized to prevent flash of protected content
+  if (isLoading || !authorized) {
     return null;
   }
 

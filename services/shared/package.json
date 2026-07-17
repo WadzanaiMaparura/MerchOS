@@ -19,6 +19,7 @@
     "@aws-lambda-powertools/logger": "2.7.0",
     "@aws-lambda-powertools/tracer": "2.7.0",
     "@aws-lambda-powertools/metrics": "2.7.0",
+    "@merch-os/rbac": "*",
     "@middy/core": "5.4.7"
   },
   "devDependencies": {

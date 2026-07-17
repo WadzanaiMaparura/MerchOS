@@ -1,39 +1,23 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useIsFetching, useIsMutating } from '@tanstack/react-query';
 import { Sidebar } from '@merch-os/ui';
 import type { SidebarItem } from '@merch-os/ui';
 import { useAuth, RouteGuard } from '@merch-os/auth';
-import type { SellerRole } from '@merch-os/types';
+import { filterNavigationItems, PermissionRegistry, defaultPermissionConfig } from '@merch-os/rbac';
+import type { NavigationItem, PlatformRole } from '@merch-os/rbac';
 import { useUIStore } from '../stores/ui-store';
 import { NotificationProvider, NotificationHistoryDropdown, ConnectionStatusIndicator } from '../components/notifications';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { ErrorBoundaryWrapper } from './components/ErrorBoundaryWrapper';
 import { DashboardRouteGuard } from './components/DashboardRouteGuard';
 
+// --- Permission Registry (singleton) ---
+const registry = new PermissionRegistry(defaultPermissionConfig);
+
 // --- Navigation Configuration ---
-
-interface NavItemConfig {
-  label: string;
-  href: string;
-  icon: React.ReactNode;
-  /** Minimum role required. Roles hierarchy: owner > admin > editor > viewer */
-  requiredRole?: SellerRole;
-}
-
-const ROLE_HIERARCHY: Record<SellerRole, number> = {
-  viewer: 0,
-  editor: 1,
-  admin: 2,
-  owner: 3,
-};
-
-function hasRoleAccess(userRole: SellerRole, requiredRole?: SellerRole): boolean {
-  if (!requiredRole) return true;
-  return ROLE_HIERARCHY[userRole] >= ROLE_HIERARCHY[requiredRole];
-}
 
 // SVG icon components for nav items
 const HomeIcon = (
@@ -101,19 +85,20 @@ const TeamIcon = (
 );
 
 /**
- * SELLER_NAV_ITEMS — Navigation items per the design doc.
- * Items are filtered by the user's role at render time.
+ * SELLER_NAV_ITEMS — Navigation items annotated with requiredResource
+ * mapping to the permission registry resources for the Seller role.
+ * Items are filtered by the registry at render time.
  */
-const SELLER_NAV_ITEMS: NavItemConfig[] = [
-  { label: 'Dashboard', href: '/dashboard', icon: HomeIcon },
-  { label: 'Products', href: '/products', icon: PackageIcon },
-  { label: 'Review Queue', href: '/review-queue', icon: ClipboardCheckIcon },
-  { label: 'Inventory', href: '/inventory', icon: WarehouseIcon, requiredRole: 'editor' },
-  { label: 'Exports', href: '/exports', icon: DownloadIcon, requiredRole: 'editor' },
-  { label: 'Channels', href: '/settings/channels', icon: ChannelsIcon, requiredRole: 'admin' },
-  { label: 'Settings', href: '/settings', icon: SettingsIcon, requiredRole: 'admin' },
-  { label: 'Team', href: '/settings/team', icon: TeamIcon, requiredRole: 'owner' },
-  { label: 'Billing', href: '/billing', icon: CreditCardIcon, requiredRole: 'owner' },
+const SELLER_NAV_ITEMS: (NavigationItem & { icon: React.ReactNode })[] = [
+  { id: 'dashboard', label: 'Dashboard', href: '/dashboard', icon: HomeIcon, requiredResource: 'analytics' },
+  { id: 'products', label: 'Products', href: '/products', icon: PackageIcon, requiredResource: 'products' },
+  { id: 'review-queue', label: 'Review Queue', href: '/review-queue', icon: ClipboardCheckIcon, requiredResource: 'products' },
+  { id: 'inventory', label: 'Inventory', href: '/inventory', icon: WarehouseIcon, requiredResource: 'products' },
+  { id: 'exports', label: 'Exports', href: '/exports', icon: DownloadIcon, requiredResource: 'exports' },
+  { id: 'channels', label: 'Channels', href: '/settings/channels', icon: ChannelsIcon, requiredResource: 'ai-listings' },
+  { id: 'settings', label: 'Settings', href: '/settings', icon: SettingsIcon, requiredResource: 'subscription' },
+  { id: 'team', label: 'Team', href: '/settings/team', icon: TeamIcon, requiredResource: 'subscription' },
+  { id: 'billing', label: 'Billing', href: '/billing', icon: CreditCardIcon, requiredResource: 'subscription' },
 ];
 
 // --- Helper: truncate string ---
@@ -182,6 +167,26 @@ function ContentLoadingIndicator() {
   );
 }
 
+// --- Navigation Loading Indicator ---
+/**
+ * NavLoadingIndicator - Displays a loading skeleton in place of the navigation
+ * while permissions are being resolved (Requirement 8.5).
+ */
+function NavLoadingIndicator() {
+  return (
+    <div
+      className="flex flex-col gap-3 p-4"
+      role="status"
+      aria-label="Loading navigation"
+      aria-busy="true"
+    >
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div key={i} className="h-8 bg-gray-200 rounded animate-pulse" />
+      ))}
+    </div>
+  );
+}
+
 // --- Hamburger Menu Button ---
 function HamburgerButton({ onClick }: { onClick: () => void }) {
   return (
@@ -202,12 +207,13 @@ function HamburgerButton({ onClick }: { onClick: () => void }) {
  * DashboardLayout — App Shell layout for the (dashboard) route group.
  *
  * Implements:
- * - Sidebar navigation filtered by user role (Requirement 2.1)
+ * - Sidebar navigation filtered by permission registry (Requirement 8.1, 8.2, 8.3)
  * - Display name (truncated 30 chars), role, and org name (truncated 40 chars) in top bar (Requirement 2.2)
  * - Client-side navigation without full page reload (Requirement 2.3)
  * - Active nav item with distinct background and vertical accent (Requirement 2.4)
  * - Non-blocking loading indicator within 200ms of API request start (Requirement 2.5)
  * - Responsive: hamburger menu below 768px (Requirement 2.6)
+ * - Loading indicator while permissions resolve (Requirement 8.5)
  * - Connection status indicator and offline indicator in top bar (Requirements 12.5, 13.5)
  * - Unread notification count badge in top bar (implicit from 12.4)
  * - RouteGuard for protected routes
@@ -219,7 +225,7 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, refreshSession } = useAuth();
+  const { user, isLoading: isAuthLoading, refreshSession } = useAuth();
 
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
@@ -234,7 +240,11 @@ export default function DashboardLayout({
     return refreshSession();
   }, [refreshSession]);
 
-  const userRole: SellerRole = (user?.role as SellerRole) ?? 'viewer';
+  // Resolve Platform Role from user context. This is the seller dashboard,
+  // so we use 'Seller' as the platform role.
+  const platformRole: PlatformRole = 'Seller';
+  const isPermissionsResolved = !isAuthLoading && user != null;
+
   const displayName = user?.givenName
     ? `${user.givenName}${user.familyName ? ' ' + user.familyName : ''}`
     : user?.email ?? 'User';
@@ -242,15 +252,30 @@ export default function DashboardLayout({
     ?? user?.tenantId
     ?? 'Organisation';
 
-  // Filter nav items by user role
-  const filteredNavItems: SidebarItem[] = SELLER_NAV_ITEMS
-    .filter((item) => hasRoleAccess(userRole, item.requiredRole))
-    .map((item) => ({
+  // Build a map from nav item id → icon for lookup after filtering
+  const iconMap = useMemo(() => {
+    const map = new Map<string, React.ReactNode>();
+    for (const item of SELLER_NAV_ITEMS) {
+      map.set(item.id, item.icon);
+    }
+    return map;
+  }, []);
+
+  // Filter nav items using the permission registry (Requirements 8.1, 8.2, 8.3)
+  const filteredNavItems: SidebarItem[] = useMemo(() => {
+    if (!isPermissionsResolved) return [];
+
+    // Strip icons for filterNavigationItems (it expects NavigationItem shape)
+    const navItems: NavigationItem[] = SELLER_NAV_ITEMS.map(({ icon, ...rest }) => rest);
+    const permitted = filterNavigationItems(navItems, platformRole, registry);
+
+    return permitted.map((item) => ({
       label: item.label,
       href: item.href,
-      icon: item.icon,
+      icon: iconMap.get(item.id),
       active: pathname === item.href || pathname.startsWith(item.href + '/'),
     }));
+  }, [isPermissionsResolved, platformRole, pathname, iconMap]);
 
   const handleNavigate = useCallback(
     (href: string) => {
@@ -283,12 +308,16 @@ export default function DashboardLayout({
             `}
             aria-label="Primary navigation"
           >
-            <Sidebar
-              items={filteredNavItems}
-              collapsed={sidebarCollapsed}
-              onToggleCollapse={toggleSidebar}
-              onNavigate={handleNavigate}
-            />
+            {!isPermissionsResolved ? (
+              <NavLoadingIndicator />
+            ) : (
+              <Sidebar
+                items={filteredNavItems}
+                collapsed={sidebarCollapsed}
+                onToggleCollapse={toggleSidebar}
+                onNavigate={handleNavigate}
+              />
+            )}
           </nav>
 
           {/* Main content area */}
@@ -308,7 +337,7 @@ export default function DashboardLayout({
                     {truncate(displayName, 30)}
                   </span>
                   <span className="text-xs text-gray-500">
-                    {userRole.charAt(0).toUpperCase() + userRole.slice(1)} ·{' '}
+                    Seller ·{' '}
                     <span title={organisationName}>
                       {truncate(organisationName, 40)}
                     </span>

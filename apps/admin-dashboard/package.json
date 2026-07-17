@@ -28,7 +28,8 @@
     "@merch-os/types": "*",
     "@merch-os/auth": "*",
     "@merch-os/api-client": "*",
-    "@merch-os/ui": "*"
+    "@merch-os/ui": "*",
+    "@merch-os/rbac": "*"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.4.0",

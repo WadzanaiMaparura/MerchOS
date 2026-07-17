@@ -4,7 +4,11 @@
     "rootDir": ".",
     "outDir": "dist",
     "declarationDir": "dist",
-    "composite": true
+    "composite": true,
+    "baseUrl": ".",
+    "paths": {
+      "@merch-os/rbac": ["../../packages/rbac/src/index.ts"]
+    }
   },
   "include": [
     "types/**/*.ts",
@@ -16,5 +20,8 @@
     "node_modules",
     "dist",
     "**/__tests__/**"
+  ],
+  "references": [
+    { "path": "../../packages/rbac" }
   ]
 }
