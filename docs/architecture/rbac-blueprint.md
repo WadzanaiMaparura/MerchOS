@@ -137,6 +137,160 @@ Tenant scoping behavior varies by Platform Role:
 
 ---
 
+## Security Principle — Never Trust the Client
+
+> **The client is never authoritative for authorization decisions.** Client-supplied data can be forged, tampered with, or replayed. Any value originating from the client — whether in headers, query parameters, path segments, or the request body — is considered untrusted for the purposes of authorization.
+>
+> **Values never trusted from the client:**
+>
+> - `tenantId` — tenant identity is extracted exclusively from the server-validated JWT
+> - `role` — platform role is resolved server-side from Cognito groups
+> - `permissions` — permission grants are resolved from the role configuration, never accepted from the client
+> - `ownership claims` — resource ownership is verified by querying the resource store, not by trusting client assertions
+> - `resource identifiers used for authorization` — IDs referencing tenant-scoped or user-scoped records are validated against the authenticated user's identity before granting access
+>
+> **All authorization decisions are derived from authenticated identity validated server-side through the Middleware Pipeline.** The pipeline extracts identity from the signed JWT, resolves roles and permissions from trusted configuration, and verifies ownership against the resource store. No step in this chain relies on client-supplied authorization data.
+>
+> **The Authorization Context, constructed by middleware, is the single trusted source for all authorization fields.** Business logic must consume this context — not request parameters, headers, or body fields — when making any decision that depends on the user's identity, role, tenant, or permissions.
+
+---
+
+## Authorization Context
+
+The Middleware Pipeline constructs a trusted authorization object — the **Authorization Context** — and passes it to each Lambda handler as an input parameter before business logic executes. This object encapsulates all resolved identity, role, permission, and observability fields that business logic may need. Lambda functions receive this context as their authoritative source of truth; they must never parse JWTs, query Cognito, or derive authorization fields independently.
+
+The Authorization Context is the **standard engineering pattern for all Lambda functions** on the MerchOS platform. Every protected Lambda handler accepts this object and relies on it exclusively for identity and authorization information.
+
+### Field Reference
+
+| Field Name | Data Type | Presence | Description |
+|------------|-----------|----------|-------------|
+| `userId` | `string` | Always | Unique user identifier extracted from the JWT `sub` claim. |
+| `tenantId` | `string` | Always | Tenant identifier extracted from the JWT `custom:tenantId` claim. |
+| `role` | `string` | Always | Resolved Platform Role (e.g., Admin, Support, Seller) determined from Cognito groups. |
+| `permissions` | `string[]` | Always | Array of permission identifiers granted to the resolved role via the `@merch-os/rbac` configuration. |
+| `ownershipContext` | `object \| null` | Conditional | Resource ownership details populated by the Ownership Validation stage. Present when ownership validation was performed on a specific resource; `null` for list or create operations where no single resource is targeted. |
+| `requestId` | `string` | Always | Unique identifier for the current request, used for distributed tracing and audit log correlation. |
+| `correlationId` | `string` | Conditional | Correlation identifier for multi-request workflows. Present when the client provides an `X-Correlation-Id` header; absent otherwise. |
+
+**Business logic must consume this context rather than parsing JWTs or querying Cognito directly.** The Authorization Context is the only trusted interface between the middleware authorization layer and Lambda business logic. Any authorization-relevant decision within a handler — filtering by tenant, checking ownership status, or logging the acting user — must reference fields from this object.
+
+---
+
+## Lambda Responsibilities
+
+### Separation of Concerns: Middleware vs. Lambda
+
+The MerchOS platform enforces a strict separation of concerns between the Middleware Pipeline and Lambda business logic handlers. Every operation performed in the system classifies into exactly one of the two categories below. This boundary is non-negotiable — Lambda functions must never assume middleware responsibilities, and middleware must never execute business logic.
+
+| Middleware Responsibilities | Lambda Responsibilities |
+|----------------------------|------------------------|
+| JWT parsing | Data persistence (CRUD) |
+| Role resolution | Business rule execution |
+| Permission resolution | External service integration |
+| Tenant resolution | Response construction |
+| Ownership validation | Domain-specific transformations |
+
+**Lambda functions receive a pre-validated Authorization Context from middleware and must consume it as the sole source of identity and authorization information.** The Authorization Context (documented above) is fully constructed and validated before the Lambda handler is invoked. No Lambda function should attempt to re-derive, verify, or supplement authorization data from any other source.
+
+#### Prohibited Operations (Authorization — Middleware Only)
+
+Lambda functions must **never** perform:
+
+- **JWT parsing** — extracting or decoding tokens from the Authorization header
+- **Role resolution** — mapping Cognito groups to Platform Roles
+- **Permission resolution** — checking whether a role grants a specific permission
+- **Tenant resolution** — extracting or validating tenant identity from any source
+- **Ownership validation** — querying the resource store to verify resource ownership
+
+These operations are the exclusive domain of the Middleware Pipeline.
+
+#### Permitted Operations (Business — Lambda Only)
+
+Lambda functions are responsible for:
+
+- **Data persistence (CRUD)** — creating, reading, updating, and deleting domain records in DynamoDB or other stores
+- **Business rule execution** — applying domain logic, validation rules, pricing calculations, and workflow transitions
+- **External service integration** — calling third-party APIs, marketplace connectors, payment providers, and notification services
+- **Response construction** — building HTTP response bodies, applying serialization, and setting response metadata
+- **Domain-specific transformations** — mapping between internal models and external representations, computing derived fields, and formatting output
+
+This complete enumeration ensures that any operation in the system can be classified into exactly one category. If an operation does not appear in the Lambda column, it belongs to middleware. If it does not appear in the Middleware column, it belongs to Lambda.
+
+> **Cross-reference:** See also [Section 3.5 — Business Logic Separation Principle](#35-business-logic-separation-principle) for the middleware pipeline's perspective on this boundary.
+
+---
+
+## Authorization Lifecycle Sequence
+
+### Standard Authorization Lifecycle
+
+The following 10-step sequence documents the complete authorization lifecycle for every protected request on the MerchOS platform. Each step describes its input, output, and responsibility. Steps that can terminate the pipeline early document the failure condition and resulting system behavior.
+
+1. **Receive Request**
+   - **Input:** Incoming HTTP request from the client (method, path, headers, body)
+   - **Output:** Raw request object passed to the pipeline entry point
+   - **Responsibility:** Accept the inbound connection and route the request to the Middleware Pipeline for authorization processing
+
+2. **Validate JWT**
+   - **Input:** Raw JWT string extracted from the `Authorization: Bearer <token>` header
+   - **Output:** Decoded and verified JWT payload with all claims accessible
+   - **Responsibility:** Validate the JWT signature against Cognito public keys, verify the `exp` claim has not expired, and confirm the `iss` claim matches the expected Cognito User Pool URL
+   - **Failure Condition:** Token is missing, malformed, has an invalid signature, is expired, or has an unrecognized issuer
+   - **Resulting Behavior:** Pipeline terminates immediately with `401 Unauthorized` (error codes: `MISSING_TOKEN`, `INVALID_TOKEN`, `TOKEN_EXPIRED`, or `INVALID_ISSUER`)
+
+3. **Resolve Cognito Groups**
+   - **Input:** Validated JWT payload (specifically the `cognito:groups` claim)
+   - **Output:** Array of Cognito group names the user belongs to
+   - **Responsibility:** Extract the `cognito:groups` claim from the validated JWT to determine the user's group membership
+   - **Failure Condition:** No `cognito:groups` claim is present in the JWT
+   - **Resulting Behavior:** Pipeline terminates immediately with `403 Forbidden` (error code: `MISSING_GROUP`)
+
+4. **Resolve Platform Role**
+   - **Input:** Array of Cognito group names from the previous step
+   - **Output:** Single resolved `PlatformRole` (Admin, Support, Seller, or future configured role) written to request context
+   - **Responsibility:** Map Cognito groups to a recognized Platform Role using the `@merch-os/rbac` role configuration. If the user belongs to multiple groups, select the highest-priority role (Admin > Support > Seller)
+   - **Failure Condition:** None of the user's Cognito groups map to a recognized Platform Role in the configuration
+   - **Resulting Behavior:** Pipeline terminates immediately with `403 Forbidden` (error code: `UNRECOGNIZED_ROLE`)
+
+5. **Resolve Tenant**
+   - **Input:** Validated JWT payload (specifically the `custom:tenantId` claim)
+   - **Output:** `tenantId` written to request context
+   - **Responsibility:** Extract the `custom:tenantId` claim from the validated JWT and inject it into the request context. Tenant identity is never sourced from client-supplied parameters
+   - **Failure Condition:** No `custom:tenantId` claim is present in the JWT (for tenant-scoped roles)
+   - **Resulting Behavior:** Pipeline terminates immediately with `403 Forbidden` (error code: `TENANT_ISOLATION_VIOLATION`)
+
+6. **Resolve Permissions**
+   - **Input:** Resolved Platform Role from the request context
+   - **Output:** Array of permission identifiers (`string[]`) granted to the role, written to request context
+   - **Responsibility:** Look up the permission grants configured for the resolved role in `@merch-os/rbac` and populate the permissions array in the Authorization Context
+   - **Failure Condition:** The resolved role has no configured permissions, or the required permission for the route is not included in the role's grants
+   - **Resulting Behavior:** Pipeline terminates immediately with `403 Forbidden` (error code: `INSUFFICIENT_PERMISSIONS`)
+
+7. **Validate Ownership**
+   - **Input:** Resource identifier extracted from the request (path params, body, or query), plus the authenticated user's `userId` and `tenantId` from request context
+   - **Output:** `ownershipContext` object written to request context (populated with resource ownership details, or `null` for list/create operations)
+   - **Responsibility:** Query the resource store to verify that the targeted resource belongs to the authenticated user's tenant and that the user owns the resource. Admin and Support roles bypass this check
+   - **Failure Condition:** Resource belongs to a different tenant, or the user does not own the targeted resource
+   - **Resulting Behavior:** Pipeline terminates immediately with `403 Forbidden` (error codes: `TENANT_ISOLATION_VIOLATION` or `OWNERSHIP_VALIDATION_FAILURE`)
+
+8. **Execute Business Logic**
+   - **Input:** Fully constructed Authorization Context (userId, tenantId, role, permissions, ownershipContext, requestId, correlationId) plus the original request payload
+   - **Output:** Business operation result (created/updated/deleted resource, query results, or computed response data)
+   - **Responsibility:** Perform the domain operation (CRUD, business rules, external integrations, transformations) using the pre-validated Authorization Context as the sole source of identity and authorization
+
+9. **Write Audit Log**
+   - **Input:** Completed business operation result, Authorization Context (userId, tenantId, role, requestId, correlationId), and operation metadata (action type, resource affected)
+   - **Output:** Audit log entry persisted to the audit store
+   - **Responsibility:** Record the authorization decision, the acting user's identity, the operation performed, and the outcome for compliance, debugging, and security review purposes
+
+10. **Return Response**
+    - **Input:** Business operation result and any response metadata
+    - **Output:** HTTP response sent to the client (status code, headers, serialized body)
+    - **Responsibility:** Construct and send the final HTTP response, applying appropriate serialization, status codes, and response headers based on the business logic outcome
+
+---
+
 ## 2. Ownership Validation Architecture
 
 Ownership Validation is the middleware stage responsible for verifying that the requesting user actually owns the resource being accessed. While RBAC permission checks validate **role-level** access (e.g., "does this user have the `products.update.own` permission?"), Ownership Validation validates **resource-level** access (e.g., "does this specific product belong to this specific Seller?").
@@ -393,6 +547,19 @@ If an authenticated Seller requests modification of a resource they do not own, 
 
 The Middleware Pipeline is the sequential authorization chain that every protected request traverses before reaching business logic. Each stage has a single responsibility, well-defined inputs and outputs, and a set of failure modes that terminate processing immediately. No stage is optional for protected routes, and no stage may be reordered.
 
+### Canonical Authorization Flow
+
+```mermaid
+flowchart LR
+    A[Request] --> B[JWT Validation]
+    B --> C[Role Resolution]
+    C --> D[Tenant Resolution]
+    D --> E[Ownership Validation]
+    E --> F[Permission Validation]
+    F --> G[Business Logic]
+    G --> H[DynamoDB]
+```
+
 ### 3.1 Pipeline Stages Overview
 
 The complete pipeline executes in this fixed order:
@@ -569,6 +736,8 @@ This design guarantees:
 - **Security by default** — no path through the middleware can bypass a required stage.
 
 ### 3.5 Business Logic Separation Principle
+
+> **See also:** [Lambda Responsibilities](#lambda-responsibilities) for a comprehensive two-column breakdown of middleware vs. Lambda responsibilities, including a complete enumeration of permitted and prohibited operations.
 
 **Business logic handlers NEVER perform:**
 
@@ -1043,3 +1212,18 @@ The MerchOS platform architecture supports a **minimum of 20 distinct Platform_R
 | **Middleware Overhead** | Authorization middleware executes the same number of stages regardless of how many roles exist in the system. Only the authenticated user's role is evaluated. | No impact — pipeline complexity is constant per request. |
 
 **Architectural guarantee:** Because the middleware pipeline evaluates only the **requesting user's resolved role** (not all possible roles), authorization latency is O(1) with respect to the total number of defined Platform_Roles. The system can scale to the Cognito limit of 300 groups without architectural changes.
+
+
+---
+
+## Related Architecture Documents
+
+The following documents relate to the MerchOS RBAC architecture. Cross-references are provided for navigation between architectural concerns.
+
+| Document Name | Relationship Description |
+|---------------|--------------------------|
+| [ADR-001 — Centralized Middleware Authorization](adr/ADR-001-centralized-middleware-authorization.md) | Records the architectural decision to centralize all authorization logic in the middleware pipeline rather than distributing it across Lambda handlers. Provides decision context and rationale for the RBAC Blueprint's pipeline-first design. |
+| API Blueprint `[pending]` — expected at `api-blueprint.md` | Defines the HTTP API surface (routes, methods, request/response schemas) that the RBAC middleware protects. Establishes which endpoints require authorization and their permission mappings. |
+| Security Architecture `[pending]` — expected at `security-architecture.md` | Describes the platform-wide security posture including threat model, encryption standards, and secrets management. The RBAC system is one component of the broader security architecture. |
+| Authentication Architecture `[pending]` — expected at `authentication-architecture.md` | Documents the AWS Cognito integration, JWT issuance, token refresh flows, and MFA configuration. Provides the identity layer that the RBAC pipeline consumes (JWT claims, Cognito groups). |
+| Shared RBAC Package (`@merch-os/rbac`) `[pending]` — expected at `../../packages/rbac/README.md` | Documents the shared `@merch-os/rbac` package API, role configuration format, permission registry, and integration patterns used by middleware and frontend navigation filtering. |

@@ -48,6 +48,21 @@ Specifically:
 
 6. Adding a new role or permission requires only updating the `@merch-os/rbac` package configuration. No changes to middleware, guards, navigation, or business logic handlers are necessary.
 
+### Canonical Authorization Flow
+
+```mermaid
+flowchart LR
+    A[Request] --> B[JWT Validation]
+    B --> C[Role Resolution]
+    C --> D[Tenant Resolution]
+    D --> E[Ownership Validation]
+    E --> F[Permission Validation]
+    F --> G[Business Logic]
+    G --> H[DynamoDB]
+```
+
+For the complete stage-by-stage pipeline specification including error handling, stage inputs/outputs, and configuration details, see the [Middleware Pipeline Specification](../rbac-blueprint.md#3-middleware-pipeline-specification) in the RBAC Blueprint.
+
 ## Consequences
 
 ### Benefits
