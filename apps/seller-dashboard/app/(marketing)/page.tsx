@@ -134,48 +134,155 @@ export default function MarketingPage() {
       </section>
 
       {/* Transformation Visual */}
-      <section className="py-16 sm:py-20 border-y border-gray-100 bg-white">
-        <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-8 items-center">
-            {/* Input: Messy supplier data */}
-            <div className="text-center md:text-left">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">What you receive</p>
-              <div className="flex flex-wrap justify-center md:justify-start gap-2">
-                {['Supplier PDFs', 'WhatsApp Images', 'Excel Files', 'Messy Catalogues'].map((item) => (
-                  <span
-                    key={item}
-                    className="inline-flex items-center rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm font-medium text-red-700"
-                  >
-                    {item}
-                  </span>
+      <section className="py-16 sm:py-24 border-y border-gray-100 bg-white">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          {/* 3-column flow: Import → Engine → Publish */}
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_1.2fr_auto_1fr] gap-6 lg:gap-4 items-start">
+
+            {/* Column 1: Import Your Data */}
+            <div className="rounded-2xl border border-gray-200 bg-gray-50 p-6">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-primary-700 uppercase tracking-wide">Import Your Data</h3>
+                  <p className="text-xs text-gray-500">From any source</p>
+                </div>
+              </div>
+              <div className="space-y-4">
+                {[
+                  { title: 'Supplier PDFs', desc: 'Catalogues, brochures, product sheets' },
+                  { title: 'WhatsApp Images', desc: 'Product photos and information' },
+                  { title: 'Excel & CSV Files', desc: 'Spreadsheets and data exports' },
+                  { title: 'Product Catalogues', desc: 'Digital or scanned catalogues' },
+                ].map((item) => (
+                  <div key={item.title} className="flex items-start gap-3 rounded-lg bg-white border border-gray-100 p-3">
+                    <div className="w-8 h-8 rounded bg-red-50 border border-red-100 flex items-center justify-center shrink-0">
+                      <svg className="w-4 h-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">{item.title}</p>
+                      <p className="text-xs text-gray-500">{item.desc}</p>
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
 
-            {/* Arrow / transformation */}
-            <div className="flex flex-col items-center gap-2 py-4">
-              <svg className="w-8 h-8 text-primary-600 hidden md:block" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-              </svg>
-              <svg className="w-8 h-8 text-primary-600 md:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            {/* Arrow 1 */}
+            <div className="hidden lg:flex items-center justify-center self-center">
+              <div className="flex items-center gap-1 text-primary-400">
+                <div className="w-8 border-t-2 border-dashed border-primary-300"></div>
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+            </div>
+            <div className="lg:hidden flex justify-center py-2">
+              <svg className="w-6 h-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
               </svg>
             </div>
 
-            {/* Output: Marketplace-ready */}
-            <div className="text-center md:text-right">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">What you get</p>
-              <div className="flex flex-wrap justify-center md:justify-end gap-2">
-                {['Takealot CSV', 'Amazon Listing', 'Makro Upload', 'Shopify Product', 'WooCommerce'].map((item) => (
-                  <span
-                    key={item}
-                    className="inline-flex items-center rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-sm font-medium text-green-700"
+            {/* Column 2: MerchOS Engine */}
+            <div className="rounded-2xl border-2 border-primary-200 bg-primary-50/50 p-6">
+              <div className="text-center mb-6">
+                <div className="w-14 h-14 rounded-full bg-primary-600 flex items-center justify-center mx-auto mb-3">
+                  <svg className="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-bold text-gray-900">MerchOS Engine</h3>
+              </div>
+              <ul className="space-y-3">
+                {[
+                  'Reads & extracts data',
+                  'Cleans & validates',
+                  'Matches categories',
+                  'Generates descriptions',
+                  'Optimises images',
+                  'Formats for marketplaces',
+                ].map((step) => (
+                  <li key={step} className="flex items-center gap-3">
+                    <div className="w-5 h-5 rounded-full bg-primary-600 flex items-center justify-center shrink-0">
+                      <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <span className="text-sm text-gray-700 font-medium">{step}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Arrow 2 */}
+            <div className="hidden lg:flex items-center justify-center self-center">
+              <div className="flex items-center gap-1 text-primary-400">
+                <div className="w-8 border-t-2 border-dashed border-primary-300"></div>
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+            </div>
+            <div className="lg:hidden flex justify-center py-2">
+              <svg className="w-6 h-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+              </svg>
+            </div>
+
+            {/* Column 3: Ready to Publish */}
+            <div className="rounded-2xl border border-gray-200 bg-gray-50 p-6">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-green-700 uppercase tracking-wide">Ready to Publish</h3>
+                  <p className="text-xs text-gray-500">Export to marketplaces</p>
+                </div>
+              </div>
+              <div className="space-y-3">
+                {['Takealot', 'Amazon', 'Makro Marketplace', 'Shopify', 'WooCommerce'].map((marketplace) => (
+                  <div
+                    key={marketplace}
+                    className="flex items-center gap-3 rounded-lg bg-white border border-green-100 px-4 py-3"
                   >
-                    {item}
-                  </span>
+                    <div className="w-8 h-8 rounded bg-green-50 border border-green-100 flex items-center justify-center shrink-0">
+                      <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <span className="text-sm font-semibold text-gray-900">{marketplace}</span>
+                  </div>
                 ))}
               </div>
             </div>
+          </div>
+
+          {/* Benefits row */}
+          <div className="mt-12 grid grid-cols-2 sm:grid-cols-4 gap-6 border-t border-gray-100 pt-10">
+            {[
+              { icon: '⏱️', title: 'Save Time', desc: 'Automate hours of manual work' },
+              { icon: '✓', title: 'Reduce Errors', desc: 'Clean, accurate product data' },
+              { icon: '🌐', title: 'List Everywhere', desc: 'Multiple marketplaces, one click' },
+              { icon: '🚀', title: 'Scale Faster', desc: 'More products. More sales.' },
+            ].map((benefit) => (
+              <div key={benefit.title} className="text-center">
+                <div className="w-12 h-12 rounded-full bg-primary-50 border border-primary-100 flex items-center justify-center mx-auto mb-3">
+                  <span className="text-lg" aria-hidden="true">{benefit.icon}</span>
+                </div>
+                <h4 className="text-sm font-bold text-gray-900">{benefit.title}</h4>
+                <p className="text-xs text-gray-500 mt-1">{benefit.desc}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>

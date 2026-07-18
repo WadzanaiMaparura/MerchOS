@@ -5,7 +5,7 @@ applications:
       phases:
         preBuild:
           commands:
-            - npm ci
+            - cd ../.. && npm ci
         build:
           commands:
             - npx next build
@@ -15,6 +15,7 @@ applications:
           - '**/*'
       cache:
         paths:
+          - ../../node_modules/**/*
           - node_modules/**/*
           - .next/cache/**/*
   - appRoot: apps/admin-dashboard
@@ -22,7 +23,7 @@ applications:
       phases:
         preBuild:
           commands:
-            - npm ci
+            - cd ../.. && npm ci
         build:
           commands:
             - npx next build
@@ -32,5 +33,6 @@ applications:
           - '**/*'
       cache:
         paths:
+          - ../../node_modules/**/*
           - node_modules/**/*
           - .next/cache/**/*
