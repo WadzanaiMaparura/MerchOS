@@ -62,36 +62,34 @@ const metrics = [
 
 const pricingTiers = [
   {
-    name: 'Starter',
+    name: 'Professional',
     price: 'R499',
     period: '/mo',
-    idealFor: 'New marketplace sellers',
-    features: ['500 products processed/mo', '1,000 automation credits', '1 team member', '2 marketplace integrations'],
-    highlighted: false,
-  },
-  {
-    name: 'Growth',
-    price: 'R1,299',
-    period: '/mo',
-    idealFor: 'Growing businesses',
-    features: ['2,500 products processed/mo', '5,000 automation credits', '5 team members', '4 marketplace integrations'],
-    highlighted: false,
-  },
-  {
-    name: 'Professional',
-    price: 'R2,999',
-    period: '/mo',
-    idealFor: 'High-volume sellers',
-    features: ['10,000 products processed/mo', '25,000 automation credits', '15 team members', 'All marketplace integrations'],
+    idealFor: 'Independent sellers',
+    features: ['10,000 products', '4 channels', '5 team members', '10,000 AI enrichment calls/mo', '5,000 image processing calls/mo', '99.9% SLA'],
     highlighted: true,
+    cta: 'Start Free Trial',
+    ctaHref: '/register?plan=professional',
+  },
+  {
+    name: 'Business',
+    price: 'R999',
+    period: '/mo',
+    idealFor: 'Teams & agencies',
+    features: ['50,000 products', '6 channels', '25 team members', '100,000 AI enrichment calls/mo', '50,000 image processing calls/mo', 'Priority support', 'SAML SSO'],
+    highlighted: false,
+    cta: 'Start Free Trial',
+    ctaHref: '/register?plan=business',
   },
   {
     name: 'Enterprise',
     price: 'Custom',
     period: '',
-    idealFor: 'Large retailers',
-    features: ['Unlimited products', 'Unlimited automation credits', 'Unlimited team members', 'All integrations + dedicated support'],
+    idealFor: 'Large retailers & distributors',
+    features: ['Unlimited products', '6 channels', 'Unlimited team members', 'Custom AI & processing limits', 'Dedicated account manager', 'Custom integrations', 'SLA up to 99.99%'],
     highlighted: false,
+    cta: 'Contact Sales',
+    ctaHref: '/contact?reason=enterprise',
   },
 ];
 
@@ -268,13 +266,13 @@ export default function MarketingPage() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-2xl mx-auto mb-16">
             <h2 className="text-3xl sm:text-4xl font-bold text-gray-900">
-              Simple, usage-based pricing
+              Professional tools, professional pricing
             </h2>
             <p className="mt-4 text-lg text-gray-600">
-              Pay for what you use. Start free for 14 days.
+              Start with a 14-day free trial. No credit card required.
             </p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
             {pricingTiers.map((tier) => (
               <div
                 key={tier.name}
@@ -286,7 +284,7 @@ export default function MarketingPage() {
               >
                 {tier.highlighted && (
                   <span className="inline-block self-start rounded-full bg-primary-600 px-3 py-0.5 text-xs font-semibold text-white mb-4">
-                    Most Popular
+                    Recommended
                   </span>
                 )}
                 <h3 className="text-lg font-semibold text-gray-900">{tier.name}</h3>
@@ -315,14 +313,14 @@ export default function MarketingPage() {
                   ))}
                 </ul>
                 <a
-                  href="#early-access"
+                  href={tier.ctaHref}
                   className={`mt-8 inline-flex items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 ${
                     tier.highlighted
                       ? 'bg-primary-600 text-white hover:bg-primary-700'
                       : 'border border-primary-600 text-primary-600 hover:bg-primary-50'
                   }`}
                 >
-                  Join Early Access
+                  {tier.cta}
                 </a>
               </div>
             ))}
