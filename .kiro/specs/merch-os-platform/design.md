@@ -501,18 +501,49 @@ StartExport
 
 ### 10. Billing and Subscription Management
 
-**Responsibility**: Stripe subscription lifecycle, plan enforcement, usage metering, PDF invoice generation, prorated upgrades/downgrades.
+**Responsibility**: Stripe subscription lifecycle, plan enforcement, usage metering, PDF invoice generation, prorated upgrades/downgrades, free trial provisioning and conversion.
 
 **AWS Services**: Lambda, DynamoDB, SQS, EventBridge, SES, S3 (PDF invoices), Secrets Manager (Stripe API key).
 
+#### Billing Subsystem Context
+
+```mermaid
+graph TD
+    subgraph "Billing & Subscription Management"
+        BE["Billing Engine"]
+        PE["Promotions Engine"]
+        PT["Plans Table (DynamoDB)"]
+        UT["Usage Tracking"]
+    end
+
+    subgraph "External"
+        Stripe["Stripe"]
+        Tenant["Tenant (Seller)"]
+        Admin["MerchOS Operator"]
+    end
+
+    Tenant -->|subscribe/upgrade/downgrade| BE
+    Admin -->|configure plans/promotions| PT
+    Admin -->|create promotions| PE
+    BE -->|create subscription| Stripe
+    BE -->|read plan definitions| PT
+    BE -->|check active promotions| PE
+    PE -->|apply discount| Stripe
+    UT -->|meter usage| BE
+```
+
 **Lambda Functions**:
-- `billing-stripe-webhook-fn` — receives Stripe webhook events (invoice.payment_succeeded, invoice.payment_failed, customer.subscription.updated); processes and updates DynamoDB.
+- `billing-stripe-webhook-fn` — receives Stripe webhook events (invoice.payment_succeeded, invoice.payment_failed, customer.subscription.updated); processes subscription lifecycle transitions including trial expiry.
 - `billing-usage-meter-fn` — triggered by EventBridge for every AI enrichment call, image processing call, CSV export; increments usage counters in DynamoDB with atomic updates.
-- `billing-limit-enforcer-fn` — invoked on each metered operation; reads current usage from DynamoDB; returns ALLOWED or BLOCKED.
+- `billing-limit-enforcer-fn` — reads current plan limits (including trial-specific limits when `planId` is `"trial"`) and usage from DynamoDB; returns ALLOWED or BLOCKED.
 - `billing-plan-change-fn` — handles upgrade/downgrade via Stripe API; applies proration; updates plan record in DynamoDB.
+- `billing-trial-provision-fn` — provisions new tenant with Free Trial status; sets configurable expiry date from `CONFIG#trial`; applies trial-specific usage limits.
+- `billing-trial-conversion-fn` — triggered on trial expiry; converts to paid Professional subscription (if payment method on file) or suspends access pending payment method collection.
 - `billing-invoice-pdf-fn` — triggered by `invoice.payment_succeeded` Stripe webhook; generates PDF using PDFKit Lambda layer; stores in `s3://merch-os-invoices/{tenantId}/{invoiceId}.pdf`; retains for 3 years.
 - `billing-alert-fn` — monitors usage at 80% and 100% thresholds; sends SES email to tenant Owner.
 - `billing-payment-retry-fn` — EventBridge Scheduler triggered at day+3 and day+7 after payment failure; retries Stripe charge; downgrades to read-only on day+7 failure.
+
+**Integration Point — Promotions Engine:** Before creating a Stripe subscription (during trial conversion or new subscription creation), the Billing Engine checks active promotions via the Promotions Engine. If an applicable promotion exists for the target plan, the Billing Engine applies the corresponding Stripe Coupon to the subscription at creation time. This ensures promotional pricing is applied without altering plan entitlements or usage limits.
 
 **DynamoDB Design — Billing Table**:
 - PK: `TENANT#<tenantId>`, SK: `SUBSCRIPTION#current`
@@ -520,14 +551,119 @@ StartExport
 - SK: `USAGE#<yyyyMM>` — monthly usage counters (`enrichmentCalls`, `imageCalls`, `csvExports`)
 - SK: `INVOICE#<invoiceId>` — invoice records with S3 PDF key
 
-**Plan Limits** (stored in DynamoDB `Plans` table, updatable by operator):
+#### Feature Matrix
 
-| Plan | Products | Channels | Users | AI Calls/mo | Image Calls/mo |
-|------|----------|----------|-------|-------------|----------------|
-| Starter | 500 | 2 | 3 | 1,000 | 500 |
-| Growth | 5,000 | 4 | 10 | 10,000 | 5,000 |
-| Professional | 50,000 | 6 | 25 | 100,000 | 50,000 |
-| Enterprise | Unlimited | 6 | Unlimited | Custom | Custom |
+The comprehensive Feature Matrix defines entitlements and capabilities across all subscription tiers, including the Free Trial acquisition period. All plan definitions are stored in the DynamoDB `Plans` table and are updatable by operators without code deployment.
+
+| Feature | Free Trial | Professional (R499/mo) | Business (R999/mo) | Enterprise (custom) |
+|---------|-----------|------------------------|--------------------|--------------------|
+| Products | 500 | 10,000 | 50,000 | Unlimited (contract) |
+| Channels | 2 | 4 | 6 | 6 |
+| Team Members | 2 | 5 | 25 | Unlimited (contract) |
+| AI Enrichment Calls/mo | 500 | 10,000 | 100,000 | Custom (contract) |
+| Image Processing Calls/mo | 200 | 5,000 | 50,000 | Custom (contract) |
+| CSV Exports/mo | 10 | 100 | 500 | Custom (contract) |
+| Priority Support | ✗ | ✗ | ✓ | ✓ |
+| Dedicated Account Manager | ✗ | ✗ | ✗ | ✓ |
+| SAML SSO | ✗ | ✗ | ✓ | ✓ |
+| Custom Integrations | ✗ | ✗ | ✗ | ✓ |
+| SLA Guarantee | — | 99.9% | 99.9% | Custom (up to 99.99%) |
+
+*Notes:*
+- *Professional is the visually highlighted/recommended tier in pricing presentation contexts.*
+- *Enterprise entitlements are defined per contract and stored in tenant-level configuration rather than hardcoded.*
+- *Free Trial grants access to Professional Plan features with reduced usage limits for 14–30 days (configurable).*
+- *All plan definitions reside in the DynamoDB Plans table and are updatable by operators without code deployment.*
+
+#### Subscription Plan Structure
+
+MerchOS defines exactly three Subscription Plans:
+
+1. **Professional (R499/month)** — For independent sellers managing multi-channel e-commerce. This is the recommended entry-level paid plan, visually highlighted in pricing UI contexts.
+2. **Business (R999/month)** — For teams, agencies, and high-volume sellers requiring higher limits and priority support.
+3. **Enterprise (custom pricing)** — For large retailers, manufacturers, and distributors. Entitlements are defined per contract and stored in per-tenant configuration rather than hardcoded. Pricing is determined through sales coordination.
+
+**Configuration-driven plan management:** All plan definitions are stored in the DynamoDB `Plans` table. Operators can update plan names, pricing, entitlements, and limits without code deployment. The Billing Engine reads plan definitions from this table at runtime.
+
+**DynamoDB Plans Table — Data Model Examples:**
+
+Professional Plan:
+```json
+{
+  "PK": "PLAN#professional",
+  "SK": "METADATA",
+  "planId": "professional",
+  "name": "Professional",
+  "priceMonthly": 49900,
+  "currency": "ZAR",
+  "description": "For independent sellers managing multi-channel e-commerce",
+  "highlighted": true,
+  "entitlements": {
+    "maxProducts": 10000,
+    "maxChannels": 4,
+    "maxUsers": 5,
+    "aiEnrichmentCallsPerMonth": 10000,
+    "imageProcessingCallsPerMonth": 5000,
+    "csvExportsPerMonth": 100
+  },
+  "stripePriceId": "price_professional_monthly",
+  "isActive": true,
+  "sortOrder": 1
+}
+```
+
+Business Plan:
+```json
+{
+  "PK": "PLAN#business",
+  "SK": "METADATA",
+  "planId": "business",
+  "name": "Business",
+  "priceMonthly": 99900,
+  "currency": "ZAR",
+  "description": "For teams, agencies, and high-volume sellers",
+  "highlighted": false,
+  "entitlements": {
+    "maxProducts": 50000,
+    "maxChannels": 6,
+    "maxUsers": 25,
+    "aiEnrichmentCallsPerMonth": 100000,
+    "imageProcessingCallsPerMonth": 50000,
+    "csvExportsPerMonth": 500
+  },
+  "stripePriceId": "price_business_monthly",
+  "isActive": true,
+  "sortOrder": 2
+}
+```
+
+Enterprise Plan:
+```json
+{
+  "PK": "PLAN#enterprise",
+  "SK": "METADATA",
+  "planId": "enterprise",
+  "name": "Enterprise",
+  "priceMonthly": null,
+  "currency": "ZAR",
+  "description": "For large retailers, manufacturers, and distributors",
+  "highlighted": false,
+  "entitlements": {
+    "maxProducts": -1,
+    "maxChannels": 6,
+    "maxUsers": -1,
+    "aiEnrichmentCallsPerMonth": -1,
+    "imageProcessingCallsPerMonth": -1,
+    "csvExportsPerMonth": -1
+  },
+  "stripePriceId": null,
+  "customPricing": true,
+  "isActive": true,
+  "sortOrder": 3
+}
+```
+
+*Note: `-1` denotes "unlimited / defined per contract". Enterprise entitlements are overridden per-tenant in the Tenants table based on individual contract terms.*
 
 **API Endpoints**:
 - `GET /v1/billing` — current plan, usage, next invoice.
@@ -536,6 +672,326 @@ StartExport
 - `GET /v1/billing/invoices` — list invoices.
 - `GET /v1/billing/invoices/{invoiceId}/pdf` — signed S3 URL for PDF download.
 - `POST /v1/admin/billing/credits` — operator manual credit adjustment.
+
+#### Free Trial Strategy
+
+The Free Trial is the **primary acquisition mechanism** for MerchOS, replacing low-cost entry plans. Rather than offering discounted subscription tiers, new tenants experience the full Professional Plan feature set with reduced usage limits during a configurable trial period.
+
+**Trial provisioning:** On new tenant registration, the Billing Engine provisions a Free Trial by reading trial configuration from DynamoDB at runtime. The trial grants access to all Professional Plan *features* (AI enrichment, image processing, multi-channel export, inventory management) but enforces *reduced usage limits* that are distinct from the full Professional Plan entitlements.
+
+**Configurable Trial Duration:** Trial duration supports values of 14 days or 30 days, stored in the platform configuration table (`CONFIG#trial`) and read at runtime — never hardcoded in application logic. Operators can adjust the default trial duration without code deployment.
+
+**Reduced usage limits during trial** (distinct from full Professional Plan limits):
+
+| Entitlement | Free Trial | Professional (full) |
+|-------------|-----------|---------------------|
+| Products | 500 | 10,000 |
+| Channels | 2 | 4 |
+| Team Members | 2 | 5 |
+| AI Enrichment Calls/mo | 500 | 10,000 |
+| Image Processing Calls/mo | 200 | 5,000 |
+| CSV Exports/mo | 10 | 100 |
+
+**Trial expiry behaviour:**
+- **Payment method on file:** The Billing Engine auto-converts the tenant to a paid Professional Plan subscription. Stripe creates the first invoice and billing cycle begins immediately.
+- **No payment method on file:** The Billing Engine suspends tenant access pending payment method collection. The dashboard displays a payment collection prompt; no data is deleted during suspension.
+
+**DynamoDB — Free Trial Configuration (`CONFIG#trial`):**
+
+```json
+{
+  "PK": "CONFIG#trial",
+  "SK": "METADATA",
+  "trialDurationDays": 14,
+  "supportedDurations": [14, 30],
+  "basePlanId": "professional",
+  "trialEntitlements": {
+    "maxProducts": 500,
+    "maxChannels": 2,
+    "maxUsers": 2,
+    "aiEnrichmentCallsPerMonth": 500,
+    "imageProcessingCallsPerMonth": 200,
+    "csvExportsPerMonth": 10
+  },
+  "conversionBehaviour": "subscribe_or_suspend",
+  "isActive": true
+}
+```
+
+*Note: `trialDurationDays` is the current default. `supportedDurations` defines the set of valid values an operator may configure. `conversionBehaviour` of `subscribe_or_suspend` means: convert to paid subscription if payment method exists, otherwise suspend access.*
+
+**Tenant Billing Record — During Trial:**
+
+```json
+{
+  "PK": "TENANT#<tenantId>",
+  "SK": "SUBSCRIPTION#current",
+  "planId": "trial",
+  "basePlanId": "professional",
+  "status": "trialing",
+  "trialStatus": "active",
+  "trialStartedAt": "2025-01-20T00:00:00Z",
+  "trialExpiresAt": "2025-02-03T00:00:00Z",
+  "paymentMethodOnFile": false
+}
+```
+
+*Note: `planId: "trial"` indicates the tenant is in trial status. `basePlanId: "professional"` identifies which plan's features are accessible (with reduced limits from `CONFIG#trial`). The `billing-limit-enforcer-fn` reads `trialEntitlements` from the trial configuration when `planId` is `"trial"`. On conversion, `planId` transitions to `"professional"` and full Professional Plan limits apply.*
+
+#### Pricing Philosophy
+
+- MerchOS is a **professional business platform** — pricing reflects the business value delivered through operational time savings, multi-channel automation, and AI-powered productivity improvements.
+- The pricing objective is to **attract serious sellers** who derive measurable ROI from the platform, not to maximise low-value subscription volume.
+- Customers subscribe because MerchOS **saves operational time** and improves productivity for their e-commerce operations across multiple channels.
+- The tier structure starts at R499/month — there is no entry-level "hobby" tier. The Free Trial serves as the low-barrier acquisition mechanism.
+
+#### Upgrade Path
+
+The subscription upgrade path defines the linear progression for tenants from initial acquisition through to enterprise-level engagement:
+
+**Free Trial → Professional → Business → Enterprise**
+
+The **Free Trial is the primary acquisition mechanism** and entry point for all new Tenants. Every new seller begins with a configurable trial period (14–30 days) granting access to Professional Plan features at reduced usage limits. From there, tenants progress through paid tiers as their business needs grow.
+
+**Upgrade transitions** follow the proration and entitlement unlock behaviour documented in the Billing Engine specification. When a tenant upgrades, their current billing period is prorated (credit for unused time on the current plan) and the new plan's entitlements are unlocked immediately. Usage limits reset to the higher plan's values at the moment of upgrade.
+
+**Downgrade from Enterprise** requires MerchOS sales coordination. Enterprise contracts include custom entitlements, SLAs, and pricing defined per-contract. Transitioning away from these terms requires review and coordination through the MerchOS sales team to ensure proper contract wind-down and entitlement adjustment.
+
+**Self-service downgrade** is available between Professional and Business. Tenants on the Business plan can downgrade to Professional through the dashboard without sales involvement. The downgrade takes effect at the end of the current billing period to avoid mid-cycle entitlement reduction.
+
+```mermaid
+graph LR
+    FT["Free Trial (14–30 days)"] --> PRO["Professional R499/mo"]
+    PRO --> BIZ["Business R999/mo"]
+    BIZ --> ENT["Enterprise (custom)"]
+    ENT -.->|requires sales coordination| BIZ
+    BIZ -->|self-service| PRO
+```
+
+**Upgrade/Downgrade Rules:**
+
+| Transition | Mechanism | Billing |
+|-----------|-----------|---------|
+| Free Trial → Professional | Auto-convert on expiry (if payment method) or manual | First charge at period start |
+| Professional → Business | Self-service via dashboard | Prorated credit + new charge |
+| Business → Enterprise | Sales-coordinated | Custom invoice |
+| Business → Professional | Self-service downgrade | Takes effect at period end |
+| Enterprise → Business/Professional | Requires MerchOS sales coordination | Custom handling |
+
+*Notes:*
+- *Upgrades are immediate: entitlements unlock and prorated billing applies from the moment of upgrade.*
+- *Self-service downgrades are deferred: the current plan remains active until the end of the billing period, then the lower plan takes effect.*
+- *Enterprise downgrades always involve sales coordination due to custom contract terms, SLAs, and pricing arrangements.*
+- *The Free Trial to Professional conversion is handled by `billing-trial-conversion-fn` as documented in the Free Trial Strategy section above.*
+
+#### Promotions Engine
+
+**Responsibility**: Manage temporary pricing modifications applied to Subscription Plans. Supports creation, activation, expiry, and application of promotional discounts via Stripe Coupons and Promotion Codes. The Promotions Engine is architecturally separate from Subscription Plan logic — promotions modify what a tenant pays temporarily without altering feature access, usage limits, or plan-level entitlements.
+
+**AWS Services**: Lambda, DynamoDB (Promotions table), EventBridge, EventBridge Scheduler (expiry), Stripe (Coupons API).
+
+**Lambda Functions**:
+- `promotions-create-fn` — creates promotion record in DynamoDB; creates corresponding Stripe Coupon; sets mandatory expiry via EventBridge Scheduler.
+- `promotions-apply-fn` — applies promotion to tenant's Stripe subscription; validates promotion is active and not expired; records application in billing record.
+- `promotions-expire-fn` — triggered by EventBridge Scheduler at promotion expiry; removes Stripe discount; updates promotion status to EXPIRED.
+- `promotions-list-fn` — returns active, scheduled, and expired promotions for operator dashboard.
+
+**Promotion Types Supported**:
+
+| Type | Description | Pricing Modification |
+|------|-------------|---------------------|
+| Founding Seller | Early adopter recognition | Percentage discount for defined period |
+| Launch Campaign | Time-limited introductory pricing | Fixed or percentage discount |
+| Referral Reward | Credit for referring new tenants | Fixed amount credit |
+| Coupon Code | Redeemable promotional code | Percentage or fixed discount |
+| Percentage Discount | General percentage reduction | Percentage off monthly fee |
+| Fixed Amount Discount | Absolute amount reduction | Fixed ZAR amount off monthly fee |
+| Seasonal Campaign | Event-tied promotions (e.g. Black Friday) | Percentage or fixed discount |
+
+*Note: Every Promotion has a mandatory expiry date after which promotional pricing ceases to apply. There are no perpetual promotions — all pricing modifications are time-bound.*
+
+*Important: The Founding Seller concept is preserved solely as a promotion type within the Promotions Engine. It is NOT a subscription plan, permanent pricing tier, or programme. Early adopter recognition is achieved through a time-limited percentage discount applied to an existing Subscription Plan.*
+
+**DynamoDB Design — Promotions Table**:
+
+| Key / Attribute | Value | Description |
+|-----------------|-------|-------------|
+| PK | `PROMO#<promotionId>` | Partition key — unique promotion identifier |
+| SK | `METADATA` | Sort key — fixed value for the promotion record |
+| `type` | `founding_seller` \| `launch_campaign` \| `referral_reward` \| `coupon_code` \| `percentage_discount` \| `fixed_amount_discount` \| `seasonal_campaign` | Promotion type from supported types |
+| `name` | String | Human-readable promotion name |
+| `discountType` | `percentage` \| `fixed` | How the discount is applied |
+| `discountValue` | Number | Discount magnitude (percentage 0–100 or fixed amount in minor currency units) |
+| `currency` | `ZAR` | Currency for fixed discounts |
+| `startDate` | ISO 8601 timestamp | When the promotion becomes active |
+| `expiryDate` | ISO 8601 timestamp | Mandatory expiry date |
+| `status` | `DRAFT` \| `ACTIVE` \| `EXPIRED` | Current promotion lifecycle state |
+| `maxRedemptions` | Number | Maximum number of tenants who can redeem |
+| `currentRedemptions` | Number | Atomic counter of redemptions applied |
+| `applicablePlans[]` | String array | Plan IDs this promotion applies to (e.g. `["professional", "business"]`) |
+| `stripeCouponId` | String | Corresponding Stripe Coupon ID |
+
+**GSI1 — Active Promotions by Expiry**:
+- GSI1 PK: `STATUS#<status>` — enables querying all promotions with a given status
+- GSI1 SK: `expiryDate` — sorts results by expiry date for efficient retrieval of soon-to-expire promotions
+
+*Usage: Query GSI1 with PK = `STATUS#ACTIVE` to retrieve all active promotions ordered by expiry date. Used by `promotions-list-fn` and operator dashboard.*
+
+**Promotion Record Example**:
+
+```json
+{
+  "PK": "PROMO#founding-seller-2025",
+  "SK": "METADATA",
+  "promotionId": "founding-seller-2025",
+  "type": "founding_seller",
+  "name": "Founding Seller — 50% Off First 6 Months",
+  "discountType": "percentage",
+  "discountValue": 50,
+  "currency": "ZAR",
+  "startDate": "2025-02-01T00:00:00Z",
+  "expiryDate": "2025-08-01T00:00:00Z",
+  "status": "ACTIVE",
+  "maxRedemptions": 100,
+  "currentRedemptions": 34,
+  "applicablePlans": ["professional", "business"],
+  "stripeCouponId": "coup_founding2025",
+  "createdBy": "admin:operator@merchos.co.za",
+  "createdAt": "2025-01-15T10:00:00Z"
+}
+```
+
+**API Endpoints**:
+
+| Method | Path | Description | Access |
+|--------|------|-------------|--------|
+| `POST` | `/v1/admin/promotions` | Create a new promotion (status: DRAFT) | MerchOS Operator |
+| `GET` | `/v1/admin/promotions` | List promotions with optional status filter (`?status=ACTIVE`) | MerchOS Operator |
+| `PUT` | `/v1/admin/promotions/{promotionId}` | Update promotion details (only allowed when status is DRAFT) | MerchOS Operator |
+| `DELETE` | `/v1/admin/promotions/{promotionId}` | Cancel/archive a promotion | MerchOS Operator |
+| `POST` | `/v1/billing/promotions/apply` | Tenant applies a coupon code to their subscription | Tenant (Seller) |
+| `GET` | `/v1/billing/promotions/active` | Tenant views active promotions on their subscription | Tenant (Seller) |
+
+*Notes:*
+- *Admin endpoints (`/v1/admin/promotions/*`) require the `platform:operator` or `platform:super_admin` role.*
+- *Tenant endpoints (`/v1/billing/promotions/*`) are scoped to the authenticated tenant's subscription.*
+- *The `PUT` endpoint only permits updates when promotion status is `DRAFT`. Once a promotion is `ACTIVE`, it cannot be modified — only cancelled via `DELETE`.*
+- *The `POST /v1/billing/promotions/apply` endpoint validates: promotion exists, status is ACTIVE, expiry has not passed, `maxRedemptions` has not been reached, and the tenant's current plan is in `applicablePlans[]`.*
+
+#### Billing Principles
+
+The following architectural principles govern the relationship between Subscription Plans and Promotions within the Billing and Subscription Management subsystem:
+
+1. **Separation of concerns** — Subscription Plans and Promotions are independent architectural concepts with separate storage, APIs, and lifecycles. Plans are managed through the Plans Table and Billing Engine; Promotions are managed through the Promotions Table and Promotions Engine. Neither subsystem depends on the other's internal state.
+
+2. **Plans define entitlements** — A Subscription Plan determines feature access, usage limits, and operational capabilities for a tenant. The plan a tenant subscribes to dictates what they can do on the platform: how many products they can manage, how many channels they can connect, how many AI enrichment calls they can make, and which premium features (Priority Support, SAML SSO, Custom Integrations) they can access.
+
+3. **Promotions modify pricing only** — A Promotion temporarily changes what a tenant pays without altering what they can do. No promotion — regardless of type (Founding Seller, Launch Campaign, Referral Reward, Coupon Code, Seasonal Campaign) — changes usage limits, feature gates, or plan-level entitlements. A tenant on the Professional Plan with a 50% Founding Seller discount has identical feature access and usage limits to a tenant on the Professional Plan paying full price.
+
+4. **Independent lifecycles** — Plans follow: creation → subscription → renewal → upgrade → cancellation. Promotions follow: creation → activation → expiry. These lifecycles are decoupled. A promotion can expire without affecting the tenant's plan status; a plan can be upgraded without affecting active promotions (promotions re-evaluate applicability to the new plan independently).
+
+5. **Configuration-driven** — Both plans and promotions are defined in DynamoDB configuration tables, modifiable by operators without code deployment. The Plans Table stores plan definitions, entitlements, and pricing. The Promotions Table stores promotion types, discount mechanics, and expiry rules. Neither requires Lambda redeployment or infrastructure changes to add new entries.
+
+**Architectural Separation Diagram:**
+
+```mermaid
+graph LR
+    subgraph "Permanent: Subscription Plans"
+        P1["Professional R499/mo"]
+        P2["Business R999/mo"]
+        P3["Enterprise (custom)"]
+    end
+
+    subgraph "Temporary: Promotions Engine"
+        PR1["Founding Seller Discount"]
+        PR2["Launch Campaign"]
+        PR3["Referral Reward"]
+        PR4["Coupon Code"]
+        PR5["Seasonal Campaign"]
+    end
+
+    P1 -.->|pricing modified by| PR1
+    P1 -.->|pricing modified by| PR4
+    P2 -.->|pricing modified by| PR2
+    P3 -.->|pricing modified by| PR5
+```
+
+**Summary principle:** Subscription plans define *what* a tenant gets (entitlements, limits). Promotions define *how much* a tenant pays temporarily (discounts, campaigns). A promotion never alters feature access or usage limits.
+
+#### Configuration-Driven Extensibility
+
+The Billing and Subscription Management subsystem is designed for runtime extensibility through configuration rather than code changes.
+
+**Subscription Plans are not hardcoded.** The number of Subscription Plans is not fixed in application logic. Additional plans can be introduced at any time through configuration updates to the DynamoDB Plans table. The current three-tier structure (Professional, Business, Enterprise) is a business decision reflected in configuration — not an architectural constraint enforced by code.
+
+**The Billing Engine is configuration-driven.** At runtime, the Billing Engine reads all plan definitions, entitlements, and usage limits from the DynamoDB Plans table. The `billing-limit-enforcer-fn`, `billing-plan-change-fn`, and `billing-trial-conversion-fn` Lambda functions resolve plan capabilities dynamically from configuration rather than relying on hardcoded plan identifiers or limit values. This means the Billing Engine automatically recognises and enforces any new plan added to the Plans table without modification.
+
+**Adding a new Subscription Plan requires only a configuration entry.** To introduce a new plan (e.g., a future "Essentials" or "Agency" tier), an operator creates a new record in the DynamoDB Plans table with the plan's `planId`, `name`, `priceMonthly`, `entitlements`, and `stripePriceId`. No application code changes, Lambda redeployments, or infrastructure updates are required. The Billing Engine, Feature Matrix enforcement, and usage metering automatically operate against the new plan definition.
+
+**The Promotions Engine is similarly configuration-driven.** New promotion types are supported through configuration rather than code changes. The `promotions-create-fn` reads supported promotion types and their validation rules from configuration. Adding a new promotion type (e.g., a "Partner Bundle" or "Volume Discount") requires only a configuration entry defining the type's discount mechanics, validation constraints, and applicable plans — no code deployment needed.
+
+#### Tenant Billing Record
+
+The Tenant Billing Record represents the current subscription state for a tenant, stored in DynamoDB with `PK: TENANT#<tenantId>`, `SK: SUBSCRIPTION#current`. The record structure varies depending on the tenant's subscription status.
+
+**Active Subscription with Promotions:**
+
+```json
+{
+  "PK": "TENANT#<tenantId>",
+  "SK": "SUBSCRIPTION#current",
+  "planId": "professional",
+  "stripeCustomerId": "cus_xxx",
+  "stripeSubscriptionId": "sub_xxx",
+  "billingCycle": "monthly",
+  "currentPeriodStart": "2025-02-01T00:00:00Z",
+  "currentPeriodEnd": "2025-03-01T00:00:00Z",
+  "status": "active",
+  "trialStatus": null,
+  "trialExpiresAt": null,
+  "activePromotions": [
+    {
+      "promotionId": "founding-seller-2025",
+      "appliedAt": "2025-02-01T00:00:00Z",
+      "expiresAt": "2025-08-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+*Note: `activePromotions` is an array of currently applied promotions. Each entry references a promotion managed by the Promotions Engine. The `expiresAt` field indicates when the promotional pricing ceases — managed by the `promotions-expire-fn` EventBridge Scheduler trigger. Promotions modify pricing only; they do not alter `planId`, entitlements, or usage limits.*
+
+**Trial Status:**
+
+```json
+{
+  "PK": "TENANT#<tenantId>",
+  "SK": "SUBSCRIPTION#current",
+  "planId": "trial",
+  "basePlanId": "professional",
+  "status": "trialing",
+  "trialStatus": "active",
+  "trialStartedAt": "2025-01-20T00:00:00Z",
+  "trialExpiresAt": "2025-02-03T00:00:00Z",
+  "paymentMethodOnFile": false
+}
+```
+
+*Note: `planId: "trial"` indicates the tenant is in trial status. `basePlanId: "professional"` identifies which plan's features are accessible (with reduced limits from `CONFIG#trial`). The `billing-limit-enforcer-fn` reads `trialEntitlements` from the trial configuration when `planId` is `"trial"`. On conversion, `planId` transitions to `"professional"` and full Professional Plan limits apply. `paymentMethodOnFile` determines conversion behaviour on trial expiry.*
+
+#### Scope Boundaries
+
+> **This documentation update is limited to Section 10 (Billing and Subscription Management) and directly related plan references in adjacent sections.**
+
+The following boundaries apply to this architecture section:
+
+1. **In scope:** Subscription Plan definitions, Free Trial strategy, Promotions Engine, Billing Engine, Feature Matrix, Upgrade Path, Pricing Philosophy, configuration-driven extensibility — all within Section 10.
+2. **Out of scope — RBAC:** No modifications to the Role-Based Access Control documentation (Section 2: Authentication and Authorisation). The RBAC matrix, role definitions, and permission model remain unchanged.
+3. **Out of scope — Non-billing APIs:** No modifications to API endpoint specifications beyond billing-specific endpoints (`/v1/billing/*`, `/v1/admin/billing/*`, `/v1/admin/promotions/*`). Product, ingestion, inventory, compliance, and marketplace APIs are unaffected.
+4. **Out of scope — Authentication/Authorisation architecture:** No modifications to Cognito configuration, JWT handling, Lambda authorizers, or tenant isolation enforcement.
+5. **Out of scope — Implementation artefacts:** This section documents architecture only. No implementation code, Lambda function source, infrastructure-as-code templates (CDK), or deployment scripts are included. Lambda function names and behaviours are documented for architectural reference — not as executable implementations.
+
+*Traceability: All architectural decisions in this section trace to the approved business decisions documented in the Subscription & Billing Architecture Update requirements: consolidation to three subscription tiers, Free Trial as the acquisition mechanism, Promotions Engine replacing the Founding Seller programme, and architectural separation of plans from promotions.*
 
 ---
 
