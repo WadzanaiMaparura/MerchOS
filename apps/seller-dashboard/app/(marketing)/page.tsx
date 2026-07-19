@@ -40,28 +40,28 @@ const features = [
 const testimonials = [
   {
     name: 'Lerato M.',
-    category: 'Electronics Seller',
+    category: 'Electronics',
     quote: 'MerchOS has saved me more than 40 hours every week. What used to take days now takes minutes.',
     initials: 'LM',
     color: 'bg-blue-500',
   },
   {
     name: 'Sipho D.',
-    category: 'Home & Kitchen Seller',
+    category: 'Home & Kitchen',
     quote: 'The descriptions and images are amazing! My listings look professional and sell better.',
     initials: 'SD',
     color: 'bg-green-500',
   },
   {
-    name: 'Nicole R.',
-    category: 'Beauty Seller',
+    name: 'Nicole B.',
+    category: 'Beauty',
     quote: 'Fewer rejections, more sales. MerchOS is now our secret weapon.',
-    initials: 'NR',
+    initials: 'NB',
     color: 'bg-purple-500',
   },
   {
     name: 'Jason R.',
-    category: 'Sports & Outdoors Seller',
+    category: 'Sports & Outdoors',
     quote: 'Finally, a tool built for Takealot sellers. The support is incredible too!',
     initials: 'JR',
     color: 'bg-orange-500',
@@ -261,13 +261,14 @@ function HeroSection() {
             </div>
 
             {/* Social proof */}
-            <div className="mt-8 flex items-center gap-3">
+            <div className="mt-8 flex items-center gap-3 flex-wrap">
               <div className="flex -space-x-2">
                 {[
                   { color: 'bg-blue-500', initials: 'LM' },
                   { color: 'bg-green-500', initials: 'SD' },
-                  { color: 'bg-purple-500', initials: 'NR' },
+                  { color: 'bg-purple-500', initials: 'NB' },
                   { color: 'bg-orange-500', initials: 'JR' },
+                  { color: 'bg-pink-500', initials: 'TK' },
                 ].map((avatar) => (
                   <div
                     key={avatar.initials}
@@ -287,16 +288,22 @@ function HeroSection() {
 
             {/* Works with */}
             <div className="mt-8 pt-6 border-t border-gray-100">
-              <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-3">Works with</p>
-              <div className="flex flex-wrap items-center gap-4">
-                {['Takealot', 'Amazon', 'Makro', 'Shopify', 'WooCommerce'].map((name) => (
-                  <span
-                    key={name}
-                    className="text-sm font-semibold text-gray-400 hover:text-gray-600 transition-colors"
-                  >
-                    {name}
-                  </span>
-                ))}
+              <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-3">Works with:</p>
+              <div className="flex flex-wrap items-center gap-5">
+                <span className="flex items-center gap-1.5 text-sm font-bold text-gray-500">
+                  <span className="w-4 h-4 rounded-full bg-gradient-to-br from-blue-500 to-green-500 inline-block" />
+                  takealot
+                </span>
+                <span className="text-sm font-bold text-gray-500">amazon</span>
+                <span className="flex items-center gap-1.5 text-sm font-bold text-gray-500">
+                  makro
+                  <svg className="w-3.5 h-3.5 text-red-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
+                </span>
+                <span className="flex items-center gap-1.5 text-sm font-bold text-gray-500">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
+                  Shopify
+                </span>
+                <span className="text-sm font-bold text-gray-500 uppercase tracking-wide">WOO COMMERCE</span>
               </div>
             </div>
           </div>
@@ -321,78 +328,214 @@ function HeroSection() {
 
 function DashboardMockup() {
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white shadow-xl overflow-hidden">
-      {/* Top bar */}
-      <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 border-b border-gray-100">
-        <div className="w-3 h-3 rounded-full bg-red-400" />
-        <div className="w-3 h-3 rounded-full bg-yellow-400" />
-        <div className="w-3 h-3 rounded-full bg-green-400" />
-        <span className="ml-3 text-xs text-gray-400 font-medium">MerchOS Dashboard</span>
+    <div className="rounded-2xl border border-gray-200 bg-white shadow-2xl overflow-hidden text-[11px]">
+      {/* Top bar with user */}
+      <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-full bg-red-400" />
+          <div className="w-3 h-3 rounded-full bg-yellow-400" />
+          <div className="w-3 h-3 rounded-full bg-green-400" />
+          <span className="ml-2 text-[10px] text-gray-400 font-medium">MerchOS Dashboard</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center">
+            <span className="text-[8px] font-bold text-white">WM</span>
+          </div>
+          <div className="text-right">
+            <p className="text-[9px] font-semibold text-gray-700 leading-none">Wadzanai M.</p>
+            <p className="text-[8px] text-gray-400 leading-none mt-0.5">Seller Plan</p>
+          </div>
+        </div>
       </div>
 
       {/* Dashboard body */}
       <div className="flex">
         {/* Sidebar */}
-        <div className="w-14 bg-gray-900 p-2 space-y-3 hidden sm:block">
-          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center mx-auto">
-            <span className="text-white font-bold text-xs">M</span>
+        <div className="w-[140px] bg-[#1e293b] py-3 px-2 space-y-1 shrink-0">
+          {/* Logo */}
+          <div className="flex items-center gap-2 px-2 mb-4">
+            <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center">
+              <span className="text-white font-bold text-[10px]">M</span>
+            </div>
+            <span className="text-[10px] font-bold text-white">MerchOS</span>
           </div>
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="w-8 h-8 rounded-lg bg-gray-700/50 mx-auto" />
+          {/* Nav items */}
+          {[
+            { label: 'Dashboard', active: true },
+            { label: 'Products', active: false },
+            { label: 'Suppliers', active: false },
+            { label: 'Imports', active: false },
+            { label: 'Enhancement', active: false },
+            { label: 'Exports', active: false },
+            { label: 'Reports', active: false },
+            { label: 'Settings', active: false },
+          ].map((item) => (
+            <div
+              key={item.label}
+              className={`flex items-center gap-2 px-2 py-1.5 rounded-md ${
+                item.active ? 'bg-blue-600/20 text-blue-400' : 'text-gray-400'
+              }`}
+            >
+              <div className={`w-3.5 h-3.5 rounded ${item.active ? 'bg-blue-400' : 'bg-gray-600'}`} />
+              <span className="text-[9px] font-medium">{item.label}</span>
+            </div>
           ))}
         </div>
 
-        {/* Content */}
-        <div className="flex-1 p-4 space-y-4">
+        {/* Main content */}
+        <div className="flex-1 p-3 space-y-3 bg-gray-50/50 min-w-0">
           {/* Stats row */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="rounded-xl bg-blue-50 p-3">
-              <p className="text-[10px] text-gray-500 uppercase tracking-wider">Products</p>
-              <p className="text-lg font-bold text-gray-900">2,847</p>
-              <p className="text-[10px] text-green-600 font-medium">+12% this week</p>
+          <div className="grid grid-cols-4 gap-2">
+            <div className="rounded-lg bg-white p-2.5 border border-gray-100 shadow-sm">
+              <p className="text-[8px] text-gray-500 font-medium">Products Processed</p>
+              <p className="text-sm font-bold text-gray-900 mt-0.5">12,540</p>
+              <p className="text-[8px] text-green-600 font-medium mt-0.5">+24% vs last week</p>
             </div>
-            <div className="rounded-xl bg-green-50 p-3">
-              <p className="text-[10px] text-gray-500 uppercase tracking-wider">Published</p>
-              <p className="text-lg font-bold text-gray-900">2,651</p>
-              <p className="text-[10px] text-green-600 font-medium">93% success</p>
+            <div className="rounded-lg bg-white p-2.5 border border-gray-100 shadow-sm">
+              <p className="text-[8px] text-gray-500 font-medium">Listings Created</p>
+              <p className="text-sm font-bold text-gray-900 mt-0.5">8,742</p>
+              <p className="text-[8px] text-green-600 font-medium mt-0.5">+18% vs last week</p>
             </div>
-            <div className="rounded-xl bg-purple-50 p-3">
-              <p className="text-[10px] text-gray-500 uppercase tracking-wider">Time Saved</p>
-              <p className="text-lg font-bold text-gray-900">42hrs</p>
-              <p className="text-[10px] text-green-600 font-medium">this week</p>
+            <div className="rounded-lg bg-white p-2.5 border border-gray-100 shadow-sm">
+              <p className="text-[8px] text-gray-500 font-medium">Success Rate</p>
+              <p className="text-sm font-bold text-gray-900 mt-0.5">98.6%</p>
+              <p className="text-[8px] text-green-600 font-medium mt-0.5">+2.1% vs last week</p>
+            </div>
+            <div className="rounded-lg bg-white p-2.5 border border-gray-100 shadow-sm">
+              <p className="text-[8px] text-gray-500 font-medium">Hours Saved</p>
+              <p className="text-sm font-bold text-gray-900 mt-0.5">320+</p>
+              <p className="text-[8px] text-gray-500 font-medium mt-0.5">This Week</p>
             </div>
           </div>
 
-          {/* Recent activity */}
-          <div className="rounded-xl border border-gray-100 p-3">
-            <p className="text-xs font-semibold text-gray-700 mb-2">Recent Imports</p>
-            <div className="space-y-2">
-              {[
-                { name: 'Samsung_Catalogue.pdf', status: 'Processed', color: 'bg-green-100 text-green-700' },
-                { name: 'Supplier_Pricing.xlsx', status: 'Enriching', color: 'bg-blue-100 text-blue-700' },
-                { name: 'WhatsApp_Products.zip', status: 'Validating', color: 'bg-yellow-100 text-yellow-700' },
-              ].map((item) => (
-                <div key={item.name} className="flex items-center justify-between text-xs">
-                  <span className="text-gray-600 truncate">{item.name}</span>
-                  <span className={`px-2 py-0.5 rounded-full font-medium ${item.color}`}>
-                    {item.status}
-                  </span>
+          {/* Middle section - chart + categories */}
+          <div className="grid grid-cols-2 gap-2">
+            {/* Listing Performance Chart */}
+            <div className="rounded-lg bg-white p-2.5 border border-gray-100 shadow-sm">
+              <p className="text-[9px] font-semibold text-gray-700 mb-2">Listing Performance</p>
+              <div className="relative h-[60px]">
+                {/* Y-axis labels */}
+                <div className="absolute left-0 top-0 bottom-3 flex flex-col justify-between text-[7px] text-gray-400">
+                  <span>100</span>
+                  <span>50</span>
+                  <span>0</span>
                 </div>
-              ))}
+                {/* Chart area */}
+                <div className="ml-5 h-full relative">
+                  {/* Grid lines */}
+                  <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
+                    <div className="border-b border-gray-100 border-dashed" />
+                    <div className="border-b border-gray-100 border-dashed" />
+                    <div className="border-b border-gray-100" />
+                  </div>
+                  {/* SVG line chart */}
+                  <svg className="w-full h-[48px] relative z-10" viewBox="0 0 140 48" fill="none" preserveAspectRatio="none">
+                    <path d="M0 38 Q20 35 28 28 T56 18 T84 10 T112 14 T140 8" stroke="#3b82f6" strokeWidth="2" fill="none" />
+                    <circle cx="0" cy="38" r="2.5" fill="#3b82f6" />
+                    <circle cx="28" cy="28" r="2.5" fill="#3b82f6" />
+                    <circle cx="56" cy="18" r="2.5" fill="#3b82f6" />
+                    <circle cx="84" cy="10" r="2.5" fill="#3b82f6" />
+                    <circle cx="112" cy="14" r="2.5" fill="#3b82f6" />
+                    <circle cx="140" cy="8" r="2.5" fill="#3b82f6" />
+                  </svg>
+                  {/* X-axis labels */}
+                  <div className="flex justify-between text-[7px] text-gray-400 mt-0.5">
+                    <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Top Categories */}
+            <div className="rounded-lg bg-white p-2.5 border border-gray-100 shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[9px] font-semibold text-gray-700">Top Categories</p>
+                <span className="text-[8px] text-blue-600 cursor-pointer">View all</span>
+              </div>
+              <div className="space-y-1.5">
+                {[
+                  { name: 'Electronics', count: '2,340' },
+                  { name: 'Home & Kitchen', count: '1,670' },
+                  { name: 'Beauty', count: '1,240' },
+                  { name: 'Toys', count: '980' },
+                  { name: 'Sports', count: '880' },
+                ].map((cat) => (
+                  <div key={cat.name} className="flex items-center justify-between">
+                    <span className="text-[8px] text-gray-600">{cat.name}</span>
+                    <span className="text-[8px] font-semibold text-gray-800">{cat.count}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* Mini chart */}
-          <div className="rounded-xl border border-gray-100 p-3">
-            <p className="text-xs font-semibold text-gray-700 mb-2">Listings This Month</p>
-            <div className="flex items-end gap-1 h-12">
-              {[40, 55, 35, 70, 60, 85, 75, 90, 80, 95, 88, 100].map((h, i) => (
-                <div
-                  key={i}
-                  className="flex-1 bg-blue-200 rounded-t"
-                  style={{ height: `${h}%` }}
-                />
-              ))}
+          {/* Bottom section - imports + donut */}
+          <div className="grid grid-cols-2 gap-2">
+            {/* Recent Imports Table */}
+            <div className="rounded-lg bg-white p-2.5 border border-gray-100 shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[9px] font-semibold text-gray-700">Recent Imports</p>
+                <span className="text-[8px] text-blue-600 cursor-pointer">View all imports →</span>
+              </div>
+              <div className="space-y-1.5">
+                {[
+                  { name: 'Supplier_Catalog_June.pdf', count: '1,385', status: 'Completed', time: '2 min ago', color: 'text-green-600' },
+                  { name: 'WhatsApp_images...', count: '842', status: 'Completed', time: '15 min ago', color: 'text-green-600' },
+                  { name: 'supplier_prices.xlsx', count: '—', status: 'Processing', time: '—', color: 'text-blue-600' },
+                  { name: 'supplier_products.pdf', count: '1,902', status: 'Completed', time: '1hr ago', color: 'text-green-600' },
+                ].map((item) => (
+                  <div key={item.name} className="flex items-center gap-2 text-[8px]">
+                    <span className="text-gray-600 truncate flex-1">{item.name}</span>
+                    <span className="text-gray-500 w-8 text-right">{item.count}</span>
+                    <span className={`font-medium w-14 text-center ${item.color}`}>{item.status}</span>
+                    <span className="text-gray-400 w-12 text-right">{item.time}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Processing Overview Donut */}
+            <div className="rounded-lg bg-white p-2.5 border border-gray-100 shadow-sm">
+              <p className="text-[9px] font-semibold text-gray-700 mb-2">Processing Overview</p>
+              <div className="flex items-center justify-center">
+                <div className="relative w-[70px] h-[70px]">
+                  <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
+                    {/* Background circle */}
+                    <circle cx="18" cy="18" r="14" fill="none" stroke="#f3f4f6" strokeWidth="4" />
+                    {/* Completed - green (majority) */}
+                    <circle cx="18" cy="18" r="14" fill="none" stroke="#22c55e" strokeWidth="4"
+                      strokeDasharray="86.4 1.6"
+                      strokeDashoffset="0" strokeLinecap="round" />
+                    {/* Processing - blue */}
+                    <circle cx="18" cy="18" r="14" fill="none" stroke="#3b82f6" strokeWidth="4"
+                      strokeDasharray="1.2 86.8"
+                      strokeDashoffset="-86.4" strokeLinecap="round" />
+                    {/* Failed - red (tiny) */}
+                    <circle cx="18" cy="18" r="14" fill="none" stroke="#ef4444" strokeWidth="4"
+                      strokeDasharray="0.4 87.6"
+                      strokeDashoffset="-87.6" strokeLinecap="round" />
+                  </svg>
+                  {/* Center text */}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-[10px] font-bold text-gray-900">98.6%</span>
+                  </div>
+                </div>
+              </div>
+              {/* Legend */}
+              <div className="flex items-center justify-center gap-3 mt-2">
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full bg-green-500" />
+                  <span className="text-[7px] text-gray-500">Completed</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full bg-blue-500" />
+                  <span className="text-[7px] text-gray-500">Processing</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full bg-red-500" />
+                  <span className="text-[7px] text-gray-500">Failed</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -413,7 +556,7 @@ function WorkflowSection() {
             Workflow Transformation
           </span>
           <h2 className="text-3xl sm:text-4xl font-bold text-gray-900">
-            Manual Process <span className="text-gray-400">→</span> Automated Process
+            Manual Process <span className="text-blue-600">→</span> Automated Process
           </h2>
         </div>
 
@@ -432,16 +575,17 @@ function WorkflowSection() {
             </ul>
           </div>
 
-          {/* Center divider with logo */}
+          {/* Center divider with logo and dashed arrows */}
           <div className="hidden lg:flex flex-col items-center justify-center self-center gap-3">
+            <svg className="w-8 h-8 text-blue-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeDasharray="3 3" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
             <div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg">
               <span className="text-white font-bold text-lg">M</span>
             </div>
-            <div className="flex items-center gap-1 text-blue-400">
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeDasharray="4 3" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-              </svg>
-            </div>
+            <svg className="w-8 h-8 text-blue-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeDasharray="3 3" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
           </div>
 
           {/* Mobile arrow */}
@@ -462,7 +606,7 @@ function WorkflowSection() {
             <ul className="space-y-4">
               {automatedProcess.map((item) => (
                 <li key={item} className="flex items-start gap-3">
-                  <CheckIcon className="w-5 h-5 text-green-500 shrink-0 mt-0.5" />
+                  <CheckIcon className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
                   <span className="text-sm text-gray-700">{item}</span>
                 </li>
               ))}
@@ -593,17 +737,17 @@ function TestimonialsSection() {
 function TestimonialCard({ testimonial }: { testimonial: (typeof testimonials)[number] }) {
   return (
     <div className="rounded-2xl bg-white p-6 shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-gray-100 hover:-translate-y-1 hover:shadow-md transition-all duration-[250ms]">
+      {/* Quote */}
+      <p className="text-sm text-gray-600 leading-relaxed mb-4">
+        &ldquo;{testimonial.quote}&rdquo;
+      </p>
+
       {/* Stars */}
       <div className="flex gap-0.5 mb-4">
         {[...Array(5)].map((_, i) => (
           <StarIcon key={i} />
         ))}
       </div>
-
-      {/* Quote */}
-      <p className="text-sm text-gray-600 leading-relaxed mb-6">
-        &ldquo;{testimonial.quote}&rdquo;
-      </p>
 
       {/* Author */}
       <div className="flex items-center gap-3">
