@@ -5,7 +5,7 @@ applications:
       phases:
         preBuild:
           commands:
-            - cd ../.. && npm ci
+            - npm ci --prefix ../..
         build:
           commands:
             - npx next build
@@ -23,7 +23,7 @@ applications:
       phases:
         preBuild:
           commands:
-            - cd ../.. && npm ci
+            - npm ci --prefix ../..
         build:
           commands:
             - npx next build
