@@ -1,467 +1,696 @@
-const painPoints = [
+'use client';
+
+import { useState } from 'react';
+
+// ─── Data ────────────────────────────────────────────────────────────────────
+
+const manualProcess = [
+  'Supplier PDFs, WhatsApp images, Excel files',
+  'Hours spent cleaning and formatting data',
+  'Inconsistent product descriptions and titles',
+  'High listing rejection rates',
+  'Manual CSV creation and uploads',
+  'Lost sales and wasted time',
+];
+
+const automatedProcess = [
+  'Automated import from any supplier format',
+  'Data processed and structured in seconds',
+  'MerchOS Enhancement for clean, consistent data',
+  'Marketplace Validation to ensure compliance',
+  'Export ready listings for any marketplace',
+  'More sales, less effort, business growth',
+];
+
+const features = [
   {
-    title: 'Manual Product Listings',
-    description: 'Uploading hundreds of products one by one wastes valuable selling time.',
-    icon: '⏱️',
+    title: 'Product Studio',
+    description: 'Create stunning titles, descriptions and images in minutes.',
   },
   {
-    title: 'Supplier Data Is Messy',
-    description:
-      'Product information arrives as PDFs, WhatsApp images, spreadsheets and inconsistent catalogues.',
-    icon: '📋',
+    title: 'Bulk Listing Creation',
+    description: 'Generate hundreds of listings in just a few clicks.',
   },
   {
-    title: 'Marketplace Requirements Keep Changing',
-    description:
-      'Each marketplace has different formatting, categories and CSV requirements.',
-    icon: '🔄',
-  },
-  {
-    title: 'Scaling Requires More People',
-    description:
-      'Growing your catalogue often means hiring more staff just to manage listings.',
-    icon: '👥',
+    title: 'Marketplace Ready',
+    description: 'Compliant listings that pass validation every time.',
   },
 ];
 
-const steps = [
+const testimonials = [
   {
-    number: '1',
-    title: 'Import',
-    description: 'Upload supplier catalogues from almost any format — PDFs, images, spreadsheets, WhatsApp.',
+    name: 'Lerato M.',
+    category: 'Electronics Seller',
+    quote: 'MerchOS has saved me more than 40 hours every week. What used to take days now takes minutes.',
+    initials: 'LM',
+    color: 'bg-blue-500',
   },
   {
-    number: '2',
-    title: 'Processing',
-    description: 'Extract product data, specifications, pricing and images automatically.',
+    name: 'Sipho D.',
+    category: 'Home & Kitchen Seller',
+    quote: 'The descriptions and images are amazing! My listings look professional and sell better.',
+    initials: 'SD',
+    color: 'bg-green-500',
   },
   {
-    number: '3',
-    title: 'Enrichment',
-    description: 'Generate optimised titles, descriptions, attributes and keywords.',
+    name: 'Nicole R.',
+    category: 'Beauty Seller',
+    quote: 'Fewer rejections, more sales. MerchOS is now our secret weapon.',
+    initials: 'NR',
+    color: 'bg-purple-500',
   },
   {
-    number: '4',
-    title: 'Marketplace Validation',
-    description: 'Validate every listing against marketplace rules before publishing.',
-  },
-  {
-    number: '5',
-    title: 'Export',
-    description: 'Download marketplace-ready CSV files or publish directly to your channels.',
+    name: 'Jason R.',
+    category: 'Sports & Outdoors Seller',
+    quote: 'Finally, a tool built for Takealot sellers. The support is incredible too!',
+    initials: 'JR',
+    color: 'bg-orange-500',
   },
 ];
 
-const metrics = [
-  { value: '80–90%', label: 'Reduction in product listing time' },
-  { value: '2,000+', label: 'Products published monthly using the same team' },
-  { value: '60–75%', label: 'Lower listing administration costs' },
-  { value: '70%', label: 'Fewer upload errors and rejected listings' },
-  { value: '~R0.35', label: 'Estimated processing cost per product' },
-];
-
-const pricingTiers = [
+const plans = [
   {
-    name: 'Professional',
+    name: 'Starter',
+    description: 'Perfect for new sellers',
     price: 'R499',
-    period: '/mo',
-    idealFor: 'Independent sellers',
-    features: ['10,000 products', '4 channels', '5 team members', '10,000 AI enrichment calls/mo', '5,000 image processing calls/mo', '99.9% SLA'],
-    highlighted: true,
+    period: '/month',
     cta: 'Start Free Trial',
-    ctaHref: '/register?plan=professional',
+    ctaHref: '/register?plan=starter',
+    highlighted: false,
   },
   {
-    name: 'Business',
+    name: 'Growth',
+    description: 'For growing businesses',
     price: 'R999',
-    period: '/mo',
-    idealFor: 'Teams & agencies',
-    features: ['50,000 products', '6 channels', '25 team members', '100,000 AI enrichment calls/mo', '50,000 image processing calls/mo', 'Priority support', 'SAML SSO'],
-    highlighted: false,
+    period: '/month',
     cta: 'Start Free Trial',
-    ctaHref: '/register?plan=business',
+    ctaHref: '/register?plan=growth',
+    highlighted: true,
+    badge: 'Most Popular',
+  },
+  {
+    name: 'Pro',
+    description: 'For serious sellers',
+    price: 'R1,999',
+    period: '/month',
+    cta: 'Start Free Trial',
+    ctaHref: '/register?plan=pro',
+    highlighted: false,
   },
   {
     name: 'Enterprise',
+    description: 'For large businesses',
     price: 'Custom',
     period: '',
-    idealFor: 'Large retailers & distributors',
-    features: ['Unlimited products', '6 channels', 'Unlimited team members', 'Custom AI & processing limits', 'Dedicated account manager', 'Custom integrations', 'SLA up to 99.99%'],
-    highlighted: false,
     cta: 'Contact Sales',
     ctaHref: '/contact?reason=enterprise',
+    highlighted: false,
   },
 ];
 
-const earlyAccessBenefits = [
-  'Founding customer pricing',
-  'Priority onboarding',
-  'Shape future features',
-  'Direct access to the founders',
+const includedFeatures = [
+  'Product Studio',
+  'Marketplace Validation',
+  'Exports & Integrations',
+  'Email & Chat Support',
 ];
+
+// ─── Icons ───────────────────────────────────────────────────────────────────
+
+function CheckIcon({ className = 'w-4 h-4 text-green-500' }: { className?: string }) {
+  return (
+    <svg className={className} fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+      <path
+        fillRule="evenodd"
+        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+        clipRule="evenodd"
+      />
+    </svg>
+  );
+}
+
+function XIcon() {
+  return (
+    <svg className="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+      <path
+        fillRule="evenodd"
+        d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+        clipRule="evenodd"
+      />
+    </svg>
+  );
+}
+
+function StarIcon() {
+  return (
+    <svg className="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+    </svg>
+  );
+}
+
+function ArrowRightIcon() {
+  return (
+    <svg className="ml-2 w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+    </svg>
+  );
+}
+
+function PlayIcon() {
+  return (
+    <svg className="mr-2 w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  );
+}
+
+// ─── Feature Icons ───────────────────────────────────────────────────────────
+
+function ProductStudioIcon() {
+  return (
+    <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+    </svg>
+  );
+}
+
+function BulkListingIcon() {
+  return (
+    <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+    </svg>
+  );
+}
+
+function MarketplaceReadyIcon() {
+  return (
+    <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+    </svg>
+  );
+}
+
+const featureIcons = [ProductStudioIcon, BulkListingIcon, MarketplaceReadyIcon];
+
+// ─── Page Component ──────────────────────────────────────────────────────────
 
 export default function MarketingPage() {
   return (
     <>
-      {/* Hero Section */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-primary-50 via-white to-primary-50">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-20 sm:py-28 lg:py-36">
-          <div className="text-center max-w-4xl mx-auto">
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-gray-900 leading-tight">
-              List Multiple Products in a Few Clicks
+      <HeroSection />
+      <WorkflowSection />
+      <FeaturesSection />
+      <TestimonialsSection />
+      <PricingSection />
+    </>
+  );
+}
+
+// ─── Hero Section ────────────────────────────────────────────────────────────
+
+function HeroSection() {
+  return (
+    <section className="relative overflow-hidden py-20 sm:py-28 lg:py-36">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+          {/* Left column */}
+          <div className="animate-fadeIn">
+            <span className="inline-block text-xs uppercase tracking-wider text-blue-600 font-semibold mb-4">
+              Built for Marketplace Sellers
+            </span>
+
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-gray-900 leading-[1.1]">
+              Marketplace Automation,{'\n'}
+              Engineered for{'\n'}
+              <span className="text-blue-600">Accuracy &amp; Speed.</span>
             </h1>
-            <p className="mt-6 text-lg sm:text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
-              Your suppliers send WhatsApp photos, PDFs, Excel files and messy catalogues.
-              MerchOS extracts, enriches information then generates marketplace-ready listings
-              and CSV files for Takealot, Amazon, Makro and more.
+
+            <p className="mt-6 text-lg text-gray-600 leading-relaxed max-w-xl">
+              Transform supplier catalogues into marketplace-ready listings
+              through an intelligent automated workflow.
             </p>
-            <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+
+            {/* CTAs */}
+            <div className="mt-8 flex flex-col sm:flex-row items-start gap-4">
               <a
-                href="#early-access"
-                className="w-full sm:w-auto inline-flex items-center justify-center rounded-lg bg-primary-600 px-8 py-3.5 text-base font-semibold text-white shadow-lg hover:bg-primary-700 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+                href="/register"
+                className="inline-flex items-center rounded-full bg-blue-600 px-6 py-3 text-base font-semibold text-white shadow-sm hover:bg-blue-700 hover:scale-[1.02] transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
               >
-                Join Early Access
+                Start Free Trial
+                <ArrowRightIcon />
               </a>
               <a
-                href="#how-it-works"
-                className="w-full sm:w-auto inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-8 py-3.5 text-base font-semibold text-gray-700 shadow-sm hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+                href="#demo"
+                className="inline-flex items-center rounded-full border border-gray-200 bg-white px-6 py-3 text-base font-semibold text-gray-700 shadow-sm hover:bg-gray-50 hover:scale-[1.02] transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
               >
+                <PlayIcon />
                 Watch Demo
               </a>
             </div>
-          </div>
-        </div>
-      </section>
 
-      {/* Transformation Visual */}
-      <section className="py-16 sm:py-24 border-y border-gray-100 bg-white">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          {/* 3-column flow: Import → Engine → Publish */}
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_1.2fr_auto_1fr] gap-6 lg:gap-4 items-start">
+            {/* Trust indicators */}
+            <div className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-600">
+              {['Save 40+ hours every week', 'Reduce listing rejections', 'Scale your business faster'].map((text) => (
+                <span key={text} className="flex items-center gap-1.5">
+                  <CheckIcon />
+                  {text}
+                </span>
+              ))}
+            </div>
 
-            {/* Column 1: Import Your Data */}
-            <div className="rounded-2xl border border-gray-200 bg-gray-50 p-6">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center">
-                  <svg className="w-5 h-5 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-primary-700 uppercase tracking-wide">Import Your Data</h3>
-                  <p className="text-xs text-gray-500">From any source</p>
-                </div>
-              </div>
-              <div className="space-y-4">
+            {/* Social proof */}
+            <div className="mt-8 flex items-center gap-3">
+              <div className="flex -space-x-2">
                 {[
-                  { title: 'Supplier PDFs', desc: 'Catalogues, brochures, product sheets' },
-                  { title: 'WhatsApp Images', desc: 'Product photos and information' },
-                  { title: 'Excel & CSV Files', desc: 'Spreadsheets and data exports' },
-                  { title: 'Product Catalogues', desc: 'Digital or scanned catalogues' },
-                ].map((item) => (
-                  <div key={item.title} className="flex items-start gap-3 rounded-lg bg-white border border-gray-100 p-3">
-                    <div className="w-8 h-8 rounded bg-red-50 border border-red-100 flex items-center justify-center shrink-0">
-                      <svg className="w-4 h-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900">{item.title}</p>
-                      <p className="text-xs text-gray-500">{item.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Arrow 1 */}
-            <div className="hidden lg:flex items-center justify-center self-center">
-              <div className="flex items-center gap-1 text-primary-400">
-                <div className="w-8 border-t-2 border-dashed border-primary-300"></div>
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </div>
-            </div>
-            <div className="lg:hidden flex justify-center py-2">
-              <svg className="w-6 h-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-              </svg>
-            </div>
-
-            {/* Column 2: MerchOS Engine */}
-            <div className="rounded-2xl border-2 border-primary-200 bg-primary-50/50 p-6">
-              <div className="text-center mb-6">
-                <div className="w-14 h-14 rounded-full bg-primary-600 flex items-center justify-center mx-auto mb-3">
-                  <svg className="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-bold text-gray-900">MerchOS Engine</h3>
-              </div>
-              <ul className="space-y-3">
-                {[
-                  'Reads & extracts data',
-                  'Cleans & validates',
-                  'Matches categories',
-                  'Generates descriptions',
-                  'Optimises images',
-                  'Formats for marketplaces',
-                ].map((step) => (
-                  <li key={step} className="flex items-center gap-3">
-                    <div className="w-5 h-5 rounded-full bg-primary-600 flex items-center justify-center shrink-0">
-                      <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
-                    </div>
-                    <span className="text-sm text-gray-700 font-medium">{step}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Arrow 2 */}
-            <div className="hidden lg:flex items-center justify-center self-center">
-              <div className="flex items-center gap-1 text-primary-400">
-                <div className="w-8 border-t-2 border-dashed border-primary-300"></div>
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </div>
-            </div>
-            <div className="lg:hidden flex justify-center py-2">
-              <svg className="w-6 h-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-              </svg>
-            </div>
-
-            {/* Column 3: Ready to Publish */}
-            <div className="rounded-2xl border border-gray-200 bg-gray-50 p-6">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
-                  <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-green-700 uppercase tracking-wide">Ready to Publish</h3>
-                  <p className="text-xs text-gray-500">Export to marketplaces</p>
-                </div>
-              </div>
-              <div className="space-y-3">
-                {['Takealot', 'Amazon', 'Makro Marketplace', 'Shopify', 'WooCommerce'].map((marketplace) => (
+                  { color: 'bg-blue-500', initials: 'LM' },
+                  { color: 'bg-green-500', initials: 'SD' },
+                  { color: 'bg-purple-500', initials: 'NR' },
+                  { color: 'bg-orange-500', initials: 'JR' },
+                ].map((avatar) => (
                   <div
-                    key={marketplace}
-                    className="flex items-center gap-3 rounded-lg bg-white border border-green-100 px-4 py-3"
+                    key={avatar.initials}
+                    className={`w-8 h-8 rounded-full ${avatar.color} border-2 border-white flex items-center justify-center`}
                   >
-                    <div className="w-8 h-8 rounded bg-green-50 border border-green-100 flex items-center justify-center shrink-0">
-                      <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
-                    </div>
-                    <span className="text-sm font-semibold text-gray-900">{marketplace}</span>
+                    <span className="text-[10px] font-bold text-white">{avatar.initials}</span>
                   </div>
+                ))}
+              </div>
+              <div className="flex items-center gap-1">
+                {[...Array(5)].map((_, i) => (
+                  <StarIcon key={i} />
+                ))}
+              </div>
+              <span className="text-sm text-gray-500">Trusted by marketplace sellers across South Africa</span>
+            </div>
+
+            {/* Works with */}
+            <div className="mt-8 pt-6 border-t border-gray-100">
+              <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-3">Works with</p>
+              <div className="flex flex-wrap items-center gap-4">
+                {['Takealot', 'Amazon', 'Makro', 'Shopify', 'WooCommerce'].map((name) => (
+                  <span
+                    key={name}
+                    className="text-sm font-semibold text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    {name}
+                  </span>
                 ))}
               </div>
             </div>
           </div>
 
-          {/* Benefits row */}
-          <div className="mt-12 grid grid-cols-2 sm:grid-cols-4 gap-6 border-t border-gray-100 pt-10">
-            {[
-              { icon: '⏱️', title: 'Save Time', desc: 'Automate hours of manual work' },
-              { icon: '✓', title: 'Reduce Errors', desc: 'Clean, accurate product data' },
-              { icon: '🌐', title: 'List Everywhere', desc: 'Multiple marketplaces, one click' },
-              { icon: '🚀', title: 'Scale Faster', desc: 'More products. More sales.' },
-            ].map((benefit) => (
-              <div key={benefit.title} className="text-center">
-                <div className="w-12 h-12 rounded-full bg-primary-50 border border-primary-100 flex items-center justify-center mx-auto mb-3">
-                  <span className="text-lg" aria-hidden="true">{benefit.icon}</span>
-                </div>
-                <h4 className="text-sm font-bold text-gray-900">{benefit.title}</h4>
-                <p className="text-xs text-gray-500 mt-1">{benefit.desc}</p>
-              </div>
-            ))}
+          {/* Right column - Dashboard mockup */}
+          <div className="relative hidden lg:block">
+            {/* Blue glow */}
+            <div className="absolute inset-0 bg-blue-400/20 rounded-full blur-[80px] scale-75" aria-hidden="true" />
+
+            {/* Dashboard card with float animation */}
+            <div className="relative animate-float">
+              <DashboardMockup />
+            </div>
           </div>
         </div>
-      </section>
+      </div>
+    </section>
+  );
+}
 
-      {/* The Problem */}
-      <section className="py-20 sm:py-28 bg-gray-50">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-2xl mx-auto mb-16">
-            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900">
-              The Problem Every Marketplace Seller Knows
+// ─── Dashboard Mockup ────────────────────────────────────────────────────────
+
+function DashboardMockup() {
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white shadow-xl overflow-hidden">
+      {/* Top bar */}
+      <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 border-b border-gray-100">
+        <div className="w-3 h-3 rounded-full bg-red-400" />
+        <div className="w-3 h-3 rounded-full bg-yellow-400" />
+        <div className="w-3 h-3 rounded-full bg-green-400" />
+        <span className="ml-3 text-xs text-gray-400 font-medium">MerchOS Dashboard</span>
+      </div>
+
+      {/* Dashboard body */}
+      <div className="flex">
+        {/* Sidebar */}
+        <div className="w-14 bg-gray-900 p-2 space-y-3 hidden sm:block">
+          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center mx-auto">
+            <span className="text-white font-bold text-xs">M</span>
+          </div>
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="w-8 h-8 rounded-lg bg-gray-700/50 mx-auto" />
+          ))}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 p-4 space-y-4">
+          {/* Stats row */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="rounded-xl bg-blue-50 p-3">
+              <p className="text-[10px] text-gray-500 uppercase tracking-wider">Products</p>
+              <p className="text-lg font-bold text-gray-900">2,847</p>
+              <p className="text-[10px] text-green-600 font-medium">+12% this week</p>
+            </div>
+            <div className="rounded-xl bg-green-50 p-3">
+              <p className="text-[10px] text-gray-500 uppercase tracking-wider">Published</p>
+              <p className="text-lg font-bold text-gray-900">2,651</p>
+              <p className="text-[10px] text-green-600 font-medium">93% success</p>
+            </div>
+            <div className="rounded-xl bg-purple-50 p-3">
+              <p className="text-[10px] text-gray-500 uppercase tracking-wider">Time Saved</p>
+              <p className="text-lg font-bold text-gray-900">42hrs</p>
+              <p className="text-[10px] text-green-600 font-medium">this week</p>
+            </div>
+          </div>
+
+          {/* Recent activity */}
+          <div className="rounded-xl border border-gray-100 p-3">
+            <p className="text-xs font-semibold text-gray-700 mb-2">Recent Imports</p>
+            <div className="space-y-2">
+              {[
+                { name: 'Samsung_Catalogue.pdf', status: 'Processed', color: 'bg-green-100 text-green-700' },
+                { name: 'Supplier_Pricing.xlsx', status: 'Enriching', color: 'bg-blue-100 text-blue-700' },
+                { name: 'WhatsApp_Products.zip', status: 'Validating', color: 'bg-yellow-100 text-yellow-700' },
+              ].map((item) => (
+                <div key={item.name} className="flex items-center justify-between text-xs">
+                  <span className="text-gray-600 truncate">{item.name}</span>
+                  <span className={`px-2 py-0.5 rounded-full font-medium ${item.color}`}>
+                    {item.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Mini chart */}
+          <div className="rounded-xl border border-gray-100 p-3">
+            <p className="text-xs font-semibold text-gray-700 mb-2">Listings This Month</p>
+            <div className="flex items-end gap-1 h-12">
+              {[40, 55, 35, 70, 60, 85, 75, 90, 80, 95, 88, 100].map((h, i) => (
+                <div
+                  key={i}
+                  className="flex-1 bg-blue-200 rounded-t"
+                  style={{ height: `${h}%` }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Workflow Section ────────────────────────────────────────────────────────
+
+function WorkflowSection() {
+  return (
+    <section id="how-it-works" className="py-24 sm:py-32">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        {/* Header */}
+        <div className="text-center mb-16">
+          <span className="inline-block text-xs uppercase tracking-wider text-blue-600 font-semibold mb-4">
+            Workflow Transformation
+          </span>
+          <h2 className="text-3xl sm:text-4xl font-bold text-gray-900">
+            Manual Process <span className="text-gray-400">→</span> Automated Process
+          </h2>
+        </div>
+
+        {/* Comparison */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] gap-8 lg:gap-12 items-start">
+          {/* Manual Process */}
+          <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+            <h3 className="text-lg font-bold text-gray-900 mb-6">Manual Process</h3>
+            <ul className="space-y-4">
+              {manualProcess.map((item) => (
+                <li key={item} className="flex items-start gap-3">
+                  <XIcon />
+                  <span className="text-sm text-gray-600">{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Center divider with logo */}
+          <div className="hidden lg:flex flex-col items-center justify-center self-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg">
+              <span className="text-white font-bold text-lg">M</span>
+            </div>
+            <div className="flex items-center gap-1 text-blue-400">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeDasharray="4 3" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+              </svg>
+            </div>
+          </div>
+
+          {/* Mobile arrow */}
+          <div className="lg:hidden flex justify-center">
+            <div className="flex items-center gap-2 text-blue-400">
+              <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center">
+                <span className="text-white font-bold text-sm">M</span>
+              </div>
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+              </svg>
+            </div>
+          </div>
+
+          {/* MerchOS Workflow */}
+          <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-8 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+            <h3 className="text-lg font-bold text-gray-900 mb-6">MerchOS Workflow</h3>
+            <ul className="space-y-4">
+              {automatedProcess.map((item) => (
+                <li key={item} className="flex items-start gap-3">
+                  <CheckIcon className="w-5 h-5 text-green-500 shrink-0 mt-0.5" />
+                  <span className="text-sm text-gray-700">{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── Features Section ────────────────────────────────────────────────────────
+
+function FeaturesSection() {
+  return (
+    <section className="py-24 sm:py-32 bg-gray-50/50">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.5fr] gap-12 lg:gap-16 items-center">
+          {/* Left text */}
+          <div>
+            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 leading-tight">
+              Everything you need to scale your Takealot business
             </h2>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {painPoints.map((point) => (
+
+          {/* Feature cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            {features.map((feature, idx) => {
+              const Icon = featureIcons[idx]!;
+              return (
+                <div
+                  key={feature.title}
+                  className="rounded-2xl bg-white p-6 shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-gray-100 hover:-translate-y-1 hover:shadow-md transition-all duration-[250ms]"
+                >
+                  <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mb-4">
+                    <Icon />
+                  </div>
+                  <h3 className="text-base font-semibold text-gray-900 mb-2">{feature.title}</h3>
+                  <p className="text-sm text-gray-600 leading-relaxed">{feature.description}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── Testimonials Section ────────────────────────────────────────────────────
+
+function TestimonialsSection() {
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  const handlePrev = () => {
+    setActiveIndex((prev) => (prev === 0 ? testimonials.length - 1 : prev - 1));
+  };
+
+  const handleNext = () => {
+    setActiveIndex((prev) => (prev === testimonials.length - 1 ? 0 : prev + 1));
+  };
+
+  return (
+    <section className="py-24 sm:py-32">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        {/* Header */}
+        <div className="text-center mb-16">
+          <span className="inline-block text-xs uppercase tracking-wider text-blue-600 font-semibold mb-4">
+            Trusted by Sellers
+          </span>
+          <h2 className="text-3xl sm:text-4xl font-bold text-gray-900">
+            Real results from real sellers
+          </h2>
+        </div>
+
+        {/* Testimonial cards */}
+        <div className="relative">
+          {/* Desktop grid */}
+          <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {testimonials.map((testimonial) => (
+              <TestimonialCard key={testimonial.name} testimonial={testimonial} />
+            ))}
+          </div>
+
+          {/* Mobile carousel */}
+          <div className="md:hidden">
+            <TestimonialCard testimonial={testimonials[activeIndex]!} />
+          </div>
+
+          {/* Navigation arrows */}
+          <div className="flex items-center justify-center gap-3 mt-8">
+            <button
+              onClick={handlePrev}
+              className="w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 transition-colors"
+              aria-label="Previous testimonial"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            {/* Mobile dots */}
+            <div className="flex md:hidden gap-2">
+              {testimonials.map((_, i) => (
+                <div
+                  key={i}
+                  className={`w-2 h-2 rounded-full transition-colors ${
+                    i === activeIndex ? 'bg-blue-600' : 'bg-gray-200'
+                  }`}
+                />
+              ))}
+            </div>
+            <button
+              onClick={handleNext}
+              className="w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 transition-colors"
+              aria-label="Next testimonial"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function TestimonialCard({ testimonial }: { testimonial: (typeof testimonials)[number] }) {
+  return (
+    <div className="rounded-2xl bg-white p-6 shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-gray-100 hover:-translate-y-1 hover:shadow-md transition-all duration-[250ms]">
+      {/* Stars */}
+      <div className="flex gap-0.5 mb-4">
+        {[...Array(5)].map((_, i) => (
+          <StarIcon key={i} />
+        ))}
+      </div>
+
+      {/* Quote */}
+      <p className="text-sm text-gray-600 leading-relaxed mb-6">
+        &ldquo;{testimonial.quote}&rdquo;
+      </p>
+
+      {/* Author */}
+      <div className="flex items-center gap-3">
+        <div className={`w-9 h-9 rounded-full ${testimonial.color} flex items-center justify-center`}>
+          <span className="text-[11px] font-bold text-white">{testimonial.initials}</span>
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-gray-900">{testimonial.name}</p>
+          <p className="text-xs text-gray-500">{testimonial.category}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Pricing Section ─────────────────────────────────────────────────────────
+
+function PricingSection() {
+  return (
+    <section id="pricing" className="py-24 sm:py-32">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        {/* Header */}
+        <div className="text-center mb-16">
+          <span className="inline-block text-xs uppercase tracking-wider text-blue-600 font-semibold mb-4">
+            Simple, Transparent Pricing
+          </span>
+          <h2 className="text-3xl sm:text-4xl font-bold text-gray-900">
+            Choose the plan that grows with you
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-12 items-start">
+          {/* Plan cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {plans.map((plan) => (
               <div
-                key={point.title}
-                className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
-              >
-                <div className="text-3xl mb-4" aria-hidden="true">
-                  {point.icon}
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900">{point.title}</h3>
-                <p className="mt-2 text-sm text-gray-600 leading-relaxed">
-                  {point.description}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* How MerchOS Solves It */}
-      <section id="how-it-works" className="py-20 sm:py-28">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-2xl mx-auto mb-16">
-            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900">
-              How MerchOS Solves It
-            </h2>
-            <p className="mt-4 text-lg text-gray-600">
-              From messy supplier data to marketplace-ready product listings in five steps.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
-            {steps.map((step, idx) => (
-              <div key={step.number} className="relative text-center">
-                <div className="mx-auto w-12 h-12 rounded-full bg-primary-600 text-white flex items-center justify-center text-lg font-bold mb-4">
-                  {step.number}
-                </div>
-                <h3 className="text-base font-semibold text-gray-900">{step.title}</h3>
-                <p className="mt-2 text-sm text-gray-600 leading-relaxed">
-                  {step.description}
-                </p>
-                {/* Connector removed */}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Why Sellers Choose MerchOS — Quantified Impact */}
-      <section className="py-20 sm:py-28 bg-gray-900 text-white">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-2xl mx-auto mb-16">
-            <h2 className="text-3xl sm:text-4xl font-bold">
-              Why Sellers Choose MerchOS
-            </h2>
-            <p className="mt-4 text-lg text-gray-300">
-              We transform messy supplier data into marketplace-ready product data.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-8">
-            {metrics.map((metric) => (
-              <div key={metric.label} className="text-center">
-                <div className="text-3xl sm:text-4xl font-bold text-primary-400">
-                  {metric.value}
-                </div>
-                <p className="mt-2 text-sm text-gray-400">
-                  {metric.label}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Pricing */}
-      <section id="pricing" className="py-20 sm:py-28">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-2xl mx-auto mb-16">
-            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900">
-              Professional tools, professional pricing
-            </h2>
-            <p className="mt-4 text-lg text-gray-600">
-              Start with a 14-day free trial. No credit card required.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
-            {pricingTiers.map((tier) => (
-              <div
-                key={tier.name}
-                className={`rounded-xl border p-6 flex flex-col ${
-                  tier.highlighted
-                    ? 'border-primary-600 bg-primary-50 ring-2 ring-primary-600 shadow-lg'
-                    : 'border-gray-200 bg-white shadow-sm'
+                key={plan.name}
+                className={`relative rounded-2xl p-6 flex flex-col hover:-translate-y-1 hover:shadow-md transition-all duration-[250ms] ${
+                  plan.highlighted
+                    ? 'border-2 border-blue-600 bg-white/80 backdrop-blur-sm shadow-lg shadow-blue-100/50 ring-1 ring-blue-600/10'
+                    : 'border border-gray-200 bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04)]'
                 }`}
               >
-                {tier.highlighted && (
-                  <span className="inline-block self-start rounded-full bg-primary-600 px-3 py-0.5 text-xs font-semibold text-white mb-4">
-                    Recommended
+                {plan.badge && (
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 inline-block rounded-full bg-blue-600 px-3 py-1 text-xs font-semibold text-white whitespace-nowrap">
+                    {plan.badge}
                   </span>
                 )}
-                <h3 className="text-lg font-semibold text-gray-900">{tier.name}</h3>
-                <p className="text-sm text-gray-500 mt-1">{tier.idealFor}</p>
-                <div className="mt-4 flex items-baseline">
-                  <span className="text-3xl font-bold text-gray-900">{tier.price}</span>
-                  <span className="text-sm text-gray-500 ml-1">{tier.period}</span>
+
+                <h3 className="text-lg font-bold text-gray-900">{plan.name}</h3>
+                <p className="text-sm text-gray-500 mt-1">{plan.description}</p>
+
+                <div className="mt-5 flex items-baseline">
+                  <span className="text-3xl font-bold text-gray-900">{plan.price}</span>
+                  {plan.period && (
+                    <span className="text-sm text-gray-500 ml-1">{plan.period}</span>
+                  )}
                 </div>
-                <ul className="mt-6 space-y-3 flex-1" role="list">
-                  {tier.features.map((feature) => (
-                    <li key={feature} className="flex items-start gap-2 text-sm text-gray-700">
-                      <svg
-                        className="w-4 h-4 mt-0.5 text-primary-600 shrink-0"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                        aria-hidden="true"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                      {feature}
-                    </li>
-                  ))}
-                </ul>
+
                 <a
-                  href={tier.ctaHref}
-                  className={`mt-8 inline-flex items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 ${
-                    tier.highlighted
-                      ? 'bg-primary-600 text-white hover:bg-primary-700'
-                      : 'border border-primary-600 text-primary-600 hover:bg-primary-50'
+                  href={plan.ctaHref}
+                  className={`mt-6 inline-flex items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold transition-all hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                    plan.highlighted
+                      ? 'bg-blue-600 text-white shadow-sm hover:bg-blue-700'
+                      : 'border border-gray-200 text-gray-700 hover:bg-gray-50'
                   }`}
                 >
-                  {tier.cta}
+                  {plan.cta}
                 </a>
               </div>
             ))}
           </div>
-        </div>
-      </section>
 
-      {/* Early Access CTA */}
-      <section id="early-access" className="py-20 sm:py-28 bg-primary-600">
-        <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl sm:text-4xl font-bold text-white">
-            Join the Early Access Programme
-          </h2>
-          <p className="mt-4 text-lg text-primary-100">
-            Be among the first sellers to transform how you manage marketplace listings.
-          </p>
-          <ul className="mt-8 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-primary-100">
-            {earlyAccessBenefits.map((benefit) => (
-              <li key={benefit} className="flex items-center gap-2 text-sm">
-                <svg className="w-4 h-4 text-primary-200" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                </svg>
-                {benefit}
-              </li>
-            ))}
-          </ul>
-          <a
-            href="/register"
-            className="mt-10 inline-flex items-center justify-center rounded-lg bg-white px-8 py-3.5 text-base font-semibold text-primary-600 shadow-lg hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary-600"
-          >
-            Get Early Access
-          </a>
+          {/* All plans include */}
+          <div className="lg:max-w-xs">
+            <h3 className="text-sm font-semibold text-gray-900 mb-4">All plans include:</h3>
+            <ul className="space-y-3">
+              {includedFeatures.map((feature) => (
+                <li key={feature} className="flex items-center gap-2.5 text-sm text-gray-600">
+                  <CheckIcon />
+                  {feature}
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
-      </section>
-    </>
+      </div>
+    </section>
   );
 }
