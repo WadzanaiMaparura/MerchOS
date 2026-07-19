@@ -1,12 +1,13 @@
 import type { PlatformRole, Action } from './types';
 import { PermissionRegistry } from './registry';
+import type React from 'react';
 
 /** Navigation item with permission requirement */
 export interface NavigationItem {
   id: string;
   label: string;
   href: string;
-  icon?: string;
+  icon?: React.ReactNode;
   requiredResource: string;
   requiredAction?: Action; // defaults to 'read'
   children?: NavigationItem[];

@@ -89,7 +89,7 @@ const TeamIcon = (
  * mapping to the permission registry resources for the Seller role.
  * Items are filtered by the registry at render time.
  */
-const SELLER_NAV_ITEMS: (NavigationItem & { icon: React.ReactNode })[] = [
+const SELLER_NAV_ITEMS: NavigationItem[] = [
   { id: 'dashboard', label: 'Dashboard', href: '/dashboard', icon: HomeIcon, requiredResource: 'analytics' },
   { id: 'products', label: 'Products', href: '/products', icon: PackageIcon, requiredResource: 'products' },
   { id: 'review-queue', label: 'Review Queue', href: '/review-queue', icon: ClipboardCheckIcon, requiredResource: 'products' },
