@@ -213,7 +213,7 @@ export default function MarketingPage() {
 
 function HeroSection() {
   return (
-    <section className="relative overflow-hidden py-20 sm:py-28 lg:py-36">
+    <section className="relative overflow-x-clip py-20 sm:py-28 lg:py-36">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
           {/* Left column */}
@@ -310,12 +310,12 @@ function HeroSection() {
           </div>
 
           {/* Right column - Dashboard mockup */}
-          <div className="relative hidden lg:block">
+          <div className="relative hidden lg:block -mr-16 xl:-mr-24">
             {/* Blue glow */}
-            <div className="absolute inset-0 bg-blue-400/20 rounded-full blur-[80px] scale-75" aria-hidden="true" />
+            <div className="absolute inset-0 bg-blue-400/15 rounded-full blur-[100px] scale-90" aria-hidden="true" />
 
-            {/* Dashboard card with float animation */}
-            <div className="relative animate-float">
+            {/* Dashboard card with tilt, overlap, and float animation */}
+            <div className="relative animate-float transform rotate-[2deg] translate-x-8 xl:translate-x-12 shadow-2xl rounded-2xl">
               <DashboardMockup />
             </div>
           </div>
