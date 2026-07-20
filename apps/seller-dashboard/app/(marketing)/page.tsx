@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 
@@ -338,6 +339,13 @@ function DashboardMockup() {
           <span className="ml-2 text-[10px] text-gray-400 font-medium">MerchOS Dashboard</span>
         </div>
         <div className="flex items-center gap-2">
+          {/* Notification bell */}
+          <div className="relative">
+            <svg className="w-[14px] h-[14px] text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+            </svg>
+            <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-red-500 rounded-full" />
+          </div>
           <div className="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center">
             <span className="text-[8px] font-bold text-white">WM</span>
           </div>
@@ -412,38 +420,22 @@ function DashboardMockup() {
           <div className="grid grid-cols-2 gap-2">
             {/* Listing Performance Chart */}
             <div className="rounded-lg bg-white p-2.5 border border-gray-100 shadow-sm">
-              <p className="text-[9px] font-semibold text-gray-700 mb-2">Listing Performance</p>
-              <div className="relative h-[60px]">
-                {/* Y-axis labels */}
-                <div className="absolute left-0 top-0 bottom-3 flex flex-col justify-between text-[7px] text-gray-400">
-                  <span>100</span>
-                  <span>50</span>
-                  <span>0</span>
-                </div>
-                {/* Chart area */}
-                <div className="ml-5 h-full relative">
-                  {/* Grid lines */}
-                  <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
-                    <div className="border-b border-gray-100 border-dashed" />
-                    <div className="border-b border-gray-100 border-dashed" />
-                    <div className="border-b border-gray-100" />
-                  </div>
-                  {/* SVG line chart */}
-                  <svg className="w-full h-[48px] relative z-10" viewBox="0 0 140 48" fill="none" preserveAspectRatio="none">
-                    <path d="M0 38 Q20 35 28 28 T56 18 T84 10 T112 14 T140 8" stroke="#3b82f6" strokeWidth="2" fill="none" />
-                    <circle cx="0" cy="38" r="2.5" fill="#3b82f6" />
-                    <circle cx="28" cy="28" r="2.5" fill="#3b82f6" />
-                    <circle cx="56" cy="18" r="2.5" fill="#3b82f6" />
-                    <circle cx="84" cy="10" r="2.5" fill="#3b82f6" />
-                    <circle cx="112" cy="14" r="2.5" fill="#3b82f6" />
-                    <circle cx="140" cy="8" r="2.5" fill="#3b82f6" />
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[9px] font-semibold text-gray-700">Listing Performance</p>
+                <span className="flex items-center gap-0.5 text-[8px] text-gray-400">
+                  Last 7 days
+                  <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
-                  {/* X-axis labels */}
-                  <div className="flex justify-between text-[7px] text-gray-400 mt-0.5">
-                    <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
-                  </div>
-                </div>
+                </span>
               </div>
+              <ResponsiveContainer width="100%" height={60}>
+                <LineChart data={[{day:'Mon',value:45},{day:'Tue',value:52},{day:'Wed',value:68},{day:'Thu',value:72},{day:'Fri',value:65},{day:'Sat',value:80},{day:'Sun',value:88}]}>
+                  <XAxis dataKey="day" fontSize={7} axisLine={false} tickLine={false} />
+                  <YAxis hide />
+                  <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3, fill: '#3b82f6' }} />
+                </LineChart>
+              </ResponsiveContainer>
             </div>
 
             {/* Top Categories */}
@@ -498,23 +490,23 @@ function DashboardMockup() {
             <div className="rounded-lg bg-white p-2.5 border border-gray-100 shadow-sm">
               <p className="text-[9px] font-semibold text-gray-700 mb-2">Processing Overview</p>
               <div className="flex items-center justify-center">
-                <div className="relative w-[70px] h-[70px]">
-                  <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
-                    {/* Background circle */}
-                    <circle cx="18" cy="18" r="14" fill="none" stroke="#f3f4f6" strokeWidth="4" />
-                    {/* Completed - green (majority) */}
-                    <circle cx="18" cy="18" r="14" fill="none" stroke="#22c55e" strokeWidth="4"
-                      strokeDasharray="86.4 1.6"
-                      strokeDashoffset="0" strokeLinecap="round" />
-                    {/* Processing - blue */}
-                    <circle cx="18" cy="18" r="14" fill="none" stroke="#3b82f6" strokeWidth="4"
-                      strokeDasharray="1.2 86.8"
-                      strokeDashoffset="-86.4" strokeLinecap="round" />
-                    {/* Failed - red (tiny) */}
-                    <circle cx="18" cy="18" r="14" fill="none" stroke="#ef4444" strokeWidth="4"
-                      strokeDasharray="0.4 87.6"
-                      strokeDashoffset="-87.6" strokeLinecap="round" />
-                  </svg>
+                <div className="relative">
+                  <ResponsiveContainer width={80} height={80}>
+                    <PieChart>
+                      <Pie
+                        data={[{name:'Completed',value:98.6,color:'#22c55e'},{name:'Processing',value:1.0,color:'#3b82f6'},{name:'Failed',value:0.4,color:'#ef4444'}]}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={22}
+                        outerRadius={32}
+                        dataKey="value"
+                      >
+                        <Cell fill="#22c55e" />
+                        <Cell fill="#3b82f6" />
+                        <Cell fill="#ef4444" />
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
                   {/* Center text */}
                   <div className="absolute inset-0 flex items-center justify-center">
                     <span className="text-[10px] font-bold text-gray-900">98.6%</span>
