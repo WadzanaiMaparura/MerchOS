@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 
@@ -388,31 +388,86 @@ function HeroSection() {
 
 // ─── Dashboard Mockup ────────────────────────────────────────────────────────
 
+const listingPerfData = [
+  { day: 'Tue', value: 30 },
+  { day: 'Wed', value: 38 },
+  { day: 'Thu', value: 25 },
+  { day: 'Fri', value: 45 },
+  { day: 'Sat', value: 52 },
+  { day: 'Sun', value: 60 },
+  { day: 'Mon', value: 72 },
+];
+
+const donutData = [
+  { name: 'Completed', value: 98.6 },
+  { name: 'Processing', value: 1.1 },
+  { name: 'Failed', value: 0.3 },
+];
+const donutColors = ['#22c55e', '#3b82f6', '#ef4444'];
+
+const navItems = [
+  {
+    label: 'Dashboard', active: true,
+    icon: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0h6" /></svg>,
+  },
+  {
+    label: 'Products', active: false,
+    icon: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10" /></svg>,
+  },
+  {
+    label: 'Suppliers', active: false,
+    icon: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0" /></svg>,
+  },
+  {
+    label: 'Imports', active: false,
+    icon: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>,
+  },
+  {
+    label: 'Enhancement', active: false,
+    icon: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>,
+  },
+  {
+    label: 'Listings', active: false,
+    icon: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>,
+  },
+  {
+    label: 'Exports', active: false,
+    icon: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>,
+  },
+  {
+    label: 'Reports', active: false,
+    icon: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>,
+  },
+  {
+    label: 'Settings', active: false,
+    icon: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>,
+  },
+];
+
 function DashboardMockup() {
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white shadow-2xl overflow-hidden text-[11px]">
-      {/* Top bar with user */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-100">
-        <div className="flex items-center gap-2">
+    <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden" style={{ fontSize: '12px' }}>
+      {/* Top bar */}
+      <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-200">
+        <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded-full bg-red-400" />
           <div className="w-3 h-3 rounded-full bg-yellow-400" />
           <div className="w-3 h-3 rounded-full bg-green-400" />
-          <span className="ml-2 text-[10px] text-gray-400 font-medium">MerchOS Dashboard</span>
+          <span className="ml-2 text-[11px] text-gray-500 font-medium">MerchOS Dashboard</span>
         </div>
-        <div className="flex items-center gap-2">
-          {/* Notification bell */}
+        <div className="flex items-center gap-2.5">
           <div className="relative">
-            <svg className="w-[14px] h-[14px] text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
             </svg>
             <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-red-500 rounded-full" />
           </div>
-          <div className="w-6 h-6 rounded-full overflow-hidden">
+          <div className="w-7 h-7 rounded-full overflow-hidden border-2 border-white shadow-sm">
             <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=48&h=48&fit=crop&crop=face" alt="Wadzanai M." className="w-full h-full object-cover" />
           </div>
-          <div className="text-right">
-            <p className="text-[9px] font-semibold text-gray-700 leading-none">Wadzanai M.</p>
-            <p className="text-[8px] text-gray-400 leading-none mt-0.5">Seller Plan</p>
+          <div>
+            <p className="text-[11px] font-bold text-gray-800 leading-none">Wadzanai M.</p>
+            <p className="text-[10px] text-gray-400 leading-none mt-0.5">Seller Plan ↓</p>
           </div>
         </div>
       </div>
@@ -420,92 +475,81 @@ function DashboardMockup() {
       {/* Dashboard body */}
       <div className="flex">
         {/* Sidebar */}
-        <div className="w-[140px] bg-[#1e293b] py-3 px-2 space-y-1 shrink-0">
+        <div className="w-[180px] bg-[#1e293b] py-4 px-2.5 space-y-0.5 shrink-0">
           {/* Logo */}
-          <div className="flex items-center gap-2 px-2 mb-4">
-            <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center">
-              <span className="text-white font-bold text-[10px]">M</span>
+          <div className="flex items-center gap-2 px-2 mb-5">
+            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
+              <span className="text-white font-bold text-[13px]">M</span>
             </div>
-            <span className="text-[10px] font-bold text-white">MerchOS</span>
+            <span className="text-[13px] font-bold text-white">MerchOS</span>
           </div>
           {/* Nav items */}
-          {[
-            { label: 'Dashboard', active: true },
-            { label: 'Products', active: false },
-            { label: 'Suppliers', active: false },
-            { label: 'Imports', active: false },
-            { label: 'Enhancement', active: false },
-            { label: 'Exports', active: false },
-            { label: 'Reports', active: false },
-            { label: 'Settings', active: false },
-          ].map((item) => (
+          {navItems.map((item) => (
             <div
               key={item.label}
-              className={`flex items-center gap-2 px-2 py-1.5 rounded-md ${
-                item.active ? 'bg-blue-600/20 text-blue-400' : 'text-gray-400'
+              className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg ${
+                item.active ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200'
               }`}
             >
-              <div className={`w-3.5 h-3.5 rounded ${item.active ? 'bg-blue-400' : 'bg-gray-600'}`} />
-              <span className="text-[9px] font-medium">{item.label}</span>
+              <span className={item.active ? 'text-white' : 'text-gray-500'}>{item.icon}</span>
+              <span className="text-[11px] font-medium">{item.label}</span>
             </div>
           ))}
         </div>
 
         {/* Main content */}
-        <div className="flex-1 p-3 space-y-3 bg-gray-50/50 min-w-0">
+        <div className="flex-1 p-4 space-y-3 bg-white min-w-0">
           {/* Stats row */}
-          <div className="grid grid-cols-4 gap-2">
-            <div className="rounded-lg bg-white p-2.5 border border-gray-100 shadow-sm">
-              <p className="text-[8px] text-gray-500 font-medium">Products Processed</p>
-              <p className="text-sm font-bold text-gray-900 mt-0.5">12,540</p>
-              <p className="text-[8px] text-green-600 font-medium mt-0.5">+24% vs last week</p>
-            </div>
-            <div className="rounded-lg bg-white p-2.5 border border-gray-100 shadow-sm">
-              <p className="text-[8px] text-gray-500 font-medium">Listings Created</p>
-              <p className="text-sm font-bold text-gray-900 mt-0.5">8,742</p>
-              <p className="text-[8px] text-green-600 font-medium mt-0.5">+18% vs last week</p>
-            </div>
-            <div className="rounded-lg bg-white p-2.5 border border-gray-100 shadow-sm">
-              <p className="text-[8px] text-gray-500 font-medium">Success Rate</p>
-              <p className="text-sm font-bold text-gray-900 mt-0.5">98.6%</p>
-              <p className="text-[8px] text-green-600 font-medium mt-0.5">+2.1% vs last week</p>
-            </div>
-            <div className="rounded-lg bg-white p-2.5 border border-gray-100 shadow-sm">
-              <p className="text-[8px] text-gray-500 font-medium">Hours Saved</p>
-              <p className="text-sm font-bold text-gray-900 mt-0.5">320+</p>
-              <p className="text-[8px] text-gray-500 font-medium mt-0.5">This Week</p>
-            </div>
+          <div className="grid grid-cols-4 gap-3">
+            {[
+              { label: 'Products Processed', value: '12,540', trend: '+24% vs last week', trendColor: 'text-green-600' },
+              { label: 'Listings Created', value: '8,742', trend: '+18% vs last week', trendColor: 'text-green-600' },
+              { label: 'Success Rate', value: '98.6%', trend: '+2.1% vs last week', trendColor: 'text-green-600' },
+              { label: 'Hours Saved', value: '320+', trend: 'This Week', trendColor: 'text-gray-400' },
+            ].map((stat) => (
+              <div key={stat.label} className="rounded-xl bg-white p-3 border border-gray-200 shadow-sm">
+                <p className="text-[10px] text-gray-500 font-medium">{stat.label}</p>
+                <p className="text-[18px] font-bold text-gray-900 mt-0.5 leading-tight">{stat.value}</p>
+                <p className={`text-[10px] font-medium mt-1 ${stat.trendColor}`}>{stat.trend}</p>
+              </div>
+            ))}
           </div>
 
-          {/* Middle section - chart + categories */}
-          <div className="grid grid-cols-2 gap-2">
-            {/* Listing Performance Chart */}
-            <div className="rounded-lg bg-white p-2.5 border border-gray-100 shadow-sm">
+          {/* Row 2 — Chart + Categories */}
+          <div className="grid gap-3" style={{ gridTemplateColumns: '65% 35%' }}>
+            {/* Listing Performance Area Chart */}
+            <div className="rounded-xl bg-white p-3 border border-gray-200 shadow-sm">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-[9px] font-semibold text-gray-700">Listing Performance</p>
-                <span className="flex items-center gap-0.5 text-[8px] text-gray-400">
+                <p className="text-[13px] font-semibold text-gray-800">Listing Performance</p>
+                <span className="flex items-center gap-0.5 text-[10px] text-gray-400 border border-gray-200 rounded px-1.5 py-0.5">
                   Last 7 days
-                  <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                  <svg className="w-3 h-3 ml-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </span>
               </div>
-              <ResponsiveContainer width="100%" height={60}>
-                <LineChart data={[{day:'Mon',value:45},{day:'Tue',value:52},{day:'Wed',value:68},{day:'Thu',value:72},{day:'Fri',value:65},{day:'Sat',value:80},{day:'Sun',value:88}]}>
-                  <XAxis dataKey="day" fontSize={7} axisLine={false} tickLine={false} />
-                  <YAxis hide />
-                  <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3, fill: '#3b82f6' }} />
-                </LineChart>
+              <ResponsiveContainer width="100%" height={80}>
+                <AreaChart data={listingPerfData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.18} />
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="day" fontSize={9} axisLine={false} tickLine={false} tick={{ fill: '#9ca3af' }} />
+                  <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} fontSize={9} axisLine={false} tickLine={false} tick={{ fill: '#9ca3af' }} width={28} />
+                  <Area type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} fill="url(#areaGrad)" dot={{ r: 3, fill: '#3b82f6', strokeWidth: 0 }} />
+                </AreaChart>
               </ResponsiveContainer>
             </div>
 
             {/* Top Categories */}
-            <div className="rounded-lg bg-white p-2.5 border border-gray-100 shadow-sm">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-[9px] font-semibold text-gray-700">Top Categories</p>
-                <span className="text-[8px] text-blue-600 cursor-pointer">View all</span>
+            <div className="rounded-xl bg-white p-3 border border-gray-200 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-[13px] font-semibold text-gray-800">Top Categories</p>
+                <span className="text-[11px] text-blue-600 cursor-pointer font-medium">View all</span>
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-2.5">
                 {[
                   { name: 'Electronics', count: '2,340' },
                   { name: 'Home & Kitchen', count: '1,670' },
@@ -514,79 +558,97 @@ function DashboardMockup() {
                   { name: 'Sports', count: '880' },
                 ].map((cat) => (
                   <div key={cat.name} className="flex items-center justify-between">
-                    <span className="text-[8px] text-gray-600">{cat.name}</span>
-                    <span className="text-[8px] font-semibold text-gray-800">{cat.count}</span>
+                    <span className="text-[11px] text-gray-600">{cat.name}</span>
+                    <span className="text-[11px] font-semibold text-gray-800">{cat.count}</span>
                   </div>
                 ))}
               </div>
             </div>
           </div>
 
-          {/* Bottom section - imports + donut */}
-          <div className="grid grid-cols-2 gap-2">
-            {/* Recent Imports Table */}
-            <div className="rounded-lg bg-white p-2.5 border border-gray-100 shadow-sm">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-[9px] font-semibold text-gray-700">Recent Imports</p>
-                <span className="text-[8px] text-blue-600 cursor-pointer">View all imports →</span>
+          {/* Row 3 — Imports + Processing Overview */}
+          <div className="grid gap-3" style={{ gridTemplateColumns: '65% 35%' }}>
+            {/* Recent Imports */}
+            <div className="rounded-xl bg-white p-3 border border-gray-200 shadow-sm">
+              <div className="flex items-center justify-between mb-2.5">
+                <p className="text-[13px] font-semibold text-gray-800">Recent Imports</p>
+                <span className="text-[11px] text-blue-600 cursor-pointer font-medium">View all imports →</span>
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 {[
-                  { name: 'Supplier_Catalog_June.pdf', count: '1,385', status: 'Completed', time: '2 min ago', color: 'text-green-600' },
-                  { name: 'WhatsApp_images...', count: '842', status: 'Completed', time: '15 min ago', color: 'text-green-600' },
-                  { name: 'supplier_prices.xlsx', count: '—', status: 'Processing', time: '—', color: 'text-blue-600' },
-                  { name: 'supplier_products.pdf', count: '1,902', status: 'Completed', time: '1hr ago', color: 'text-green-600' },
+                  {
+                    name: 'Supplier_Catalog_Jun.pdf', count: '1,385', status: 'Completed', time: '2 min ago',
+                    statusBg: 'bg-green-50 text-green-700',
+                    icon: <svg className="w-5 h-5 text-red-500 shrink-0" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM8 17v-1h8v1H8zm0-3v-1h8v1H8zm0-3V9.5h3V11H8z" /></svg>,
+                  },
+                  {
+                    name: 'WhatsApp_Images.zip', count: '842', status: 'Completed', time: '15 min ago',
+                    statusBg: 'bg-green-50 text-green-700',
+                    icon: <svg className="w-5 h-5 text-green-600 shrink-0" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM7 13h2v2H7v-2zm0-3h10v1H7v-1zm0 6h10v1H7v-1z" /></svg>,
+                  },
+                  {
+                    name: 'supplier_prices.xlsx', count: '—', status: 'Processing', time: '—',
+                    statusBg: 'bg-blue-50 text-blue-700',
+                    icon: <svg className="w-5 h-5 text-blue-500 shrink-0" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM8 17v-1.5l3-1.5-3-1.5V11l5 2.5-5 2.5z" /></svg>,
+                  },
+                  {
+                    name: 'supplier_product_list.csv', count: '1,902', status: 'Completed', time: '1 hr ago',
+                    statusBg: 'bg-green-50 text-green-700',
+                    icon: <svg className="w-5 h-5 text-blue-400 shrink-0" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM7 11h10v1H7v-1zm0 3h10v1H7v-1zm0 3h7v1H7v-1z" /></svg>,
+                  },
                 ].map((item) => (
-                  <div key={item.name} className="flex items-center gap-2 text-[8px]">
-                    <span className="text-gray-600 truncate flex-1">{item.name}</span>
-                    <span className="text-gray-500 w-8 text-right">{item.count}</span>
-                    <span className={`font-medium w-14 text-center ${item.color}`}>{item.status}</span>
-                    <span className="text-gray-400 w-12 text-right">{item.time}</span>
+                  <div key={item.name} className="flex items-center gap-2.5">
+                    {item.icon}
+                    <span className="text-[11px] text-gray-700 truncate flex-1 min-w-0">{item.name}</span>
+                    <span className="text-[11px] text-gray-500 w-10 text-right shrink-0">{item.count}</span>
+                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 ${item.statusBg}`}>{item.status}</span>
+                    <span className="text-[10px] text-gray-400 w-14 text-right shrink-0">{item.time}</span>
                   </div>
                 ))}
               </div>
             </div>
 
             {/* Processing Overview Donut */}
-            <div className="rounded-lg bg-white p-2.5 border border-gray-100 shadow-sm">
-              <p className="text-[9px] font-semibold text-gray-700 mb-2">Processing Overview</p>
-              <div className="flex items-center justify-center">
+            <div className="rounded-xl bg-white p-3 border border-gray-200 shadow-sm flex flex-col">
+              <p className="text-[13px] font-semibold text-gray-800 mb-2">Processing Overview</p>
+              <div className="flex items-center justify-center flex-1">
                 <div className="relative">
-                  <ResponsiveContainer width={80} height={80}>
+                  <ResponsiveContainer width={96} height={96}>
                     <PieChart>
                       <Pie
-                        data={[{name:'Completed',value:98.6,color:'#22c55e'},{name:'Processing',value:1.0,color:'#3b82f6'},{name:'Failed',value:0.4,color:'#ef4444'}]}
+                        data={donutData}
                         cx="50%"
                         cy="50%"
-                        innerRadius={22}
-                        outerRadius={32}
+                        innerRadius={28}
+                        outerRadius={40}
                         dataKey="value"
+                        startAngle={90}
+                        endAngle={-270}
                       >
-                        <Cell fill="#22c55e" />
-                        <Cell fill="#3b82f6" />
-                        <Cell fill="#ef4444" />
+                        {donutData.map((_, index) => (
+                          <Cell key={`cell-${index}`} fill={donutColors[index]} />
+                        ))}
                       </Pie>
                     </PieChart>
                   </ResponsiveContainer>
-                  {/* Center text */}
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-[10px] font-bold text-gray-900">98.6%</span>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-[12px] font-bold text-gray-900 leading-none">98.6%</span>
+                    <span className="text-[9px] text-gray-400 leading-none mt-0.5">Success Rate</span>
                   </div>
                 </div>
               </div>
-              {/* Legend */}
               <div className="flex items-center justify-center gap-3 mt-2">
                 <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 rounded-full bg-green-500" />
-                  <span className="text-[7px] text-gray-500">Completed</span>
+                  <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+                  <span className="text-[9px] text-gray-500">Completed 98.6%</span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 rounded-full bg-blue-500" />
-                  <span className="text-[7px] text-gray-500">Processing</span>
+                  <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                  <span className="text-[9px] text-gray-500">Processing 1.1%</span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 rounded-full bg-red-500" />
-                  <span className="text-[7px] text-gray-500">Failed</span>
+                  <div className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+                  <span className="text-[9px] text-gray-500">Failed 0.3%</span>
                 </div>
               </div>
             </div>
