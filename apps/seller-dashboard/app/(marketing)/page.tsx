@@ -402,8 +402,8 @@ function DashboardMockup() {
             </svg>
             <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-red-500 rounded-full" />
           </div>
-          <div className="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center">
-            <span className="text-[8px] font-bold text-white">WM</span>
+          <div className="w-6 h-6 rounded-full overflow-hidden">
+            <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=48&h=48&fit=crop&crop=face" alt="Wadzanai M." className="w-full h-full object-cover" />
           </div>
           <div className="text-right">
             <p className="text-[9px] font-semibold text-gray-700 leading-none">Wadzanai M.</p>
