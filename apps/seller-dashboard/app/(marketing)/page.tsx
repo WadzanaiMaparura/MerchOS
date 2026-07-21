@@ -209,11 +209,58 @@ export default function MarketingPage() {
   );
 }
 
+// ─── Customer Review Stack (data-driven, future backend integration) ─────────
+
+interface CustomerReview {
+  id: string;
+  name: string;
+  company?: string;
+  imageUrl: string;
+  rating: number;
+}
+
+const customerReviews: CustomerReview[] = [
+  { id: '1', name: 'Thandi K.', company: 'TK Electronics', imageUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=80&h=80&fit=crop&crop=face', rating: 5 },
+  { id: '2', name: 'Michael N.', company: 'MN Traders', imageUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=80&h=80&fit=crop&crop=face', rating: 5 },
+  { id: '3', name: 'Lerato M.', company: 'LM Store', imageUrl: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=80&h=80&fit=crop&crop=face', rating: 5 },
+  { id: '4', name: 'David P.', company: 'DP Solutions', imageUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=80&h=80&fit=crop&crop=face', rating: 5 },
+  { id: '5', name: 'Sarah J.', company: 'SJ Lifestyle', imageUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=80&h=80&fit=crop&crop=face', rating: 5 },
+];
+
+function CustomerReviewStack({ reviews }: { reviews: CustomerReview[] }) {
+  return (
+    <div className="flex items-center gap-4">
+      {/* Overlapping avatars */}
+      <div className="flex -space-x-2.5">
+        {reviews.slice(0, 5).map((review) => (
+          <img
+            key={review.id}
+            src={review.imageUrl}
+            alt={review.name}
+            className="w-9 h-9 rounded-full border-2 border-white object-cover shadow-sm"
+          />
+        ))}
+      </div>
+
+      {/* Rating and trust text */}
+      <div>
+        <div className="flex items-center gap-1">
+          {[...Array(5)].map((_, i) => (
+            <StarIcon key={i} />
+          ))}
+          <span className="text-sm font-semibold text-gray-700 ml-1.5">5.0</span>
+        </div>
+        <p className="text-sm text-gray-500 mt-0.5">Trusted by marketplace sellers across South Africa</p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Hero Section ────────────────────────────────────────────────────────────
 
 function HeroSection() {
   return (
-    <section className="relative overflow-x-clip py-20 sm:py-28 lg:py-36">
+    <section className="relative overflow-x-clip py-24 sm:py-32 lg:py-40 bg-gradient-to-b from-white via-[#f0f6ff]/40 to-white">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
           {/* Left column */}
@@ -222,9 +269,9 @@ function HeroSection() {
               Built for Marketplace Sellers
             </span>
 
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-gray-900 leading-[1.1]">
-              Marketplace Automation,{'\n'}
-              Engineered for{'\n'}
+            <h1 className="text-4xl sm:text-5xl lg:text-[3.5rem] xl:text-[4rem] font-extrabold tracking-tight text-gray-900 leading-[1.08]">
+              Marketplace Automation,<br />
+              Engineered for<br />
               <span className="text-blue-600">Accuracy &amp; Speed.</span>
             </h1>
 
@@ -237,14 +284,14 @@ function HeroSection() {
             <div className="mt-8 flex flex-col sm:flex-row items-start gap-4">
               <a
                 href="/register"
-                className="inline-flex items-center rounded-full bg-blue-600 px-6 py-3 text-base font-semibold text-white shadow-sm hover:bg-blue-700 hover:scale-[1.02] transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                className="inline-flex items-center rounded-full bg-blue-600 px-7 py-3.5 text-[15px] font-semibold text-white shadow-md shadow-blue-600/20 hover:bg-blue-700 hover:shadow-lg hover:shadow-blue-600/30 hover:scale-[1.02] transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
               >
                 Start Free Trial
                 <ArrowRightIcon />
               </a>
               <a
                 href="#demo"
-                className="inline-flex items-center rounded-full border border-gray-200 bg-white px-6 py-3 text-base font-semibold text-gray-700 shadow-sm hover:bg-gray-50 hover:scale-[1.02] transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                className="inline-flex items-center rounded-full border border-gray-200 bg-white px-7 py-3.5 text-[15px] font-semibold text-gray-700 shadow-sm hover:bg-gray-50 hover:scale-[1.02] transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
               >
                 <PlayIcon />
                 Watch Demo
@@ -252,70 +299,40 @@ function HeroSection() {
             </div>
 
             {/* Trust indicators */}
-            <div className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-600">
+            <div className="mt-8 flex flex-wrap gap-x-8 gap-y-3 text-sm text-gray-500">
               {['Save 40+ hours every week', 'Reduce listing rejections', 'Scale your business faster'].map((text) => (
                 <span key={text} className="flex items-center gap-1.5">
-                  <CheckIcon />
+                  <CheckIcon className="w-4 h-4 text-blue-500" />
                   {text}
                 </span>
               ))}
             </div>
 
-            {/* Social proof */}
-            <div className="mt-8 flex items-center gap-3 flex-wrap">
-              <div className="flex -space-x-2">
-                {[
-                  { color: 'bg-blue-500', initials: 'LM' },
-                  { color: 'bg-green-500', initials: 'SD' },
-                  { color: 'bg-purple-500', initials: 'NB' },
-                  { color: 'bg-orange-500', initials: 'JR' },
-                  { color: 'bg-pink-500', initials: 'TK' },
-                ].map((avatar) => (
-                  <div
-                    key={avatar.initials}
-                    className={`w-8 h-8 rounded-full ${avatar.color} border-2 border-white flex items-center justify-center`}
-                  >
-                    <span className="text-[10px] font-bold text-white">{avatar.initials}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="flex items-center gap-1">
-                {[...Array(5)].map((_, i) => (
-                  <StarIcon key={i} />
-                ))}
-              </div>
-              <span className="text-sm text-gray-500">Trusted by marketplace sellers across South Africa</span>
+            {/* Customer trust section */}
+            <div className="mt-10">
+              <CustomerReviewStack reviews={customerReviews} />
             </div>
 
             {/* Works with */}
-            <div className="mt-8 pt-6 border-t border-gray-100">
-              <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-3">Works with:</p>
-              <div className="flex flex-wrap items-center gap-5">
-                <span className="flex items-center gap-1.5 text-sm font-bold text-gray-500">
-                  <span className="w-4 h-4 rounded-full bg-gradient-to-br from-blue-500 to-green-500 inline-block" />
-                  takealot
-                </span>
-                <span className="text-sm font-bold text-gray-500">amazon</span>
-                <span className="flex items-center gap-1.5 text-sm font-bold text-gray-500">
-                  makro
-                  <svg className="w-3.5 h-3.5 text-red-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
-                </span>
-                <span className="flex items-center gap-1.5 text-sm font-bold text-gray-500">
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
-                  Shopify
-                </span>
-                <span className="text-sm font-bold text-gray-500 uppercase tracking-wide">WOO COMMERCE</span>
+            <div className="mt-10 pt-8 border-t border-gray-100">
+              <p className="text-[11px] text-gray-400 uppercase tracking-widest font-medium mb-4">Works with</p>
+              <div className="flex flex-wrap items-center gap-6 sm:gap-8">
+                <span className="text-base font-bold text-gray-400 tracking-tight">takealot<span className="text-blue-500">●</span></span>
+                <span className="text-base font-bold text-gray-400 tracking-tight">amazon</span>
+                <span className="text-base font-bold text-gray-400 tracking-tight">makro<span className="text-red-500">✓</span></span>
+                <span className="text-base font-bold text-gray-400 tracking-tight">shopify</span>
+                <span className="text-base font-bold text-gray-400 uppercase tracking-wider text-[13px]">WooCommerce</span>
               </div>
             </div>
           </div>
 
           {/* Right column - Dashboard mockup */}
-          <div className="relative hidden lg:block -mr-16 xl:-mr-24">
-            {/* Blue glow */}
-            <div className="absolute inset-0 bg-blue-400/15 rounded-full blur-[100px] scale-90" aria-hidden="true" />
+          <div className="relative hidden lg:block">
+            {/* Subtle blue ambient glow */}
+            <div className="absolute -inset-4 bg-blue-500/10 rounded-3xl blur-[60px]" aria-hidden="true" />
 
-            {/* Dashboard card with tilt, overlap, and float animation */}
-            <div className="relative animate-float transform rotate-[2deg] translate-x-8 xl:translate-x-12 shadow-2xl rounded-2xl">
+            {/* Dashboard with premium positioning */}
+            <div className="relative animate-float transform rotate-[1.5deg] scale-[0.92] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] rounded-2xl">
               <DashboardMockup />
             </div>
           </div>
