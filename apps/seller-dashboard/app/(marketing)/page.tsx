@@ -301,10 +301,10 @@ function HeroSection() {
             </div>
 
             {/* Trust indicators */}
-            <div className="mt-8 flex items-center gap-x-6 text-[13px] font-normal text-[#4B5563]">
+            <div className="mt-8 flex items-center gap-x-6 text-[12px] font-semibold text-[#374151]">
               {['Save 40+ hours every week', 'Reduce listing rejections', 'Scale your business faster'].map((text) => (
                 <span key={text} className="flex items-center gap-1.5 whitespace-nowrap">
-                  <svg className="w-[18px] h-[18px] text-[#2563EB] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                  <svg className="w-[16px] h-[16px] text-[#2563EB] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   {text}
