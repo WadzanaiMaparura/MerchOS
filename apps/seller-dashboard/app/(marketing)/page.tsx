@@ -260,7 +260,7 @@ function CustomerReviewStack({ reviews }: { reviews: CustomerReview[] }) {
 
 function HeroSection() {
   return (
-    <section className="relative overflow-x-clip pt-12 pb-20 sm:pt-16 sm:pb-28 lg:pt-16 lg:pb-32 bg-white">
+    <section className="relative overflow-x-clip pt-12 pb-10 sm:pt-16 sm:pb-14 lg:pt-16 lg:pb-16 bg-white">
       {/* Subtle background glow on right side */}
       <div className="absolute top-0 right-0 w-[60%] h-full bg-gradient-to-bl from-[#eef5ff]/60 via-[#f4f8ff]/30 to-transparent pointer-events-none" aria-hidden="true" />
 
@@ -596,10 +596,10 @@ function DashboardMockup() {
 
 function WorkflowSection() {
   return (
-    <section id="how-it-works" className="py-14 sm:py-20">
+    <section id="how-it-works" className="py-8 sm:py-12">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="text-center mb-10">
+        <div className="text-center mb-6">
           <span className="inline-block text-xs uppercase tracking-wider text-blue-600 font-semibold mb-4">
             Workflow Transformation
           </span>
@@ -670,7 +670,7 @@ function WorkflowSection() {
 
 function FeaturesSection() {
   return (
-    <section className="py-14 sm:py-20 bg-gray-50/50">
+    <section className="py-8 sm:py-12 bg-gray-50/50">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.5fr] gap-12 lg:gap-16 items-center">
           {/* Left text */}
@@ -718,10 +718,10 @@ function TestimonialsSection() {
   };
 
   return (
-    <section className="py-14 sm:py-20">
+    <section className="py-8 sm:py-12">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="text-center mb-10">
+        <div className="text-center mb-6">
           <span className="inline-block text-xs uppercase tracking-wider text-blue-600 font-semibold mb-4">
             Trusted by Sellers
           </span>
@@ -815,10 +815,10 @@ function TestimonialCard({ testimonial }: { testimonial: (typeof testimonials)[n
 
 function PricingSection() {
   return (
-    <section id="pricing" className="py-14 sm:py-20">
+    <section id="pricing" className="py-8 sm:py-12">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="text-center mb-10">
+        <div className="text-center mb-6">
           <span className="inline-block text-xs uppercase tracking-wider text-blue-600 font-semibold mb-4">
             Simple, Transparent Pricing
           </span>
