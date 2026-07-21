@@ -365,12 +365,10 @@ function HeroSection() {
           <div className="relative hidden lg:block self-start -mt-4" style={{ perspective: '1800px' }}>
             {/* Subtle blue ambient glow */}
             <div className="absolute -inset-8 bg-blue-400/8 rounded-[40px] blur-[80px]" aria-hidden="true" />
-            {/* Soft highlight on top edge */}
-            <div className="absolute -top-2 left-[10%] right-[10%] h-[2px] bg-gradient-to-r from-transparent via-white/60 to-transparent rounded-full" aria-hidden="true" />
 
-            {/* Dashboard with 3D perspective transform */}
+            {/* Dashboard with 3D perspective transform — CSS blend to hide background */}
             <div
-              className="relative ml-auto w-[95%] animate-float rounded-2xl shadow-[0_30px_80px_-20px_rgba(37,99,235,0.18),0_8px_24px_-8px_rgba(0,0,0,0.08)]"
+              className="relative ml-auto w-[95%] animate-float"
               style={{
                 transform: 'rotateY(-8deg) rotateX(3deg) translateX(20px) translateY(-10px)',
                 transformStyle: 'preserve-3d',
@@ -380,9 +378,10 @@ function HeroSection() {
               <img
                 src="/dashboard-hero.png"
                 alt="MerchOS Dashboard — Products processed, listings created, success rate, listing performance chart, top categories, recent imports, processing overview"
-                className="w-full h-auto rounded-2xl"
+                className="w-full h-auto drop-shadow-[0_20px_60px_rgba(37,99,235,0.12)]"
                 width={900}
                 height={620}
+                style={{ mixBlendMode: 'multiply' }}
               />
             </div>
           </div>
