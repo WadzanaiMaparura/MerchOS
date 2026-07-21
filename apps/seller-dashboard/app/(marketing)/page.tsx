@@ -269,7 +269,7 @@ function HeroSection() {
               Built for Marketplace Sellers
             </span>
 
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-extrabold tracking-tight text-[#0f172a] leading-[1.1]">
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-extrabold tracking-tight text-[#0f172a] leading-[1.1]">
               Marketplace Automation,<br />
               Engineered for<br />
               <span className="text-blue-600">Accuracy &amp; Speed.</span>
