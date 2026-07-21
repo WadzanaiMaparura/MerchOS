@@ -260,7 +260,7 @@ function HeroSection() {
       {/* Subtle background glow on right side */}
       <div className="absolute top-0 right-0 w-[60%] h-full bg-gradient-to-bl from-[#eef5ff]/60 via-[#f4f8ff]/30 to-transparent pointer-events-none" aria-hidden="true" />
 
-      <div className="relative mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8">
+      <div className="relative mx-auto max-w-[1400px] px-6 sm:px-10 lg:px-16">
         <div className="grid grid-cols-1 lg:grid-cols-[48%_52%] gap-8 lg:gap-0 items-start">
           {/* Left column */}
           <div className="animate-fadeIn">
@@ -593,7 +593,7 @@ function DashboardMockup() {
 function WorkflowSection() {
   return (
     <section id="how-it-works" className="py-8 sm:py-12">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl px-6 sm:px-10 lg:px-16">
         {/* Header */}
         <div className="text-center mb-6">
           <span className="inline-block text-xs uppercase tracking-wider text-blue-600 font-semibold mb-4">
@@ -667,7 +667,7 @@ function WorkflowSection() {
 function FeaturesSection() {
   return (
     <section className="py-8 sm:py-12 bg-gray-50/50">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl px-6 sm:px-10 lg:px-16">
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.5fr] gap-12 lg:gap-16 items-center">
           {/* Left text */}
           <div>
@@ -715,7 +715,7 @@ function TestimonialsSection() {
 
   return (
     <section className="py-8 sm:py-12">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl px-6 sm:px-10 lg:px-16">
         {/* Header */}
         <div className="text-center mb-6">
           <span className="inline-block text-xs uppercase tracking-wider text-blue-600 font-semibold mb-4">
@@ -814,7 +814,7 @@ function TestimonialCard({ testimonial }: { testimonial: (typeof testimonials)[n
 function PricingSection() {
   return (
     <section id="pricing" className="py-8 sm:py-12">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl px-6 sm:px-10 lg:px-16">
         {/* Header */}
         <div className="text-center mb-6">
           <span className="inline-block text-xs uppercase tracking-wider text-blue-600 font-semibold mb-4">
