@@ -381,7 +381,6 @@ function HeroSection() {
                 className="w-full h-auto drop-shadow-[0_20px_60px_rgba(37,99,235,0.12)]"
                 width={900}
                 height={620}
-                style={{ mixBlendMode: 'multiply' }}
               />
             </div>
           </div>
