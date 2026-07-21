@@ -362,12 +362,21 @@ function HeroSection() {
           </div>
 
           {/* Right column - Dashboard mockup */}
-          <div className="relative hidden lg:block self-start -mt-4">
+          <div className="relative hidden lg:block self-start -mt-4" style={{ perspective: '1800px' }}>
             {/* Subtle blue ambient glow */}
             <div className="absolute -inset-8 bg-blue-400/8 rounded-[40px] blur-[80px]" aria-hidden="true" />
+            {/* Soft highlight on top edge */}
+            <div className="absolute -top-2 left-[10%] right-[10%] h-[2px] bg-gradient-to-r from-transparent via-white/60 to-transparent rounded-full" aria-hidden="true" />
 
-            {/* Dashboard with premium positioning — 90% width, right-aligned */}
-            <div className="relative ml-auto w-[90%] animate-float transform rotate-[1deg] shadow-[0_25px_80px_-20px_rgba(37,99,235,0.15)] rounded-2xl">
+            {/* Dashboard with 3D perspective transform */}
+            <div
+              className="relative ml-auto w-[90%] animate-float rounded-2xl shadow-[0_30px_80px_-20px_rgba(37,99,235,0.18),0_8px_24px_-8px_rgba(0,0,0,0.08)]"
+              style={{
+                transform: 'rotateY(-8deg) rotateX(3deg) translateX(20px) translateY(-10px)',
+                transformStyle: 'preserve-3d',
+                transformOrigin: 'center center',
+              }}
+            >
               <DashboardMockup />
             </div>
           </div>
