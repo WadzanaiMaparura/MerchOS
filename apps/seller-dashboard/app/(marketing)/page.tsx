@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 
@@ -370,14 +370,20 @@ function HeroSection() {
 
             {/* Dashboard with 3D perspective transform */}
             <div
-              className="relative ml-auto w-[90%] animate-float rounded-2xl shadow-[0_30px_80px_-20px_rgba(37,99,235,0.18),0_8px_24px_-8px_rgba(0,0,0,0.08)]"
+              className="relative ml-auto w-[95%] animate-float rounded-2xl shadow-[0_30px_80px_-20px_rgba(37,99,235,0.18),0_8px_24px_-8px_rgba(0,0,0,0.08)]"
               style={{
                 transform: 'rotateY(-8deg) rotateX(3deg) translateX(20px) translateY(-10px)',
                 transformStyle: 'preserve-3d',
                 transformOrigin: 'center center',
               }}
             >
-              <DashboardMockup />
+              <img
+                src="/dashboard-hero.png"
+                alt="MerchOS Dashboard — Products processed, listings created, success rate, listing performance chart, top categories, recent imports, processing overview"
+                className="w-full h-auto rounded-2xl"
+                width={900}
+                height={620}
+              />
             </div>
           </div>
         </div>
@@ -386,7 +392,7 @@ function HeroSection() {
   );
 }
 
-// ─── Dashboard Mockup ────────────────────────────────────────────────────────
+// ─── Workflow Section ────────────────────────────────────────────────────────
 
 const listingPerfData = [
   { day: 'Tue', value: 30 },
