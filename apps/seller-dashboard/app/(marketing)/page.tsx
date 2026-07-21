@@ -321,40 +321,40 @@ function HeroSection() {
             </div>
 
             {/* Works with */}
-            <div className="mt-10 pt-8 border-t border-gray-100">
-              <p className="text-[11px] text-gray-400 uppercase tracking-widest font-medium mb-4">Works with</p>
-              <div className="flex flex-wrap items-center gap-8 sm:gap-10">
+            <div className="mt-6 pt-5 border-t border-gray-100">
+              <p className="text-[10px] text-gray-400 uppercase tracking-widest font-medium mb-3">Works with</p>
+              <div className="flex items-center gap-5 sm:gap-6">
                 {/* Takealot */}
-                <span className="flex items-center gap-1 text-xl font-bold text-[#0b2239] tracking-tight">
+                <span className="flex items-center gap-0.5 text-[15px] font-bold text-[#0b2239] tracking-tight">
                   takealot
-                  <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#0b79bf] text-[8px] font-bold text-white leading-none">.com</span>
+                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#0b79bf] text-[6px] font-bold text-white leading-none">.com</span>
                 </span>
                 {/* Amazon */}
-                <span className="relative text-xl font-bold text-[#232f3e] tracking-tight">
+                <span className="relative text-[15px] font-bold text-[#232f3e] tracking-tight">
                   amazon
-                  <svg className="absolute -bottom-1 left-2 w-14 h-3" viewBox="0 0 60 12" fill="none" aria-hidden="true">
+                  <svg className="absolute -bottom-1 left-1 w-10 h-2.5" viewBox="0 0 60 12" fill="none" aria-hidden="true">
                     <path d="M2 8 Q30 12 58 4" stroke="#FF9900" strokeWidth="2.5" strokeLinecap="round" fill="none" />
                     <path d="M52 2 L58 4 L54 7" fill="#FF9900" />
                   </svg>
                 </span>
                 {/* Makro */}
-                <span className="flex items-center text-xl font-bold text-[#1a1a1a] tracking-tight">
+                <span className="flex items-center text-[15px] font-bold text-[#1a1a1a] tracking-tight">
                   makro
-                  <svg className="w-5 h-5 ml-0.5" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <svg className="w-4 h-4 ml-0.5" viewBox="0 0 20 20" fill="none" aria-hidden="true">
                     <path d="M4 10 L8 14 L16 6" stroke="#e21b1b" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </span>
                 {/* Shopify */}
-                <span className="flex items-center gap-1.5 text-xl font-bold text-[#5c8a3c] tracking-tight">
-                  <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <span className="flex items-center gap-1 text-[15px] font-bold text-[#5c8a3c] tracking-tight">
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                     <rect x="4" y="2" width="16" height="20" rx="4" fill="#95bf47" />
                     <text x="12" y="16" textAnchor="middle" fill="white" fontSize="11" fontWeight="bold" fontFamily="sans-serif">S</text>
                   </svg>
                   shopify
                 </span>
                 {/* WooCommerce */}
-                <span className="flex items-center gap-1 text-lg font-bold text-[#7f54b3] tracking-wide uppercase">
-                  <svg className="w-7 h-7" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+                <span className="flex items-center gap-0.5 text-[13px] font-bold text-[#7f54b3] tracking-wide uppercase">
+                  <svg className="w-5 h-5" viewBox="0 0 28 28" fill="none" aria-hidden="true">
                     <rect x="2" y="6" width="24" height="16" rx="4" fill="#7f54b3" />
                     <text x="14" y="17" textAnchor="middle" fill="white" fontSize="8" fontWeight="bold" fontFamily="sans-serif">Woo</text>
                   </svg>
