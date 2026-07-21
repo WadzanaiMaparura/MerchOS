@@ -368,7 +368,7 @@ function HeroSection() {
 
             {/* Dashboard with 3D perspective transform — CSS blend to hide background */}
             <div
-              className="relative ml-auto w-[95%] animate-float"
+              className="relative ml-auto w-full animate-float"
               style={{
                 transform: 'rotateY(-8deg) rotateX(3deg) translateX(20px) translateY(-10px)',
                 transformStyle: 'preserve-3d',
