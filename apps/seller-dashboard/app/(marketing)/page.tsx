@@ -269,29 +269,29 @@ function HeroSection() {
               Built for Marketplace Sellers
             </span>
 
-            <h1 className="text-[28px] sm:text-[36px] lg:text-[44px] xl:text-[52px] font-black tracking-[-1.5px] text-[#111827] leading-[0.95]">
+            <h1 className="text-[26px] sm:text-[32px] lg:text-[40px] xl:text-[48px] font-black tracking-[-1.5px] text-[#111827] leading-[0.95]">
               Marketplace Automation,<br />
               Engineered for<br />
               <span className="text-[#2563EB]">Accuracy &amp; Speed.</span>
             </h1>
 
-            <p className="mt-8 text-[18px] sm:text-[22px] font-normal text-[#4B5563] leading-[1.7] max-w-[620px]">
+            <p className="mt-6 text-[15px] sm:text-[17px] font-normal text-[#4B5563] leading-[1.7] max-w-[520px]">
               Transform supplier catalogues into marketplace-ready listings
               through an intelligent automated workflow.
             </p>
 
             {/* CTAs */}
-            <div className="mt-10 flex flex-col sm:flex-row items-start gap-5">
+            <div className="mt-8 flex flex-col sm:flex-row items-start gap-4">
               <a
                 href="/register"
-                className="inline-flex items-center rounded-xl bg-[#2563EB] px-8 py-4 text-[18px] font-semibold text-white shadow-md shadow-blue-600/20 hover:bg-blue-700 hover:shadow-lg hover:shadow-blue-600/30 hover:scale-[1.02] transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                className="inline-flex items-center rounded-xl bg-[#2563EB] px-6 py-3.5 text-[15px] font-semibold text-white shadow-md shadow-blue-600/20 hover:bg-blue-700 hover:shadow-lg hover:shadow-blue-600/30 hover:scale-[1.02] transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
               >
                 Start Free Trial
                 <ArrowRightIcon />
               </a>
               <a
                 href="#demo"
-                className="inline-flex items-center rounded-xl border border-gray-200 bg-white px-8 py-4 text-[18px] font-semibold text-gray-700 shadow-sm hover:bg-gray-50 hover:scale-[1.02] transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                className="inline-flex items-center rounded-xl border border-gray-200 bg-white px-6 py-3.5 text-[15px] font-semibold text-gray-700 shadow-sm hover:bg-gray-50 hover:scale-[1.02] transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
               >
                 Watch Demo
                 <svg className="ml-2 w-5 h-5 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -302,7 +302,7 @@ function HeroSection() {
             </div>
 
             {/* Trust indicators */}
-            <div className="mt-10 flex items-center gap-x-6 text-[14px] sm:text-[16px] font-medium text-[#4B5563]">
+            <div className="mt-8 flex items-center gap-x-5 text-[13px] sm:text-[14px] font-medium text-[#4B5563]">
               {['Save 40+ hours every week', 'Reduce listing rejections', 'Scale your business faster'].map((text) => (
                 <span key={text} className="flex items-center gap-1.5 whitespace-nowrap">
                   <span className="w-5 h-5 rounded-full bg-[#2563EB] flex items-center justify-center shrink-0">
