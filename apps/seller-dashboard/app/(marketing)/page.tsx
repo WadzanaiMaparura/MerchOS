@@ -260,7 +260,7 @@ function CustomerReviewStack({ reviews }: { reviews: CustomerReview[] }) {
 
 function HeroSection() {
   return (
-    <section className="relative overflow-x-clip py-24 sm:py-32 lg:py-40 bg-gradient-to-b from-white via-[#f0f6ff]/40 to-white">
+    <section className="relative overflow-x-clip pt-10 pb-24 sm:pt-14 sm:pb-32 lg:pt-16 lg:pb-40 bg-gradient-to-b from-white via-[#f0f6ff]/40 to-white">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
           {/* Left column */}
