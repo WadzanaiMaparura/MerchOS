@@ -265,17 +265,17 @@ function HeroSection() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
           {/* Left column */}
           <div className="animate-fadeIn">
-            <span className="inline-block text-xs uppercase tracking-wider text-blue-600 font-semibold mb-4">
+            <span className="inline-block text-[13px] uppercase tracking-[0.16em] text-[#2563EB] font-bold mb-4">
               Built for Marketplace Sellers
             </span>
 
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-extrabold tracking-tight text-[#0f172a] leading-[1.1]">
+            <h1 className="text-[36px] sm:text-[48px] lg:text-[60px] xl:text-[72px] font-black tracking-[-2px] text-[#111827] leading-[0.95]">
               Marketplace Automation,<br />
               Engineered for<br />
-              <span className="text-blue-600">Accuracy &amp; Speed.</span>
+              <span className="text-[#2563EB]">Accuracy &amp; Speed.</span>
             </h1>
 
-            <p className="mt-8 text-lg sm:text-xl text-gray-600 leading-relaxed max-w-xl">
+            <p className="mt-8 text-[18px] sm:text-[22px] font-normal text-[#4B5563] leading-[1.7] max-w-[620px]">
               Transform supplier catalogues into marketplace-ready listings
               through an intelligent automated workflow.
             </p>
@@ -284,14 +284,14 @@ function HeroSection() {
             <div className="mt-10 flex flex-col sm:flex-row items-start gap-5">
               <a
                 href="/register"
-                className="inline-flex items-center rounded-xl bg-blue-600 px-8 py-4 text-lg font-semibold text-white shadow-md shadow-blue-600/20 hover:bg-blue-700 hover:shadow-lg hover:shadow-blue-600/30 hover:scale-[1.02] transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                className="inline-flex items-center rounded-xl bg-[#2563EB] px-8 py-4 text-[18px] font-semibold text-white shadow-md shadow-blue-600/20 hover:bg-blue-700 hover:shadow-lg hover:shadow-blue-600/30 hover:scale-[1.02] transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
               >
                 Start Free Trial
                 <ArrowRightIcon />
               </a>
               <a
                 href="#demo"
-                className="inline-flex items-center rounded-xl border border-gray-200 bg-white px-8 py-4 text-lg font-semibold text-gray-700 shadow-sm hover:bg-gray-50 hover:scale-[1.02] transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                className="inline-flex items-center rounded-xl border border-gray-200 bg-white px-8 py-4 text-[18px] font-semibold text-gray-700 shadow-sm hover:bg-gray-50 hover:scale-[1.02] transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
               >
                 Watch Demo
                 <svg className="ml-2 w-5 h-5 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -302,11 +302,11 @@ function HeroSection() {
             </div>
 
             {/* Trust indicators */}
-            <div className="mt-10 flex items-center gap-x-6 text-xs sm:text-sm text-gray-600">
+            <div className="mt-10 flex items-center gap-x-6 text-[14px] sm:text-[16px] font-medium text-[#4B5563]">
               {['Save 40+ hours every week', 'Reduce listing rejections', 'Scale your business faster'].map((text) => (
                 <span key={text} className="flex items-center gap-1.5 whitespace-nowrap">
-                  <span className="w-4 h-4 rounded-full bg-blue-600 flex items-center justify-center shrink-0">
-                    <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                  <span className="w-5 h-5 rounded-full bg-[#2563EB] flex items-center justify-center shrink-0">
+                    <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                     </svg>
                   </span>
