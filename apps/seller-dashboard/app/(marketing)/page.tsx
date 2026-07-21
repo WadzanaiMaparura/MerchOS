@@ -43,29 +43,25 @@ const testimonials = [
     name: 'Lerato M.',
     category: 'Electronics',
     quote: 'MerchOS has saved me more than 40 hours every week. What used to take days now takes minutes.',
-    initials: 'LM',
-    color: 'bg-blue-500',
+    imageUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=64&h=64&fit=crop&crop=face',
   },
   {
     name: 'Sipho D.',
     category: 'Home & Kitchen',
     quote: 'The descriptions and images are amazing! My listings look professional and sell better.',
-    initials: 'SD',
-    color: 'bg-green-500',
+    imageUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=64&h=64&fit=crop&crop=face',
   },
   {
     name: 'Nicole B.',
     category: 'Beauty',
     quote: 'Fewer rejections, more sales. MerchOS is now our secret weapon.',
-    initials: 'NB',
-    color: 'bg-purple-500',
+    imageUrl: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=64&h=64&fit=crop&crop=face',
   },
   {
     name: 'Jason R.',
     category: 'Sports & Outdoors',
     quote: 'Finally, a tool built for Takealot sellers. The support is incredible too!',
-    initials: 'JR',
-    color: 'bg-orange-500',
+    imageUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=64&h=64&fit=crop&crop=face',
   },
 ];
 
@@ -799,9 +795,11 @@ function TestimonialCard({ testimonial }: { testimonial: (typeof testimonials)[n
 
       {/* Author */}
       <div className="flex items-center gap-3">
-        <div className={`w-9 h-9 rounded-full ${testimonial.color} flex items-center justify-center`}>
-          <span className="text-[11px] font-bold text-white">{testimonial.initials}</span>
-        </div>
+        <img
+          src={testimonial.imageUrl}
+          alt={testimonial.name}
+          className="w-9 h-9 rounded-full object-cover border border-gray-100"
+        />
         <div>
           <p className="text-sm font-semibold text-gray-900">{testimonial.name}</p>
           <p className="text-xs text-gray-500">{testimonial.category}</p>
