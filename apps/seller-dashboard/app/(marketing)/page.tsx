@@ -269,40 +269,47 @@ function HeroSection() {
               Built for Marketplace Sellers
             </span>
 
-            <h1 className="text-4xl sm:text-5xl lg:text-[3.5rem] xl:text-[4rem] font-extrabold tracking-tight text-gray-900 leading-[1.08]">
+            <h1 className="text-5xl sm:text-6xl lg:text-[4rem] xl:text-[4.5rem] font-extrabold tracking-tight text-[#0f172a] leading-[1.08]">
               Marketplace Automation,<br />
               Engineered for<br />
               <span className="text-blue-600">Accuracy &amp; Speed.</span>
             </h1>
 
-            <p className="mt-6 text-lg text-gray-600 leading-relaxed max-w-xl">
+            <p className="mt-8 text-lg sm:text-xl text-gray-600 leading-relaxed max-w-xl">
               Transform supplier catalogues into marketplace-ready listings
               through an intelligent automated workflow.
             </p>
 
             {/* CTAs */}
-            <div className="mt-8 flex flex-col sm:flex-row items-start gap-4">
+            <div className="mt-10 flex flex-col sm:flex-row items-start gap-5">
               <a
                 href="/register"
-                className="inline-flex items-center rounded-full bg-blue-600 px-7 py-3.5 text-[15px] font-semibold text-white shadow-md shadow-blue-600/20 hover:bg-blue-700 hover:shadow-lg hover:shadow-blue-600/30 hover:scale-[1.02] transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                className="inline-flex items-center rounded-xl bg-blue-600 px-8 py-4 text-lg font-semibold text-white shadow-md shadow-blue-600/20 hover:bg-blue-700 hover:shadow-lg hover:shadow-blue-600/30 hover:scale-[1.02] transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
               >
                 Start Free Trial
                 <ArrowRightIcon />
               </a>
               <a
                 href="#demo"
-                className="inline-flex items-center rounded-full border border-gray-200 bg-white px-7 py-3.5 text-[15px] font-semibold text-gray-700 shadow-sm hover:bg-gray-50 hover:scale-[1.02] transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                className="inline-flex items-center rounded-xl border border-gray-200 bg-white px-8 py-4 text-lg font-semibold text-gray-700 shadow-sm hover:bg-gray-50 hover:scale-[1.02] transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
               >
-                <PlayIcon />
                 Watch Demo
+                <svg className="ml-2 w-5 h-5 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
               </a>
             </div>
 
             {/* Trust indicators */}
-            <div className="mt-8 flex flex-wrap gap-x-8 gap-y-3 text-sm text-gray-500">
+            <div className="mt-10 flex flex-wrap gap-x-8 gap-y-3 text-sm text-gray-600">
               {['Save 40+ hours every week', 'Reduce listing rejections', 'Scale your business faster'].map((text) => (
-                <span key={text} className="flex items-center gap-1.5">
-                  <CheckIcon className="w-4 h-4 text-blue-500" />
+                <span key={text} className="flex items-center gap-2">
+                  <span className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center shrink-0">
+                    <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  </span>
                   {text}
                 </span>
               ))}
