@@ -260,9 +260,12 @@ function CustomerReviewStack({ reviews }: { reviews: CustomerReview[] }) {
 
 function HeroSection() {
   return (
-    <section className="relative overflow-x-clip pt-10 pb-24 sm:pt-14 sm:pb-32 lg:pt-16 lg:pb-40 bg-gradient-to-b from-white via-[#f0f6ff]/40 to-white">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+    <section className="relative overflow-x-clip pt-12 pb-20 sm:pt-16 sm:pb-28 lg:pt-16 lg:pb-32 bg-white">
+      {/* Subtle background glow on right side */}
+      <div className="absolute top-0 right-0 w-[60%] h-full bg-gradient-to-bl from-[#eef5ff]/60 via-[#f4f8ff]/30 to-transparent pointer-events-none" aria-hidden="true" />
+
+      <div className="relative mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 lg:grid-cols-[48%_52%] gap-8 lg:gap-0 items-start">
           {/* Left column */}
           <div className="animate-fadeIn">
             <span className="inline-block text-[13px] uppercase tracking-[0.16em] text-[#2563EB] font-bold mb-4">
@@ -363,12 +366,12 @@ function HeroSection() {
           </div>
 
           {/* Right column - Dashboard mockup */}
-          <div className="relative hidden lg:block">
+          <div className="relative hidden lg:block self-start -mt-4">
             {/* Subtle blue ambient glow */}
-            <div className="absolute -inset-4 bg-blue-500/10 rounded-3xl blur-[60px]" aria-hidden="true" />
+            <div className="absolute -inset-8 bg-blue-400/8 rounded-[40px] blur-[80px]" aria-hidden="true" />
 
-            {/* Dashboard with premium positioning */}
-            <div className="relative animate-float transform rotate-[1.5deg] scale-[0.92] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] rounded-2xl">
+            {/* Dashboard with premium positioning — 90% width, right-aligned */}
+            <div className="relative ml-auto w-[90%] animate-float transform rotate-[1deg] shadow-[0_25px_80px_-20px_rgba(37,99,235,0.15)] rounded-2xl">
               <DashboardMockup />
             </div>
           </div>
@@ -593,10 +596,10 @@ function DashboardMockup() {
 
 function WorkflowSection() {
   return (
-    <section id="how-it-works" className="py-24 sm:py-32">
+    <section id="how-it-works" className="py-14 sm:py-20">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="text-center mb-16">
+        <div className="text-center mb-10">
           <span className="inline-block text-xs uppercase tracking-wider text-blue-600 font-semibold mb-4">
             Workflow Transformation
           </span>
@@ -667,7 +670,7 @@ function WorkflowSection() {
 
 function FeaturesSection() {
   return (
-    <section className="py-24 sm:py-32 bg-gray-50/50">
+    <section className="py-14 sm:py-20 bg-gray-50/50">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.5fr] gap-12 lg:gap-16 items-center">
           {/* Left text */}
@@ -715,10 +718,10 @@ function TestimonialsSection() {
   };
 
   return (
-    <section className="py-24 sm:py-32">
+    <section className="py-14 sm:py-20">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="text-center mb-16">
+        <div className="text-center mb-10">
           <span className="inline-block text-xs uppercase tracking-wider text-blue-600 font-semibold mb-4">
             Trusted by Sellers
           </span>
@@ -812,10 +815,10 @@ function TestimonialCard({ testimonial }: { testimonial: (typeof testimonials)[n
 
 function PricingSection() {
   return (
-    <section id="pricing" className="py-24 sm:py-32">
+    <section id="pricing" className="py-14 sm:py-20">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="text-center mb-16">
+        <div className="text-center mb-10">
           <span className="inline-block text-xs uppercase tracking-wider text-blue-600 font-semibold mb-4">
             Simple, Transparent Pricing
           </span>
