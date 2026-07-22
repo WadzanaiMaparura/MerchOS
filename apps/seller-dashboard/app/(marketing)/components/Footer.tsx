@@ -32,11 +32,7 @@ export default function Footer() {
         {/* Footer grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
           <div className="col-span-2 md:col-span-1">
-            <div className="flex items-center gap-2 mb-4">
-              <svg className="w-7 h-7" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <circle cx="16" cy="16" r="16" fill="#2563EB"/>
-                <path d="M8 23V9h2.4l5.6 9.2L21.6 9H24v14h-2.2V13.1L16.6 21h-1.2L10.2 13.1V23H8z" fill="white"/>
-              </svg>
+            <div className="mb-4">
               <span className="text-lg font-bold text-white">MerchOS</span>
             </div>
             <p className="text-sm text-gray-400 max-w-xs">
