@@ -3,7 +3,7 @@ import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 
 export const metadata: Metadata = {
-  title: 'MerchOS — Marketplace Automation, Engineered for Accuracy & Speed',
+  title: 'MerchOS | Marketplace Automation, Engineered for Accuracy & Speed',
   description:
     'Transform supplier catalogues into marketplace-ready listings through an intelligent automated workflow designed for sellers who value speed, consistency and precision.',
 };

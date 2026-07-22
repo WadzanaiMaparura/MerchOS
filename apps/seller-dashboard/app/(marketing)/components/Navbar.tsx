@@ -11,9 +11,13 @@ export default function Navbar() {
         className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex items-center justify-between h-[72px]"
         aria-label="Main navigation"
       >
-        {/* Logo — blue wordmark, no icon */}
+        {/* Logo — M circle mark + wordmark */}
         <div className="flex items-center gap-8">
-          <a href="/" className="text-xl font-bold text-blue-600" aria-label="MerchOS home">
+          <a href="/" className="flex items-center gap-2 text-xl font-bold text-blue-600" aria-label="MerchOS home">
+            <svg className="w-8 h-8" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <circle cx="16" cy="16" r="16" fill="#2563EB"/>
+              <path d="M8 23V9h2.4l5.6 9.2L21.6 9H24v14h-2.2V13.1L16.6 21h-1.2L10.2 13.1V23H8z" fill="white"/>
+            </svg>
             MerchOS
           </a>
 
