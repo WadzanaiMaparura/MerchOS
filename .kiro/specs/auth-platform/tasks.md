@@ -54,9 +54,9 @@ Create handlers for listing, updating roles, disabling, and deleting users.
 - [x] Create services/auth/handlers/update-role.ts — AdminRemoveUserFromGroup + AdminAddUserToGroup
 - [x] Create services/auth/handlers/disable-user.ts — AdminDisableUser + emit event
 - [x] Create services/auth/handlers/delete-user.ts — AdminDeleteUser (prevent owner deletion) + emit event
-- [ ] Add unit tests for invite-user handler
-- [ ] Add unit tests for list-users handler
-- [ ] Add unit tests for update-role handler
+- [x] Add unit tests for invite-user handler
+- [x] Add unit tests for list-users handler
+- [x] Add unit tests for update-role handler
 
 ## Task 8: Implement Cognito Lambda Triggers
 Create the four Cognito Lambda triggers for tenant provisioning and custom claims.
