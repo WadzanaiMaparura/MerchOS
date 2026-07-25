@@ -49,11 +49,11 @@ Create forgot-password and reset-password Lambda handlers.
 
 ## Task 7: Implement User Management Handlers
 Create handlers for listing, updating roles, disabling, and deleting users.
-- [ ] Create services/auth/handlers/invite-user.ts — AdminCreateUser + DynamoDB invitation record + emit event
-- [ ] Create services/auth/handlers/list-users.ts — ListUsersInGroup filtered by tenantId
-- [ ] Create services/auth/handlers/update-role.ts — AdminRemoveUserFromGroup + AdminAddUserToGroup
-- [ ] Create services/auth/handlers/disable-user.ts — AdminDisableUser + emit event
-- [ ] Create services/auth/handlers/delete-user.ts — AdminDeleteUser (prevent owner deletion) + emit event
+- [x] Create services/auth/handlers/invite-user.ts — AdminCreateUser + DynamoDB invitation record + emit event
+- [x] Create services/auth/handlers/list-users.ts — ListUsersInGroup filtered by tenantId
+- [x] Create services/auth/handlers/update-role.ts — AdminRemoveUserFromGroup + AdminAddUserToGroup
+- [x] Create services/auth/handlers/disable-user.ts — AdminDisableUser + emit event
+- [x] Create services/auth/handlers/delete-user.ts — AdminDeleteUser (prevent owner deletion) + emit event
 - [ ] Add unit tests for invite-user handler
 - [ ] Add unit tests for list-users handler
 - [ ] Add unit tests for update-role handler
