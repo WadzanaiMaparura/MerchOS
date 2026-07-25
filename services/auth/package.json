@@ -1,7 +1,8 @@
 {
-  "name": "@merch-os/shared",
+  "name": "@merch-os/auth-service",
   "version": "0.1.0",
-  "description": "Shared TypeScript types, utilities, and middleware for the MerchOS platform",
+  "private": true,
+  "description": "Authentication and authorization service for the MerchOS platform",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
@@ -9,19 +10,22 @@
   ],
   "scripts": {
     "build": "tsc --project tsconfig.json",
-    "lint": "eslint 'types/**/*.ts' 'utils/**/*.ts' 'middleware/**/*.ts' 'lifecycle/**/*.ts'",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "test:unit": "vitest run --dir __tests__/unit",
+    "test:integration": "vitest run --dir __tests__/integration"
   },
   "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "3.654.0",
+    "@aws-sdk/client-eventbridge": "3.654.0",
     "@aws-sdk/client-dynamodb": "3.654.0",
     "@aws-sdk/lib-dynamodb": "3.654.0",
     "@aws-lambda-powertools/logger": "2.7.0",
     "@aws-lambda-powertools/tracer": "2.7.0",
-    "@aws-lambda-powertools/metrics": "2.7.0",
-    "@merch-os/rbac": "*",
     "@middy/core": "5.4.7",
-    "zod": "3.23.8"
+    "zod": "3.23.8",
+    "@merch-os/types": "*",
+    "@merch-os/rbac": "*"
   },
   "devDependencies": {
     "@types/aws-lambda": "8.10.140",
