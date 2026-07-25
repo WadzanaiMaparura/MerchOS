@@ -7,6 +7,10 @@
  * - configureCognitoAuth: Amplify Auth configuration helper
  * - AuthContext: Raw context (for advanced use cases)
  * - RouteGuard: Route-level auth and role-based access control component
+ * - requestPasswordReset, confirmPasswordReset: Password reset flows
+ * - acceptInvitation: Invitation acceptance flow
+ * - SessionManager: Proactive token refresh and expiry detection
+ * - createAuthenticatedFetch: Fetch wrapper with auth header injection
  */
 
 export { AuthProvider, AuthContext } from './provider';
@@ -15,3 +19,7 @@ export { configureCognitoAuth, defaultCognitoConfig, cognitoSignUp, cognitoConfi
 export type { CognitoConfig, SignUpParams } from './cognito';
 export { RouteGuard } from './route-guard';
 export type { RouteGuardProps } from './route-guard';
+export { requestPasswordReset, confirmPasswordReset } from './password-reset';
+export { acceptInvitation } from './invitation';
+export { SessionManager } from './session-manager';
+export { createAuthenticatedFetch } from './api-client';
