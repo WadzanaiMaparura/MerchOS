@@ -69,14 +69,14 @@ Create the four Cognito Lambda triggers for tenant provisioning and custom claim
 
 ## Task 9: Create Auth API CDK Stack
 Create infrastructure/lib/auth-api-stack.ts with API Gateway, JWT Authorizer, Lambda functions, DynamoDB tables, and IAM roles.
-- [ ] Create auth-api-stack.ts with HTTP API Gateway and Cognito JWT Authorizer
-- [ ] Define all 14 Lambda functions with dedicated IAM roles (least privilege)
-- [ ] Define route integrations (POST /auth/login, POST /auth/refresh, etc.)
-- [ ] Define DynamoDB tables (invitations, sessions, rate-limits) with KMS encryption
-- [ ] Wire Cognito Lambda triggers to the existing tenant pool
-- [ ] Add SSM parameters for new resource ARNs
-- [ ] Update infrastructure/bin/merch-os.ts to instantiate AuthApiStack
-- [ ] Add CDK assertion tests for auth-api-stack
+- [x] Create auth-api-stack.ts with HTTP API Gateway and Cognito JWT Authorizer
+- [x] Define all 14 Lambda functions with dedicated IAM roles (least privilege)
+- [x] Define route integrations (POST /auth/login, POST /auth/refresh, etc.)
+- [x] Define DynamoDB tables (invitations, sessions, rate-limits) with KMS encryption
+- [x] Wire Cognito Lambda triggers to the existing tenant pool
+- [x] Add SSM parameters for new resource ARNs
+- [x] Update infrastructure/bin/merch-os.ts to instantiate AuthApiStack
+- [x] Add CDK assertion tests for auth-api-stack
 
 ## Task 10: Extend Frontend Auth Package
 Add password-reset, invitation, session-manager, and API client modules to @merch-os/auth.
