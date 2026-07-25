@@ -80,17 +80,17 @@ Create infrastructure/lib/auth-api-stack.ts with API Gateway, JWT Authorizer, La
 
 ## Task 10: Extend Frontend Auth Package
 Add password-reset, invitation, session-manager, and API client modules to @merch-os/auth.
-- [ ] Create packages/auth/src/password-reset.ts — forgotPassword + confirmResetPassword using Amplify Auth
-- [ ] Create packages/auth/src/invitation.ts — Accept invitation flow (set password, join tenant)
-- [ ] Create packages/auth/src/session-manager.ts — Proactive token refresh at 55-min mark, expiry detection
-- [ ] Create packages/auth/src/api-client.ts — Fetch wrapper with auth header injection and 401 retry
-- [ ] Update packages/auth/src/index.ts — Export new modules
-- [ ] Add unit tests for session-manager
-- [ ] Add unit tests for api-client
+- [x] Create packages/auth/src/password-reset.ts — forgotPassword + confirmResetPassword using Amplify Auth
+- [x] Create packages/auth/src/invitation.ts — Accept invitation flow (set password, join tenant)
+- [x] Create packages/auth/src/session-manager.ts — Proactive token refresh at 55-min mark, expiry detection
+- [x] Create packages/auth/src/api-client.ts — Fetch wrapper with auth header injection and 401 retry
+- [x] Update packages/auth/src/index.ts — Export new modules
+- [x] Add unit tests for session-manager
+- [x] Add unit tests for api-client
 
 ## Task 11: Documentation and Environment Setup
 Create documentation and environment variable templates.
-- [ ] Create docs/auth-platform.md — Architecture overview, deployment guide, API reference
-- [ ] Create services/auth/.env.example — Template with all required environment variables
-- [ ] Update apps/seller-dashboard/.env.example — Add auth-related env vars
-- [ ] Create docs/auth-runbook.md — Operational runbook (troubleshooting, rotation, incident response)
+- [x] Create docs/auth-platform.md — Architecture overview, deployment guide, API reference
+- [x] Create services/auth/.env.example — Template with all required environment variables
+- [x] Update apps/seller-dashboard/.env.example — Add auth-related env vars
+- [x] Create docs/auth-runbook.md — Operational runbook (troubleshooting, rotation, incident response)
