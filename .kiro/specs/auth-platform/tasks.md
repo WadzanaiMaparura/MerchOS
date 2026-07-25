@@ -41,11 +41,11 @@ Create refresh token and logout Lambda handlers.
 
 ## Task 6: Implement Password Reset Handlers
 Create forgot-password and reset-password Lambda handlers.
-- [ ] Create services/auth/handlers/forgot-password.ts — Cognito ForgotPassword (no user enumeration)
-- [ ] Create services/auth/handlers/reset-password.ts — Cognito ConfirmForgotPassword
-- [ ] Create services/auth/handlers/verify-email.ts — Cognito ConfirmSignUp
-- [ ] Add unit tests for forgot-password handler
-- [ ] Add unit tests for reset-password handler
+- [x] Create services/auth/handlers/forgot-password.ts — Cognito ForgotPassword (no user enumeration)
+- [x] Create services/auth/handlers/reset-password.ts — Cognito ConfirmForgotPassword
+- [x] Create services/auth/handlers/verify-email.ts — Cognito ConfirmSignUp
+- [x] Add unit tests for forgot-password handler
+- [x] Add unit tests for reset-password handler
 
 ## Task 7: Implement User Management Handlers
 Create handlers for listing, updating roles, disabling, and deleting users.
