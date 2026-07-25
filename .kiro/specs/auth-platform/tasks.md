@@ -60,12 +60,12 @@ Create handlers for listing, updating roles, disabling, and deleting users.
 
 ## Task 8: Implement Cognito Lambda Triggers
 Create the four Cognito Lambda triggers for tenant provisioning and custom claims.
-- [ ] Create services/auth/triggers/pre-sign-up.ts — Validate email, auto-confirm if invited, assign tenantId
-- [ ] Create services/auth/triggers/post-confirmation.ts — Create tenant DynamoDB record, emit user.registered event
-- [ ] Create services/auth/triggers/pre-token-generation.ts — Inject tenantId and role into access token claims
-- [ ] Create services/auth/triggers/custom-message.ts — Branded email templates (verification, invitation, reset)
-- [ ] Add unit tests for pre-sign-up trigger
-- [ ] Add unit tests for pre-token-generation trigger
+- [x] Create services/auth/triggers/pre-sign-up.ts — Validate email, auto-confirm if invited, assign tenantId
+- [x] Create services/auth/triggers/post-confirmation.ts — Create tenant DynamoDB record, emit user.registered event
+- [x] Create services/auth/triggers/pre-token-generation.ts — Inject tenantId and role into access token claims
+- [x] Create services/auth/triggers/custom-message.ts — Branded email templates (verification, invitation, reset)
+- [x] Add unit tests for pre-sign-up trigger
+- [x] Add unit tests for pre-token-generation trigger
 
 ## Task 9: Create Auth API CDK Stack
 Create infrastructure/lib/auth-api-stack.ts with API Gateway, JWT Authorizer, Lambda functions, DynamoDB tables, and IAM roles.
