@@ -21,22 +21,25 @@ import type { ParsedRecord, FileParseResult } from './file-parser';
  */
 const PATTERNS = {
   /**
-   * SKU patterns: alphanumeric codes with dashes/dots, typically 4-20 chars.
-   * Examples: SKU-12345, ABC-001, PROD.2024.001, WH-BLK-XL
+   * Labelled SKU patterns: a label word followed by a colon, hash, or whitespace separator,
+   * then the SKU code. The separator must be non-dash to distinguish "SKU: LB-001" (labelled)
+   * from "SKU-1234" (standalone where SKU- is part of the identifier).
+   * Examples: "SKU: LB-001", "Item # WH-BLK", "Art. 2024-001"
    */
-  sku: /\b(?:SKU|sku|Item|ITEM|Art|ART|Ref|REF|Code|CODE|Part|PART)[#:\s.-]*([A-Z0-9][A-Z0-9\-._]{2,19})\b/,
+  sku: /\b(?:SKU|sku|Item|ITEM|Art|ART|Ref|REF|Code|CODE|Part|PART)[#:\s.]+([A-Z0-9][A-Z0-9\-._]{2,19})\b/,
 
   /**
-   * Standalone SKU-like codes: uppercase alphanumeric with at least one dash or dot, 4-20 chars.
-   * Catches SKUs that aren't prefixed with a label.
+   * Standalone SKU-like codes: uppercase letters optionally followed by digits, or codes
+   * with dashes/dots. Catches both "SKU-1234", "WA-001", and bare alphanumeric codes like "ABC123".
+   * Must be at least 3 characters.
    */
-  standalonesku: /\b([A-Z]{1,5}[-.](?:[A-Z0-9]+[-.]?){1,5}[A-Z0-9]+)\b/,
+  standalonesku: /\b([A-Z]{1,5}(?:[-.](?:[A-Z0-9]+[-.]?){1,5}[A-Z0-9]+|[0-9]{2,15}))\b/,
 
   /**
    * Price patterns: currency symbol followed by numbers (with optional thousand separators and decimals).
-   * Supports: $, €, £, ¥
+   * Supports: $, €, £, ¥. Only matches currency-THEN-digits to avoid spurious matches like "001\t$".
    */
-  price: /(?:[$€£¥])\s*(\d{1,3}(?:[,. ]\d{3})*(?:[.,]\d{1,2})?)\b|\b(\d{1,3}(?:[,. ]\d{3})*(?:[.,]\d{1,2})?)\s*(?:[$€£¥])/,
+  price: /(?:[$€£¥])\s*(\d{1,6}(?:[,. ]\d{3})*(?:[.,]\d{1,2})?)/,
 
   /**
    * Numeric price with labels: "Price:", "Cost:", "RRP:", etc.
@@ -78,9 +81,8 @@ function extractPrice(line: string): string | undefined {
 
   const priceMatch = line.match(PATTERNS.price);
   if (priceMatch) {
-    // The full match includes the currency symbol — return just the number portion
-    const fullMatch = priceMatch[0].trim();
-    return fullMatch;
+    // Return the full match including the currency symbol
+    return priceMatch[0].trim();
   }
 
   return undefined;
@@ -152,29 +154,37 @@ function extractProductFromBlock(block: string, pageIndex: number): ProductCandi
   let price: string | undefined;
   let title: string | undefined;
   let descriptionLines: string[] = [];
+  let prevLine: string | undefined;
 
   for (const line of lines) {
-    // Try to extract SKU
-    if (!sku) {
-      const extractedSku = extractSku(line);
-      if (extractedSku) {
-        sku = extractedSku;
-        continue;
+    // Try to extract SKU and price from the same line (labelled patterns often put both together)
+    const extractedSku = !sku ? extractSku(line) : undefined;
+    const extractedPrice = !price ? extractPrice(line) : undefined;
+
+    if (extractedSku) {
+      sku = extractedSku;
+      // If this line has a labelled SKU (e.g. "SKU: LB-001  $149.99"), also grab the price
+      if (!price && extractedPrice) {
+        price = extractedPrice;
       }
+      // If a prior plain-text line exists and no title yet, use it as the title
+      if (!title && prevLine && isLikelyTitle(prevLine)) {
+        title = prevLine;
+      }
+      prevLine = line;
+      continue;
     }
 
-    // Try to extract price
-    if (!price) {
-      const extractedPrice = extractPrice(line);
-      if (extractedPrice) {
-        price = extractedPrice;
-        continue;
-      }
+    if (extractedPrice) {
+      price = extractedPrice;
+      prevLine = line;
+      continue;
     }
 
     // Try to identify title (first plausible title line)
     if (!title && isLikelyTitle(line)) {
       title = line;
+      prevLine = line;
       continue;
     }
 
@@ -182,6 +192,7 @@ function extractProductFromBlock(block: string, pageIndex: number): ProductCandi
     if (line.length > 2) {
       descriptionLines.push(line);
     }
+    prevLine = line;
   }
 
   // A product candidate requires at least a SKU or price to be considered product data
@@ -201,12 +212,15 @@ function extractProductFromBlock(block: string, pageIndex: number): ProductCandi
 /**
  * Attempt to parse tabular content where products are in rows.
  * Detects table-like structures where lines have consistent column patterns.
+ * Also handles labelled-SKU lines (e.g. "SKU: LB-001  $149.99") by looking at
+ * the preceding line for a product title.
  */
 function extractProductsFromTable(pageText: string, pageIndex: number): ProductCandidate[] {
   const lines = pageText.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
   const candidates: ProductCandidate[] = [];
 
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
     const sku = extractSku(line);
     const price = extractPrice(line);
 
@@ -221,10 +235,21 @@ function extractProductsFromTable(pageText: string, pageIndex: number): ProductC
         .replace(/\s{2,}/g, ' ')
         .trim();
 
-      // Clean up leftover labels
-      remaining = remaining.replace(/^[:\s-]+|[:\s-]+$/g, '').trim();
+      // Clean up leftover labels/separators
+      remaining = remaining.replace(/^[:\s\-#.]+|[:\s\-#.]+$/g, '').trim();
 
-      const title = remaining.length >= 3 ? remaining : undefined;
+      let title = remaining.length >= 3 ? remaining : undefined;
+
+      // If no title found on this line, check if the preceding non-empty line is a plain title
+      if (!title && i > 0) {
+        const prevLine = lines[i - 1]!;
+        const prevSku = extractSku(prevLine);
+        const prevPrice = extractPrice(prevLine);
+        // Preceding line is a title candidate if it has no SKU/price and looks like a title
+        if (!prevSku && !prevPrice && isLikelyTitle(prevLine)) {
+          title = prevLine;
+        }
+      }
 
       candidates.push({ title, sku, price, pageIndex });
     }

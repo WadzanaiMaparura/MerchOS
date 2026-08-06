@@ -8,6 +8,7 @@ import * as cdk from 'aws-cdk-lib';
 import { FoundationStack } from '../lib/foundation-stack';
 import { AuthStack } from '../lib/auth-stack';
 import { AuthApiStack } from '../lib/auth-api-stack';
+import { SupplierIntelligenceStack } from '../lib/supplier-intelligence-stack';
 
 const app = new cdk.App();
 
@@ -36,6 +37,11 @@ new AuthApiStack(app, `MerchOS-AuthApi-${env}`, {
   sellerDashboardClient: authStack.sellerDashboardClient,
   platformKey: foundationStack.platformKey,
   eventBus: foundationStack.eventBus,
+});
+
+new SupplierIntelligenceStack(app, `MerchOS-SupplierIntelligence-${env}`, {
+  env: cdkEnv,
+  environment: env,
 });
 
 app.synth();

@@ -96,7 +96,7 @@ This plan implements the Supplier Intelligence Platform as a new `services/suppl
 - [x] 4. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 5. Implement file parsing processors
+- [x] 5. Implement file parsing processors
   - [x] 5.1 Implement CSV/Excel file parser Lambda
     - Create `services/supplier-intelligence/processors/file-parser.ts`
     - Parse CSV using `csv-parse` with auto-detection of delimiters and headers
@@ -105,13 +105,13 @@ This plan implements the Supplier Intelligence Platform as a new `services/suppl
     - Return array of parsed records with source row indices
     - _Requirements: 2.1, 2.2_
 
-  - [ ] 5.2 Implement PDF parser Lambda
+  - [x] 5.2 Implement PDF parser Lambda
     - Create `services/supplier-intelligence/processors/pdf-parser.ts`
     - Use `pdf-parse` to extract text content and tabular data
     - Apply heuristics to identify product records from text blocks
     - _Requirements: 2.3_
 
-  - [ ] 5.3 Implement ZIP archive handler
+  - [x] 5.3 Implement ZIP archive handler
     - Create `services/supplier-intelligence/processors/zip-handler.ts`
     - Extract files from ZIP archive, identify MIME type per entry
     - Route each file to the correct parser (CSV, Excel, PDF, or image processor)
@@ -124,8 +124,8 @@ This plan implements the Supplier Intelligence Platform as a new `services/suppl
     - **Property 6: Corrupted content marks job FAILED** — verify unparseable content transitions job to FAILED with no partial records
     - **Validates: Requirements 2.1, 2.2, 2.4, 2.8**
 
-- [ ] 6. Implement image OCR processor
-  - [ ] 6.1 Implement image processor Lambda with Textract integration
+- [x] 6. Implement image OCR processor
+  - [x] 6.1 Implement image processor Lambda with Textract integration
     - Create `services/supplier-intelligence/processors/image-processor.ts`
     - Call AWS Textract `detectDocumentText` for each image
     - Extract product name, price, SKU from OCR response with confidence scores
@@ -144,33 +144,33 @@ This plan implements the Supplier Intelligence Platform as a new `services/suppl
     - **Property 7: OCR confidence thresholding** — verify fields below 0.70 are flagged for review and fields at/above 0.70 are not
     - **Validates: Requirements 3.4**
 
-- [ ] 7. Implement URL crawler and web import engine
-  - [ ] 7.1 Implement robots.txt parser and URL import entry point
+- [x] 7. Implement URL crawler and web import engine
+  - [x] 7.1 Implement robots.txt parser and URL import entry point
     - Create `services/supplier-intelligence/processors/url-crawler.ts`
     - Fetch and parse robots.txt using `robots-parser` library
     - Reject crawl if target path is disallowed, return 422 with user-friendly message
     - _Requirements: 4.1, 4.2, 4.13_
 
-  - [ ] 7.2 Implement BFS page crawler with depth limit and rate limiting
+  - [x] 7.2 Implement BFS page crawler with depth limit and rate limiting
     - Add BFS traversal logic in `url-crawler.ts` respecting configurable depth limit
     - Enforce 1 request/second/domain rate limiting
     - Follow pagination links within depth budget
     - Persist crawl progress state for resumability (pages visited, queue remaining)
     - _Requirements: 4.3, 4.6, 4.8, 4.10_
 
-  - [ ] 7.3 Implement product data extraction from HTML
+  - [x] 7.3 Implement product data extraction from HTML
     - Create `services/supplier-intelligence/processors/html-extractor.ts`
     - Use `cheerio` to parse HTML and extract product data (name, description, SKU, brand, category, price, stock, images, variations, specs)
     - Download product images and store in assets S3 bucket
     - _Requirements: 4.4, 4.5_
 
-  - [ ] 7.4 Implement circuit breaker for external HTTP calls
+  - [x] 7.4 Implement circuit breaker for external HTTP calls
     - Create `services/supplier-intelligence/utils/circuit-breaker.ts`
     - Track consecutive failures per domain (threshold: 5 within 60s)
     - Transition CLOSED → OPEN after threshold, pause 120s, then HALF_OPEN with probe request
     - _Requirements: 14.5_
 
-  - [ ] 7.5 Implement crawl statistics recording and session completion
+  - [x] 7.5 Implement crawl statistics recording and session completion
     - Record crawl stats: pages crawled, pages skipped, products extracted, images downloaded, errors, duration
     - Support incremental import by comparing extracted products against existing records, updating only changed fields
     - _Requirements: 4.7, 4.11, 4.12_
@@ -183,11 +183,11 @@ This plan implements the Supplier Intelligence Platform as a new `services/suppl
     - **Property 23: Incremental import** — verify only changed fields are updated
     - **Validates: Requirements 4.2, 4.3, 4.10, 4.11, 4.12, 14.5**
 
-- [ ] 8. Checkpoint - Ensure all tests pass
+- [x] 8. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 9. Implement validation engine and duplicate detector
-  - [ ] 9.1 Implement validation engine Lambda
+- [x] 9. Implement validation engine and duplicate detector
+  - [x] 9.1 Implement validation engine Lambda
     - Create `services/supplier-intelligence/processors/validation-engine.ts`
     - Validate required fields: title (non-empty), sku (non-empty), and at least one of (images[0] or description)
     - Implement price normalisation: strip currency symbols ($, €, £, ¥), remove thousand separators, parse to float
@@ -196,7 +196,7 @@ This plan implements the Supplier Intelligence Platform as a new `services/suppl
     - Mark failed records as VALIDATION_FAILED with field-level error details
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
 
-  - [ ] 9.2 Implement duplicate detector Lambda
+  - [x] 9.2 Implement duplicate detector Lambda
     - Create `services/supplier-intelligence/processors/duplicate-detector.ts`
     - Primary check: exact SKU match via DynamoDB GSI query within tenant scope
     - Secondary check: normalised Levenshtein distance on title (threshold 0.85)
@@ -215,8 +215,8 @@ This plan implements the Supplier Intelligence Platform as a new `services/suppl
     - **Property 11: Duplicate strategy dispatch** — verify SKIP produces no record, MERGE updates existing, CREATE_FLAGGED creates with flag
     - **Validates: Requirements 7.1, 7.2, 7.4**
 
-- [ ] 10. Implement product persister and import status state machine
-  - [ ] 10.1 Implement product persister Lambda
+- [x] 10. Implement product persister and import status state machine
+  - [x] 10.1 Implement product persister Lambda
     - Create `services/supplier-intelligence/processors/product-persister.ts`
     - Batch write Product records to DynamoDB in DRAFT state
     - Attach `importMetadata` (sourceImportJobId, sourceSupplierId, sourceType, importedAt, ocrConfidence, flaggedForReview, duplicateOf)
@@ -224,14 +224,14 @@ This plan implements the Supplier Intelligence Platform as a new `services/suppl
     - Implement partial failure preservation: commit batches as they succeed, preserve records before failure point
     - _Requirements: 2.1, 10.2, 14.3_
 
-  - [ ] 10.2 Implement import job status update utility
+  - [x] 10.2 Implement import job status update utility
     - Create `services/supplier-intelligence/utils/import-job-status.ts`
     - Enforce valid status transitions: QUEUED → PROCESSING → VALIDATING → PERSISTING → COMPLETED, or any active → FAILED
     - Reject invalid transitions, no regression to previous active state
     - Update progress metadata (percentage, currentStep, estimatedTimeRemaining)
     - _Requirements: 5.5, 8.4_
 
-  - [ ] 10.3 Implement EventBridge event emission utilities
+  - [x] 10.3 Implement EventBridge event emission utilities
     - Create `services/supplier-intelligence/utils/event-emitter.ts`
     - Emit `ImportJobCompleted` event with job ID, product count, and summary statistics
     - Emit `ImportJobFailed` event with job ID and error details
@@ -244,30 +244,30 @@ This plan implements the Supplier Intelligence Platform as a new `services/suppl
     - **Property 20: Partial failure preservation** — verify records before failure point are retained
     - **Validates: Requirements 5.5, 10.2, 14.3**
 
-- [ ] 11. Checkpoint - Ensure all tests pass
+- [x] 11. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 12. Implement CDK infrastructure stack
-  - [ ] 12.1 Create the `SupplierIntelligenceStack` CDK stack
+- [x] 12. Implement CDK infrastructure stack
+  - [x] 12.1 Create the `SupplierIntelligenceStack` CDK stack
     - Create `infrastructure/lib/supplier-intelligence-stack.ts`
     - Define DynamoDB tables (Suppliers, Import Jobs) with PK `TENANT#{tenantId}` pattern, GSIs for queries
     - Define SQS FIFO queue with DLQ (14-day retention), message group ID for tenant-scoped FIFO ordering
     - Import Foundation Stack resources via SSM parameters (KMS key, EventBridge bus, S3 buckets)
     - _Requirements: 11.1, 11.2, 11.5_
 
-  - [ ] 12.2 Define Lambda functions and Step Functions state machine in CDK
+  - [x] 12.2 Define Lambda functions and Step Functions state machine in CDK
     - Define all Lambda functions with Node.js 20 runtime, AWS Powertools layers, X-Ray tracing enabled
     - Define Step Functions Express state machine with the import workflow (DetermineSourceType → Parse → Validate → Deduplicate → Persist)
     - Configure retry policies: transient errors (3x, 2s base), DynamoDB throttling (5x, 1s base with jitter), S3 failures (3x)
     - _Requirements: 11.1, 11.4, 5.2, 5.3_
 
-  - [ ] 12.3 Define API Gateway routes and IAM policies in CDK
+  - [x] 12.3 Define API Gateway routes and IAM policies in CDK
     - Define HTTP API Gateway routes matching the Supplier API table (all endpoints with JWT authorizer)
     - Apply IAM least-privilege per Lambda: only specific DynamoDB table/index, S3 bucket, SQS queue, and EventBridge permissions
     - Configure rate limiting at API Gateway level
     - _Requirements: 11.3, 12.1, 12.5_
 
-  - [ ] 12.4 Define CloudWatch alarms and monitoring in CDK
+  - [x] 12.4 Define CloudWatch alarms and monitoring in CDK
     - Alarm: Import_Job failure rate > 10% over 5 minutes
     - Alarm: Import_Queue depth > 100 messages
     - Alarm: Lambda error rate > 5%
@@ -284,22 +284,22 @@ This plan implements the Supplier Intelligence Platform as a new `services/suppl
     - Assert all routes have JWT authorizer
     - _Requirements: 11.1, 11.3, 11.4, 11.5, 11.6_
 
-- [ ] 13. Implement Import Dashboard frontend
-  - [ ] 13.1 Create import job list page with filters
+- [x] 13. Implement Import Dashboard frontend
+  - [x] 13.1 Create import job list page with filters
     - Create `apps/seller-dashboard/app/(dashboard)/imports/page.tsx`
     - Create `apps/seller-dashboard/app/(dashboard)/imports/components/ImportFilters.tsx` with filter controls (status, supplier, source type, date range)
     - Implement paginated job list using `@tanstack/react-query` for data fetching
     - Display job status, supplier name, source type, creation date, result summary
     - _Requirements: 9.1, 9.3, 9.5_
 
-  - [ ] 13.2 Create import job detail page
+  - [x] 13.2 Create import job detail page
     - Create `apps/seller-dashboard/app/(dashboard)/imports/[importJobId]/page.tsx`
     - Display full import details: source file/URL, supplier name, total extracted, created, updated, duplicates, validation failures, duration
     - Create `apps/seller-dashboard/app/(dashboard)/imports/components/ImportProgress.tsx` with real-time progress bar (polling)
     - Create `apps/seller-dashboard/app/(dashboard)/imports/components/ValidationErrorReport.tsx` for downloadable error report table
     - _Requirements: 9.2, 9.4, 8.4_
 
-  - [ ] 13.3 Create supplier management pages
+  - [x] 13.3 Create supplier management pages
     - Create `apps/seller-dashboard/app/(dashboard)/suppliers/page.tsx` for supplier list
     - Create `apps/seller-dashboard/app/(dashboard)/suppliers/[supplierId]/page.tsx` for supplier detail with import history and version history
     - Create import trigger UI (file upload, image upload, URL input) on supplier detail page
@@ -312,21 +312,21 @@ This plan implements the Supplier Intelligence Platform as a new `services/suppl
     - Test ValidationErrorReport renders error table and download functionality
     - _Requirements: 9.1, 9.2, 9.4, 9.5_
 
-- [ ] 14. Wire end-to-end flow and integration
-  - [ ] 14.1 Connect SQS consumer to Step Functions trigger
+- [x] 14. Wire end-to-end flow and integration
+  - [x] 14.1 Connect SQS consumer to Step Functions trigger
     - Create `services/supplier-intelligence/handlers/import-queue-consumer.ts`
     - Parse SQS message, start Step Functions execution with import job parameters
     - Handle DLQ routing for messages that fail after max retries
     - _Requirements: 5.2, 14.4_
 
-  - [ ] 14.2 Implement tenant concurrency limiter
+  - [x] 14.2 Implement tenant concurrency limiter
     - Create `services/supplier-intelligence/utils/concurrency-limiter.ts`
     - Query active import jobs per tenant before starting new execution
     - Enforce limit of 5 simultaneous Import_Jobs per tenant
     - Return message to queue if limit reached (visibility timeout)
     - _Requirements: 5.6_
 
-  - [ ] 14.3 Wire observability: structured logging and X-Ray tracing
+  - [x] 14.3 Wire observability: structured logging and X-Ray tracing
     - Add AWS Powertools Logger with correlation IDs (tenantId, importJobId, supplierId) to all handlers and processors
     - Configure X-Ray tracing across Lambda → Step Functions → SQS message processing chain
     - Emit custom CloudWatch metrics: imports initiated/completed/failed (counters), import duration (histogram), products extracted (counter) dimensioned by tenant and source type
@@ -339,7 +339,7 @@ This plan implements the Supplier Intelligence Platform as a new `services/suppl
     - Test partial failure preservation
     - _Requirements: 5.1, 5.2, 12.3, 14.3, 14.4_
 
-- [ ] 15. Final checkpoint - Ensure all tests pass
+- [x] 15. Final checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes

@@ -145,5 +145,44 @@ export {
 } from './hooks/useAdminBilling';
 export type { AdminBillingListParams, SubscriptionStatus } from './hooks/useAdminBilling';
 
+// Import Jobs hooks
+export {
+  importJobKeys,
+  useImportJobs,
+  useImportJobDetail,
+} from './hooks/useImportJobs';
+export type {
+  ImportJobStatus,
+  SourceType,
+  ImportJobSummary,
+  ImportJobDetail,
+  FieldError,
+  ImportJobListParams,
+  ImportJobListResponse,
+} from './hooks/useImportJobs';
+
+// Supplier hooks
+export {
+  supplierKeys,
+  useSuppliers,
+  useSupplierDetail,
+  useSupplierVersions,
+  useSupplierImports,
+  useCreateSupplier,
+  useUpdateSupplier,
+} from './hooks/useSuppliers';
+export type {
+  DuplicateStrategy,
+  SupplierSummary,
+  SupplierVersion,
+  SupplierListParams,
+  SupplierListResponse,
+  SupplierVersionsResponse,
+  SupplierImportsParams,
+  SupplierImportsResponse,
+  CreateSupplierPayload,
+  UpdateSupplierPayload,
+} from './hooks/useSuppliers';
+
 // Notifications
 export { WebSocketManager } from './notifications/websocket-manager';
