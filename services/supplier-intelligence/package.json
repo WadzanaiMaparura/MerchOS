@@ -1,0 +1,50 @@
+{
+  "name": "@merch-os/supplier-intelligence-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Supplier Intelligence Platform — multi-source product data ingestion for MerchOS",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run --dir __tests__/unit",
+    "test:integration": "vitest run --dir __tests__/integration",
+    "test:properties": "vitest run --dir __tests__/properties"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "3.654.0",
+    "@aws-sdk/lib-dynamodb": "3.654.0",
+    "@aws-sdk/client-eventbridge": "3.654.0",
+    "@aws-sdk/client-s3": "3.654.0",
+    "@aws-sdk/client-sqs": "3.654.0",
+    "@aws-sdk/client-sfn": "3.654.0",
+    "@aws-sdk/client-textract": "3.654.0",
+    "@aws-lambda-powertools/logger": "2.7.0",
+    "@aws-lambda-powertools/metrics": "2.7.0",
+    "@aws-lambda-powertools/tracer": "2.7.0",
+    "@middy/core": "5.4.7",
+    "csv-parse": "5.5.6",
+    "exceljs": "4.4.0",
+    "pdf-parse": "1.1.1",
+    "adm-zip": "0.5.16",
+    "cheerio": "1.0.0",
+    "robots-parser": "3.0.1",
+    "zod": "3.23.8",
+    "@merch-os/types": "*",
+    "@merch-os/rbac": "*"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "0.5.5",
+    "@types/aws-lambda": "8.10.140",
+    "@types/pdf-parse": "1.1.4",
+    "aws-sdk-client-mock": "4.0.1",
+    "fast-check": "3.19.0",
+    "typescript": "5.4.5",
+    "vitest": "1.6.0"
+  }
+}
