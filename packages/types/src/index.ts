@@ -100,3 +100,26 @@ export type {
   TimeRange,
   AdminBillingListParams,
 } from './admin';
+
+// Marketplace & Schema Registry types
+export type {
+  VerificationStatus,
+  RequirementClassification,
+  ExportFormat,
+  FieldRequirement,
+  FieldDataType,
+  FieldDefinition,
+  MarketplaceSchema,
+  ValidationSeverity,
+  ValidationFinding,
+  ValidationResult,
+  ExportMode,
+  ValidationRequest,
+  CanonicalContentData,
+  CanonicalImageRef,
+  CanonicalVariant,
+  CanonicalCommercialData,
+  PlatformSpecificData,
+  ExportHistoryEntry,
+  CanonicalProduct,
+} from './marketplace';

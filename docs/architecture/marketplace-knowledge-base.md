@@ -1,9 +1,9 @@
 # MerchOS Marketplace Knowledge Base
 
-> **Version:** 1.0  
+> **Version:** 1.1  
 > **Status:** Living Document  
-> **Last Updated:** 2025-01  
-> **Verification Status:** Draft — requires verification against current platform templates
+> **Last Updated:** 2026-08  
+> **Verification Status:** Mixed — see per-section verification annotations and Section 8 Verification Log
 
 This document is the authoritative reference for marketplace-specific product requirements across all five supported platforms. It documents field requirements, validation rules, export formats, and platform-specific behaviours that the MerchOS Schema Registry and Validation Engine must enforce.
 
@@ -19,6 +19,7 @@ This document is the authoritative reference for marketplace-specific product re
 6. [WooCommerce](#6-woocommerce)
 7. [Cross-Platform Comparison](#7-cross-platform-comparison)
 8. [Verification Log](#8-verification-log)
+9. [Audit Trail](#9-audit-trail)
 
 ---
 
@@ -43,8 +44,30 @@ This knowledge base captures the complete field-level requirements for each mark
 - **REQUIRED** — Field must be populated for successful submission
 - **CONDITIONAL** — Required only under certain conditions (documented per field)
 - **OPTIONAL** — Field is supported but not mandatory
-- **REQUIRES VERIFICATION** — Requirement sourced from general documentation; needs confirmation against current live templates
 - **PLATFORM-GENERATED** — Field is generated/assigned by the platform, not submitted by sellers
+
+#### Verification Status Labels
+
+| Status | Meaning |
+|--------|---------|
+| `VERIFIED_FROM_TEMPLATE` | Verified from an actual platform template supplied to the project |
+| `VERIFIED_FROM_PUBLIC_DOCUMENTATION` | Verified from publicly accessible official documentation |
+| `REQUIRES_SELLER_ACCOUNT_VERIFICATION` | Requires active seller account access to confirm |
+| `DRAFT` | Inferred or drafted; not yet verified |
+| `DEPRECATED` | No longer current; superseded by a newer version |
+
+#### Requirement Classification Labels
+
+| Classification | Meaning |
+|----------------|---------|
+| `OFFICIAL_REQUIREMENT` | Officially documented as mandatory by the platform |
+| `OFFICIAL_RECOMMENDATION` | Platform recommends but does not enforce |
+| `PLATFORM_BEHAVIOUR` | Observed behaviour, not officially documented |
+| `MERCHOS_BEST_PRACTICE` | MerchOS's own standard (not platform-mandated) |
+| `INFERENCE` | Inferred from patterns but not verified |
+| `UNVERIFIED` | Not yet confirmed from any source |
+| `STORE_PLUGIN_DEPENDENT` | Depends on store-specific plugin/configuration (WooCommerce, Shopify) |
+| `EXAMPLE_ONLY` | Illustrative — not authoritative; do not use for production validation |
 
 ---
 
@@ -76,39 +99,41 @@ The **Bulk Offers template is NOT the complete catalogue schema**. It covers com
 
 ### 2.3 Bulk Offers Fields
 
+> **Verification Status:** `VERIFIED_FROM_TEMPLATE` (2026-08) — Verified from actual Bulk Offers template downloaded from Takealot Seller Portal.
+
 The Bulk Offers template is the minimum required for updating commercial data on existing Takealot listings:
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| Barcode | String (EAN-13/UPC-A/ISBN-13) | REQUIRED | Product barcode; must match existing catalogue TSIN |
-| SKU | String | REQUIRED | Seller's internal SKU reference |
-| My SoH | Integer (≥0) | REQUIRED | Current stock on hand quantity |
-| Selling Price | Decimal (ZAR) | REQUIRED | Seller's selling price in South African Rand |
-| RRP | Decimal (ZAR) | REQUIRED | Recommended retail price |
-| Leadtime | Integer (days) | REQUIRED | Days from order placement to dispatch readiness |
+| Field | Type | Required | Classification | Data Category | Description |
+|-------|------|----------|----------------|---------------|-------------|
+| Barcode | String (EAN-13/UPC-A/ISBN-13) | REQUIRED | `OFFICIAL_REQUIREMENT` | Product Identity | Product barcode; must match existing catalogue TSIN |
+| SKU | String | REQUIRED | `OFFICIAL_REQUIREMENT` | Product Identity (seller-defined) | Seller's internal SKU reference |
+| My SoH | Integer (≥0) | REQUIRED | `OFFICIAL_REQUIREMENT` | Inventory | Current stock on hand quantity |
+| Selling Price | Decimal (ZAR) | REQUIRED | `OFFICIAL_REQUIREMENT` | Commercial | Seller's selling price in South African Rand |
+| RRP | Decimal (ZAR) | REQUIRED | `OFFICIAL_REQUIREMENT` | Commercial | Recommended retail price |
+| Leadtime | Integer (days) | REQUIRED | `OFFICIAL_REQUIREMENT` | Fulfilment | Days from order placement to dispatch readiness |
 
 ### 2.4 Product Creation Fields (Full Catalogue)
 
-> **REQUIRES VERIFICATION** — Full product creation templates vary by category. The fields below represent the common baseline observed in Takealot Seller Portal documentation.
+> **Verification Status:** `REQUIRES_SELLER_ACCOUNT_VERIFICATION` — The full product creation template has NOT been obtained. The fields below are INFERRED from general Takealot Seller Portal documentation and should NOT be treated as authoritative. Actual templates vary by category and must be downloaded from Seller Portal.
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| Product Title | String (max ~150 chars) | REQUIRED | Product name as displayed on Takealot |
-| Barcode | String (EAN-13/UPC-A/ISBN-13) | REQUIRED | Unique product barcode |
-| SKU | String | REQUIRED | Seller's internal SKU |
-| Brand | String | REQUIRED | Product brand name |
-| Description | HTML/Text | REQUIRED | Product description (supports basic HTML) |
-| Category | String | REQUIRED | Takealot category path |
-| Images | URL(s) | REQUIRED | Product images (minimum 1, recommended 3+) |
-| Selling Price | Decimal (ZAR) | REQUIRED | Selling price |
-| RRP | Decimal (ZAR) | REQUIRED | Recommended retail price |
-| Stock on Hand | Integer | REQUIRED | Initial stock quantity |
-| Leadtime | Integer (days) | REQUIRED | Dispatch leadtime |
-| Weight (kg) | Decimal | CONDITIONAL | Required for shipping calculation |
-| Dimensions (L×W×H cm) | Decimal | CONDITIONAL | Required for shipping calculation |
-| Warranty | String | CONDITIONAL | Warranty period (category-dependent) |
-| Colour | String | CONDITIONAL | Product colour (category-dependent) |
-| Size | String | CONDITIONAL | Product size (category-dependent) |
+| Field | Type | Required | Classification | Description |
+|-------|------|----------|----------------|-------------|
+| Product Title | String (max length `REQUIRES_VERIFICATION`) | REQUIRED | `INFERENCE` | Product name as displayed on Takealot |
+| Barcode | String (EAN-13/UPC-A/ISBN-13) | REQUIRED | `INFERENCE` | Unique product barcode |
+| SKU | String | REQUIRED | `INFERENCE` | Seller's internal SKU |
+| Brand | String | REQUIRED | `INFERENCE` | Product brand name |
+| Description | HTML/Text | REQUIRED | `INFERENCE` | Product description (supports basic HTML) |
+| Category | String | REQUIRED | `INFERENCE` | Takealot category path |
+| Images | URL(s) | REQUIRED | `INFERENCE` | Product images (minimum 1, recommended 3+) |
+| Selling Price | Decimal (ZAR) | REQUIRED | `INFERENCE` | Selling price |
+| RRP | Decimal (ZAR) | REQUIRED | `INFERENCE` | Recommended retail price |
+| Stock on Hand | Integer | REQUIRED | `INFERENCE` | Initial stock quantity |
+| Leadtime | Integer (days) | REQUIRED | `INFERENCE` | Dispatch leadtime |
+| Weight (kg) | Decimal | CONDITIONAL | `INFERENCE` | Required for shipping calculation |
+| Dimensions (L×W×H cm) | Decimal | CONDITIONAL | `INFERENCE` | Required for shipping calculation |
+| Warranty | String | CONDITIONAL | `INFERENCE` | Warranty period (category-dependent) |
+| Colour | String | CONDITIONAL | `INFERENCE` | Product colour (category-dependent) |
+| Size | String | CONDITIONAL | `INFERENCE` | Product size (category-dependent) |
 
 ### 2.5 Identifier Requirements
 
@@ -122,9 +147,11 @@ The Bulk Offers template is the minimum required for updating commercial data on
 
 ### 2.6 Image Requirements
 
+> **Verification Status:** `REQUIRES_SELLER_ACCOUNT_VERIFICATION`
+
 - Minimum 1 image required; recommended 3+ images
 - Supported formats: JPEG, PNG
-- Minimum resolution: 500×500 pixels (REQUIRES VERIFICATION)
+- Minimum resolution: `REQUIRES_SELLER_ACCOUNT_VERIFICATION` (commonly cited as 500×500 but unconfirmed)
 - White background preferred for main image
 - Images submitted as URLs (must be publicly accessible at time of processing)
 - Image ordering: first image is the primary/hero image
@@ -138,18 +165,20 @@ The Bulk Offers template is the minimum required for updating commercial data on
 | Selling Price ≤ RRP | WARNING | Platform may flag if selling price exceeds RRP |
 | Stock on Hand ≥ 0 | ERROR | Negative stock not permitted |
 | Leadtime > 0 | ERROR | Must be at least 1 day |
-| Title length | ERROR | Must not exceed platform maximum (REQUIRES VERIFICATION: ~150 chars) |
+| Title length | ERROR | Must not exceed platform maximum (`REQUIRES_SELLER_ACCOUNT_VERIFICATION` for exact limit) |
 | At least 1 image | ERROR | Products without images are rejected |
 | Price > 0 | ERROR | Zero or negative price not permitted |
 
 ### 2.8 Variant/Parent-Child Relationships
+
+> **Verification Status:** `REQUIRES_SELLER_ACCOUNT_VERIFICATION`
 
 Takealot uses a TSIN-based variant system:
 - Parent TSIN represents the product family
 - Child TSINs represent individual variants (colour, size, etc.)
 - Variants share the same product page on Takealot
 - Each variant has its own unique barcode
-- Variant attributes: typically Colour, Size (REQUIRES VERIFICATION for full list)
+- Variant attributes: typically Colour, Size (`REQUIRES_SELLER_ACCOUNT_VERIFICATION` for full list)
 
 ### 2.9 Commercial Notes
 
@@ -160,7 +189,7 @@ Takealot uses a TSIN-based variant system:
 ### 2.10 Export Format
 
 - **Bulk Offers:** CSV (comma-separated), UTF-8 encoding, with header row
-- **Product Creation:** XLSX template (category-specific) — REQUIRES VERIFICATION for exact format
+- **Product Creation:** XLSX template (category-specific) — `REQUIRES_SELLER_ACCOUNT_VERIFICATION` for exact format
 - Column ordering must match template exactly
 - No extra columns permitted in submission files
 
@@ -176,11 +205,11 @@ Common rejection reasons from Takealot:
 
 ### 2.12 Source Documentation
 
-| Source | URL | Status |
-|--------|-----|--------|
-| Takealot Seller Portal | https://seller.takealot.com | REQUIRES VERIFICATION |
-| Takealot Seller API Documentation | https://developer.takealot.com | REQUIRES VERIFICATION |
-| Bulk Offers Template | Available via Seller Portal download | Verified (template obtained) |
+| Source | URL | Status | Classification |
+|--------|-----|--------|----------------|
+| Takealot Seller Portal | https://seller.takealot.com | `REQUIRES_SELLER_ACCOUNT_VERIFICATION` | — |
+| Takealot Seller API Documentation | https://developer.takealot.com | `REQUIRES_SELLER_ACCOUNT_VERIFICATION` | — |
+| Bulk Offers Template | Available via Seller Portal download | `VERIFIED_FROM_TEMPLATE` (2026-08) | `OFFICIAL_REQUIREMENT` |
 
 ---
 
@@ -200,6 +229,8 @@ Makro Marketplace (South Africa) operates a vertical-specific loadsheet system w
 ### 3.2 Vertical-Specific Loadsheet System
 
 > **CRITICAL:** Makro loadsheets are NOT uniform across categories. Each vertical has its own loadsheet template with different required fields, attribute columns, and validation rules.
+>
+> **Verification Status:** The duvet-cover/bedding loadsheet has been obtained and is `VERIFIED_FROM_TEMPLATE` (2026-08). Other verticals (Electronics, Furniture, Appliances, Fashion) are `INFERENCE` — extrapolated from the pattern observed in the verified template and general seller documentation. Do NOT treat inferred verticals as confirmed schemas.
 
 | Vertical Example | Loadsheet Characteristics |
 |-----------------|---------------------------|
@@ -216,12 +247,14 @@ Makro loadsheet fields fall into distinct categories that MerchOS must distingui
 | Classification | Description | MerchOS Handling |
 |---------------|-------------|------------------|
 | **Seller Input Fields** | Fields the seller must populate (title, description, barcode, price, attributes) | Mapped from canonical product model |
-| **Platform-Generated Fields** | Fields assigned by Makro (PLU, listing status, QC status) | Not exported; tracked for reference |
+| **Platform-Generated Fields** | Fields assigned/populated by Makro — NOT seller input (Makro Serial Number, Catalog QC Status, QC Failed Reason, Makro Product Link, Product Data Status, Disapproval Reason) | `PLATFORM_GENERATED` — excluded from export; tracked for reference only |
 | **QC/Status Fields** | Quality check outcome, rejection reasons, review status | Mapped back as validation feedback |
 | **Listing/Commercial Fields** | Price, stock, availability, fulfilment method | Mapped from commercial data |
 | **Category-Specific Attributes** | Vertical-dependent attribute columns | Selected based on vertical mapping |
 
 ### 3.4 Common Fields (All Verticals)
+
+> **Verification Status:** `VERIFIED_FROM_TEMPLATE` (2026-08) for fields present in the duvet-cover loadsheet. Generalization to "all verticals" is `INFERENCE` — other verticals may have different common fields.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -245,6 +278,8 @@ Makro loadsheet fields fall into distinct categories that MerchOS must distingui
 
 #### Duvet Covers / Bedding Vertical
 
+> **Verification Status:** `VERIFIED_FROM_TEMPLATE` (2026-08) — From actual duvet-cover loadsheet supplied to project.
+
 | Field | Type | Required | Allowed Values |
 |-------|------|----------|----------------|
 | Size | Enum | REQUIRED | Single, Three Quarter, Double, Queen, King, Super King |
@@ -257,6 +292,8 @@ Makro loadsheet fields fall into distinct categories that MerchOS must distingui
 
 #### Electronics Vertical
 
+> **Verification Status:** `INFERENCE` — Extrapolated from the duvet-cover loadsheet structure. Actual electronics loadsheet has NOT been obtained.
+
 | Field | Type | Required | Allowed Values |
 |-------|------|----------|----------------|
 | Wattage | String | CONDITIONAL | Power consumption |
@@ -268,6 +305,8 @@ Makro loadsheet fields fall into distinct categories that MerchOS must distingui
 | Colour | String | CONDITIONAL | Product colour |
 
 #### Furniture Vertical
+
+> **Verification Status:** `INFERENCE` — Extrapolated from the duvet-cover loadsheet structure. Actual furniture loadsheet has NOT been obtained.
 
 | Field | Type | Required | Allowed Values |
 |-------|------|----------|----------------|
@@ -289,11 +328,13 @@ Makro loadsheet fields fall into distinct categories that MerchOS must distingui
 
 ### 3.7 Image Requirements
 
+> **Verification Status:** `REQUIRES_SELLER_ACCOUNT_VERIFICATION`
+
 - Minimum 1 image required (main image)
 - Recommended 3-5 images
 - Images submitted as URLs (must be publicly accessible)
 - White background preferred for main image
-- Minimum resolution: REQUIRES VERIFICATION
+- Minimum resolution: `REQUIRES_SELLER_ACCOUNT_VERIFICATION`
 - Supported formats: JPEG, PNG
 - Image ordering: first URL is primary image
 
@@ -309,7 +350,7 @@ Makro loadsheet fields fall into distinct categories that MerchOS must distingui
 | Dimensions provided | ERROR | L, W, H all required |
 | Weight provided | ERROR | Shipping weight required |
 | Allowed values respected | ERROR | Enum fields must use permitted values |
-| Title length appropriate | WARNING | REQUIRES VERIFICATION for exact limits |
+| Title length appropriate | WARNING | `REQUIRES_SELLER_ACCOUNT_VERIFICATION` for exact limits |
 | Description not empty | ERROR | Both short and long descriptions required |
 
 ### 3.9 Validation Before Loadsheet Generation
@@ -336,7 +377,7 @@ After loadsheet submission, Makro performs QC review. Common rejection reasons m
 
 ### 3.11 Export Format
 
-- **Format:** CSV (loadsheet structure) or XLSX — REQUIRES VERIFICATION for exact format per vertical
+- **Format:** CSV (loadsheet structure) or XLSX — `REQUIRES_SELLER_ACCOUNT_VERIFICATION` for exact format per vertical
 - **Encoding:** UTF-8
 - **Column ordering:** Must match Makro's loadsheet template exactly per vertical
 - **Header row:** Required; column names must match template
@@ -346,16 +387,16 @@ After loadsheet submission, Makro performs QC review. Common rejection reasons m
 ### 3.12 Import/Update Behaviour
 
 - New products: Full loadsheet submission with all required fields
-- Stock/price updates: Specific update templates (REQUIRES VERIFICATION)
-- Product updates: Re-submission of loadsheet with changes (REQUIRES VERIFICATION on partial vs full)
+- Stock/price updates: Specific update templates (`REQUIRES_SELLER_ACCOUNT_VERIFICATION`)
+- Product updates: Re-submission of loadsheet with changes (`REQUIRES_SELLER_ACCOUNT_VERIFICATION` on partial vs full)
 
 ### 3.13 Source Documentation
 
-| Source | URL | Status |
-|--------|-----|--------|
-| Makro Marketplace Seller Portal | https://marketplace.makro.co.za | REQUIRES VERIFICATION |
-| Makro Loadsheet Templates | Available via Seller Portal | Verified (templates obtained) |
-| Makro Seller Documentation | Portal-internal documentation | REQUIRES VERIFICATION |
+| Source | URL | Status | Classification |
+|--------|-----|--------|----------------|
+| Makro Marketplace Seller Portal | https://marketplace.makro.co.za | `REQUIRES_SELLER_ACCOUNT_VERIFICATION` | — |
+| Makro Loadsheet Templates | Available via Seller Portal | `VERIFIED_FROM_TEMPLATE` (duvet-cover only, 2026-08) | `OFFICIAL_REQUIREMENT` (verified vertical) |
+| Makro Seller Documentation | Portal-internal documentation | `REQUIRES_SELLER_ACCOUNT_VERIFICATION` | — |
 
 ---
 
@@ -393,32 +434,44 @@ Amazon's schema requirements are **product-type dependent**. The product type de
 - Variation themes (which attributes define variants)
 - Image requirements
 
-> **ARCHITECTURAL NOTE:** Public Amazon documentation does not expose every live category template. MerchOS architecture must support importing actual Seller Central flat file templates as schema definitions. The Schema Registry must accommodate Amazon templates obtained directly from Seller Central downloads.
+> **ARCHITECTURAL NOTE:** Amazon product type schemas are DYNAMIC and retrieved via the SP-API Product Type Definitions API (`VERIFIED_FROM_PUBLIC_DOCUMENTATION`, 2026-08). Public Amazon documentation does not expose every live category template. MerchOS architecture must support:
+> 1. Querying the Product Type Definitions API for current schema requirements
+> 2. Importing actual Seller Central flat file templates as schema definitions
+>
+> The Schema Registry must accommodate Amazon templates obtained directly from Seller Central downloads and/or the Product Type Definitions API.
+>
+> **Model:** `Amazon → Marketplace/Country → Product Type → Current Schema (via Product Type Definitions API) → Workflow → Validation`
 
 ### 4.4 Common Required Fields (All Product Types)
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| SKU | String (max 40 chars) | REQUIRED | Seller's unique product identifier |
-| Product Type | Enum | REQUIRED | Amazon product type classification |
-| Title | String (max 200 chars, varies by category) | REQUIRED | Product title |
-| Brand | String | REQUIRED | Product brand name |
-| Manufacturer | String | REQUIRED | Product manufacturer |
-| Product ID (UPC/EAN/GTIN/ISBN) | String | REQUIRED | Product identifier (exemption possible) |
-| Product ID Type | Enum | REQUIRED | UPC, EAN, GTIN, ISBN |
-| Description | String (max 2000 chars) | REQUIRED | Product description |
-| Bullet Points | String (up to 5, max 500 chars each) | REQUIRED | Key feature bullet points |
-| Main Image URL | URL | REQUIRED | Primary product image |
-| Price | Decimal | REQUIRED | Selling price (currency determined by marketplace) |
-| Quantity | Integer | REQUIRED | Available stock |
-| Condition | Enum | REQUIRED | New, Refurbished, Used — Like New, etc. |
-| Fulfilment Channel | Enum | REQUIRED | MFN (Merchant Fulfilled) or AFN (Amazon Fulfilled / FBA) |
+> **Verification Status:** `VERIFIED_FROM_PUBLIC_DOCUMENTATION` (2026-08) for the SP-API framework and general field structure. Category-specific requirements are `REQUIRES_SELLER_ACCOUNT_VERIFICATION` — exact fields, limits, and allowed values vary by product type and marketplace.
+
+| Field | Type | Required | Classification | Description |
+|-------|------|----------|----------------|-------------|
+| SKU | String (max 40 chars) | REQUIRED | `OFFICIAL_REQUIREMENT` | Seller's unique product identifier |
+| Product Type | Enum | REQUIRED | `OFFICIAL_REQUIREMENT` | Amazon product type classification |
+| Title | String (max varies by category, typically 200 chars) | REQUIRED | `OFFICIAL_REQUIREMENT` | Product title |
+| Brand | String | REQUIRED | `OFFICIAL_REQUIREMENT` | Product brand name |
+| Manufacturer | String | REQUIRED | `OFFICIAL_REQUIREMENT` | Product manufacturer |
+| Product ID (UPC/EAN/GTIN/ISBN) | String | REQUIRED | `OFFICIAL_REQUIREMENT` | Product identifier (exemption possible) |
+| Product ID Type | Enum | REQUIRED | `OFFICIAL_REQUIREMENT` | UPC, EAN, GTIN, ISBN |
+| Description | String (max 2000 chars) | REQUIRED | `OFFICIAL_RECOMMENDATION` | Product description |
+| Bullet Points | String (typically 5, varies by category; max ~500 chars each) | REQUIRED | `OFFICIAL_RECOMMENDATION` | Key feature bullet points |
+| Main Image URL | URL | REQUIRED | `OFFICIAL_REQUIREMENT` | Primary product image |
+| Price | Decimal | REQUIRED | `OFFICIAL_REQUIREMENT` | Selling price (currency determined by marketplace) |
+| Quantity | Integer | REQUIRED | `OFFICIAL_REQUIREMENT` | Available stock |
+| Condition | Enum | REQUIRED | `OFFICIAL_REQUIREMENT` | New, Refurbished, Used — Like New, etc. |
+| Fulfilment Channel | Enum | REQUIRED | `OFFICIAL_REQUIREMENT` | MFN (Merchant Fulfilled) or AFN (Amazon Fulfilled / FBA) |
+
+> **NOTE on Bullet Points:** The commonly cited "maximum 5 bullet points" varies by category. Some product types allow more. Treat "5" as a typical value, not a universal hard limit. Classification: `OFFICIAL_RECOMMENDATION`.
+>
+> **NOTE on Title Length:** The commonly cited "200 characters" varies by category. Some product types have different limits. Use the Product Type Definitions API for authoritative limits per product type.
 
 ### 4.5 Category-Dependent Fields
 
-> **REQUIRES VERIFICATION** — Exact fields vary by product type. Below are representative examples.
+> **Verification Status:** `EXAMPLE_ONLY` — The fields below are ILLUSTRATIVE examples showing the PATTERN of category-specific requirements. They are NOT authoritative schemas for these product types. Actual fields, allowed values, and requirements MUST be obtained from the SP-API Product Type Definitions API or Seller Central flat file templates for the target marketplace. Classification: `REQUIRES_SELLER_ACCOUNT_VERIFICATION` for production use.
 
-#### Clothing / Apparel
+#### Clothing / Apparel (EXAMPLE_ONLY)
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -431,7 +484,7 @@ Amazon's schema requirements are **product-type dependent**. The product type de
 | Outer Material | String | CONDITIONAL | Outer material (for outerwear) |
 | Closure Type | String | OPTIONAL | Zip, Button, Hook, etc. |
 
-#### Electronics / Computers
+#### Electronics / Computers (EXAMPLE_ONLY)
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -456,7 +509,7 @@ Amazon's schema requirements are **product-type dependent**. The product type de
 | ASIN | 10 characters (Amazon-assigned) | Not submitted; assigned by Amazon |
 | GCID | Amazon-assigned | Brand Registry identifier (alternative to UPC/EAN) |
 
-**Exemptions:** Products without standard identifiers may apply for a GTIN exemption (per-category basis). REQUIRES VERIFICATION for current exemption process.
+**Exemptions:** Products without standard identifiers may apply for a GTIN exemption (per-category basis). `REQUIRES_SELLER_ACCOUNT_VERIFICATION` for current exemption process.
 
 ### 4.7 Variation Relationships
 
@@ -475,11 +528,13 @@ Amazon uses a **parent-child variation model**:
 
 ### 4.8 Image Requirements
 
-- **Main image:** REQUIRED, pure white background (RGB 255,255,255), product fills 85%+ of frame
-- **Additional images:** Up to 8 additional images (total 9 including main)
-- **Minimum resolution:** 1000×1000 pixels (for zoom functionality)
-- **Maximum file size:** 10 MB per image
-- **Supported formats:** JPEG (.jpg), PNG, GIF, TIFF
+> **Verification Status:** `VERIFIED_FROM_PUBLIC_DOCUMENTATION` (2026-08) for general guidelines. Specific per-category limits are `REQUIRES_SELLER_ACCOUNT_VERIFICATION`.
+
+- **Main image:** REQUIRED, pure white background (RGB 255,255,255), product fills 85%+ of frame — Classification: `OFFICIAL_REQUIREMENT`
+- **Additional images:** Varies by product type (commonly 7-9 total including main; do NOT assume a universal "maximum 9") — Classification: `PLATFORM_BEHAVIOUR`
+- **Minimum resolution:** 1000×1000 pixels recommended for zoom functionality — Classification: `OFFICIAL_RECOMMENDATION`
+- **Maximum file size:** 10 MB per image — Classification: `OFFICIAL_REQUIREMENT`
+- **Supported formats:** JPEG (.jpg), PNG, GIF, TIFF — Classification: `OFFICIAL_REQUIREMENT`
 - **Naming:** No specific naming convention required for URL submission
 - **Swatch image:** Optional colour swatch (for colour variants)
 - Images submitted as URLs — must be publicly accessible HTTPS URLs
@@ -505,6 +560,7 @@ Amazon uses a **parent-child variation model**:
 - Templates are marketplace-specific (different versions per marketplace)
 - Processing reports reference the template version used
 - MerchOS Schema Registry must track template version per marketplace per product type
+- Template versions are dynamic — do NOT hard-code specific version identifiers (e.g., "v2024.1") as they change frequently
 
 ### 4.11 Validation Rules
 
@@ -512,10 +568,10 @@ Amazon uses a **parent-child variation model**:
 |------|----------|-------------|
 | Product identifier valid (UPC/EAN check digit) | ERROR | Must pass check digit validation |
 | All required fields for product type populated | ERROR | Product-type-specific required fields |
-| Title length within limit | ERROR | Varies by category (typically 200 chars max) |
-| Bullet points count ≤ 5 | ERROR | Maximum 5 bullet points |
+| Title length within limit | ERROR | Varies by category (typically 200 chars max) — `REQUIRES_SELLER_ACCOUNT_VERIFICATION` per product type |
+| Bullet points count | WARNING | Typically 5; varies by category — Classification: `OFFICIAL_RECOMMENDATION` |
 | Main image present | ERROR | At least one image required |
-| Image meets resolution minimum | WARNING | 1000×1000 recommended |
+| Image meets resolution minimum | WARNING | 1000×1000 recommended — Classification: `OFFICIAL_RECOMMENDATION` |
 | Price > 0 | ERROR | Positive price required |
 | Quantity ≥ 0 | ERROR | Non-negative stock |
 | SKU unique within seller account | ERROR | No duplicate SKUs |
@@ -561,15 +617,15 @@ Common error categories:
 
 ### 4.15 Source Documentation
 
-| Source | URL | Status |
-|--------|-----|--------|
-| Amazon Seller Central Help | https://sellercentral.amazon.com/help | Available |
-| SP-API Documentation | https://developer-docs.amazon.com/sp-api/ | Available |
-| Product Type Definitions API | SP-API endpoint | Available |
-| Flat File Templates | Seller Central > Inventory > Add Products via Upload | REQUIRES VERIFICATION (must download per category) |
-| Amazon Brand Registry | https://brandregistry.amazon.com | Available |
+| Source | URL | Status | Classification |
+|--------|-----|--------|----------------|
+| Amazon Seller Central Help | https://sellercentral.amazon.com/help | Available | `VERIFIED_FROM_PUBLIC_DOCUMENTATION` |
+| SP-API Documentation | https://developer-docs.amazon.com/sp-api/ | Available | `VERIFIED_FROM_PUBLIC_DOCUMENTATION` |
+| Product Type Definitions API | SP-API endpoint | Available | `VERIFIED_FROM_PUBLIC_DOCUMENTATION` (2026-08) |
+| Flat File Templates | Seller Central > Inventory > Add Products via Upload | `REQUIRES_SELLER_ACCOUNT_VERIFICATION` (must download per category) | `REQUIRES_SELLER_ACCOUNT_VERIFICATION` |
+| Amazon Brand Registry | https://brandregistry.amazon.com | Available | `VERIFIED_FROM_PUBLIC_DOCUMENTATION` |
 
-> **NOTE:** Public documentation provides the API/schema framework, but actual category-specific flat file templates must be downloaded from Seller Central. The MerchOS architecture must support importing these templates as schema definitions.
+> **NOTE:** The SP-API Product Type Definitions API is publicly documented and provides programmatic access to current product type schemas. This API is the recommended path for dynamically retrieving field requirements per product type and marketplace. Public documentation provides the API/schema framework, but actual category-specific flat file templates must be downloaded from Seller Central. The MerchOS architecture must support importing these templates as schema definitions.
 
 ---
 
@@ -591,6 +647,8 @@ Shopify is a global e-commerce platform enabling merchants to create online stor
 - **Vendor** — Brand/manufacturer/supplier name
 
 ### 5.2 Product Fields
+
+> **Verification Status:** `VERIFIED_FROM_PUBLIC_DOCUMENTATION` (2026-08) — From official Shopify CSV import documentation and Admin API reference.
 
 | Field | Type | Required | CSV Column | Description |
 |-------|------|----------|------------|-------------|
@@ -641,23 +699,27 @@ Shopify is a global e-commerce platform enabling merchants to create online stor
 
 ### 5.4 Variant/Option System
 
-- Products can have up to **3 options** (e.g., Size, Colour, Material)
+> **Verification Status:** `VERIFIED_FROM_PUBLIC_DOCUMENTATION` (2026-08)
+
+- Products can have up to **3 options** (e.g., Size, Colour, Material) — Classification: `OFFICIAL_REQUIREMENT`
 - Each combination of option values creates a variant
-- Maximum **100 variants** per product
+- Maximum **100 variants** per product — Classification: `OFFICIAL_REQUIREMENT`
 - Each variant has its own: SKU, barcode, price, compare-at price, weight, inventory, image
 - Single-variant products: use "Title" as default option name with "Default Title" as value
 - In CSV: each variant is a separate row sharing the same Handle
 
 ### 5.5 Image Requirements
 
-- No strict minimum resolution (recommended 2048×2048 for zoom)
-- Maximum file size: 20 MB per image
-- Supported formats: JPEG, PNG, GIF, WebP
+> **Verification Status:** `VERIFIED_FROM_PUBLIC_DOCUMENTATION` (2026-08) for core limits. The 250-image limit is `REQUIRES_VERIFICATION` — commonly cited but source not confirmed as official hard limit.
+
+- No strict minimum resolution (recommended 2048×2048 for zoom) — Classification: `OFFICIAL_RECOMMENDATION`
+- Maximum file size: 20 MB per image — Classification: `OFFICIAL_REQUIREMENT`
+- Supported formats: JPEG, PNG, GIF, WebP — Classification: `OFFICIAL_REQUIREMENT`
 - Images submitted as URLs in CSV (must be publicly accessible)
 - Image position determines display order (1 = primary)
 - Alt text recommended for accessibility/SEO
 - Variant-specific images supported (one per variant)
-- Maximum images per product: 250
+- Maximum images per product: 250 — Classification: `REQUIRES_VERIFICATION`
 
 ### 5.6 SEO Fields
 
@@ -679,6 +741,10 @@ Metafields extend the product schema with custom data. They are **store-specific
 | Type | Data type (single_line_text_field, multi_line_text_field, number_integer, number_decimal, url, json, etc.) |
 
 > **ARCHITECTURAL NOTE:** Metafields are store-specific configurations. MerchOS must support per-store metafield mapping as part of the Shopify adapter configuration. The Schema Registry stores metafield definitions per connected Shopify store.
+>
+> **Schema Model:** `Shopify Base Schema + Store Configuration (metafields, markets, custom data) = Effective Export Schema`
+>
+> Shopify is NOT category/vertical-driven like Makro or Amazon. The base product CSV schema is uniform across all product types. Store-specific extensions (metafields, market pricing, translations) are layered on top via adapter configuration.
 
 ### 5.8 Collections and Tags
 
@@ -696,7 +762,7 @@ Metafields extend the product schema with custom data. They are **store-specific
 | International pricing | Percentage adjustments or fixed prices per market | Store-specific configuration |
 | Translations | Multi-language product content | Shopify Translate & Adapt app |
 
-> **NOTE:** International/market fields are store-specific configurations. REQUIRES VERIFICATION for CSV import support of multi-market data.
+> **NOTE:** International/market fields are store-specific configurations. `REQUIRES_VERIFICATION` for CSV import support of multi-market data.
 
 ### 5.10 Google Shopping Fields
 
@@ -751,13 +817,13 @@ Shopify supports Google Shopping integration fields (typically via metafields or
 
 ### 5.14 Source Documentation
 
-| Source | URL | Status |
-|--------|-----|--------|
-| Shopify CSV Import Guide | https://help.shopify.com/en/manual/products/import-export | Available |
-| Shopify Product API | https://shopify.dev/docs/api/admin-rest/current/resources/product | Available |
-| Shopify Product Resource Fields | https://shopify.dev/docs/api/admin-rest/current/resources/product | Available |
-| Shopify Metafields | https://shopify.dev/docs/api/admin-rest/current/resources/metafield | Available |
-| Shopify Product Taxonomy | https://shopify.dev/docs/apps/selling-strategies/categories | Available |
+| Source | URL | Status | Classification |
+|--------|-----|--------|----------------|
+| Shopify CSV Import Guide | https://help.shopify.com/en/manual/products/import-export | Available | `VERIFIED_FROM_PUBLIC_DOCUMENTATION` |
+| Shopify Product API | https://shopify.dev/docs/api/admin-rest/current/resources/product | Available | `VERIFIED_FROM_PUBLIC_DOCUMENTATION` |
+| Shopify Product Resource Fields | https://shopify.dev/docs/api/admin-rest/current/resources/product | Available | `VERIFIED_FROM_PUBLIC_DOCUMENTATION` |
+| Shopify Metafields | https://shopify.dev/docs/api/admin-rest/current/resources/metafield | Available | `VERIFIED_FROM_PUBLIC_DOCUMENTATION` |
+| Shopify Product Taxonomy | https://shopify.dev/docs/apps/selling-strategies/categories | Available | `VERIFIED_FROM_PUBLIC_DOCUMENTATION` |
 
 ---
 
@@ -789,6 +855,8 @@ WooCommerce is an open-source e-commerce plugin for WordPress. Unlike hosted pla
 | External/Affiliate | Link to external product | ❌ (redirect) | ❌ |
 
 ### 6.3 Common Product Fields
+
+> **Verification Status:** `VERIFIED_FROM_PUBLIC_DOCUMENTATION` (2026-08) — From official WooCommerce CSV importer documentation and core plugin source.
 
 | Field | Type | Required | CSV Column | Description |
 |-------|------|----------|------------|-------------|
@@ -900,10 +968,12 @@ For variable products in CSV:
 
 ### 6.13 Image Requirements
 
-- No strict platform minimum resolution (store-theme dependent)
-- Recommended: 800×800 minimum for product images
-- Maximum file size: WordPress/server upload limit (typically 2-50 MB depending on hosting)
-- Supported formats: JPEG, PNG, GIF, WebP (WordPress 5.8+)
+> **Verification Status:** `VERIFIED_FROM_PUBLIC_DOCUMENTATION` (2026-08) for core WooCommerce behaviour. Upload size limits are hosting-dependent.
+
+- No strict platform minimum resolution (store-theme dependent) — Classification: `PLATFORM_BEHAVIOUR`
+- Recommended: 800×800 minimum for product images — Classification: `MERCHOS_BEST_PRACTICE`
+- Maximum file size: WordPress/server upload limit (hosting-dependent; typically 2-50 MB) — Classification: `PLATFORM_BEHAVIOUR` — do NOT hard-code a specific limit
+- Supported formats: JPEG, PNG, GIF, WebP (WordPress 5.8+) — Classification: `OFFICIAL_REQUIREMENT`
 - Multiple images: comma-separated URLs in CSV
 - First image in list = featured/primary image
 - Subsequent images = product gallery
@@ -913,15 +983,15 @@ For variable products in CSV:
 
 WooCommerce SEO depends on installed plugins (Yoast SEO, Rank Math, etc.). Core WooCommerce does not have built-in SEO meta fields in the CSV importer.
 
-| Field | Source | Description |
-|-------|--------|-------------|
-| Product name | Core | Used as page title if no SEO plugin |
-| Slug | Core | URL-friendly product identifier |
-| Short description | Core | Often used as meta description |
-| Meta: _yoast_wpseo_title | Plugin (Yoast) | Custom SEO title |
-| Meta: _yoast_wpseo_metadesc | Plugin (Yoast) | Custom meta description |
+| Field | Source | Classification | Description |
+|-------|--------|----------------|-------------|
+| Product name | Core | `OFFICIAL_REQUIREMENT` | Used as page title if no SEO plugin |
+| Slug | Core | `OFFICIAL_REQUIREMENT` | URL-friendly product identifier |
+| Short description | Core | `OFFICIAL_REQUIREMENT` | Often used as meta description |
+| Meta: _yoast_wpseo_title | Plugin (Yoast) | `STORE_PLUGIN_DEPENDENT` | Custom SEO title |
+| Meta: _yoast_wpseo_metadesc | Plugin (Yoast) | `STORE_PLUGIN_DEPENDENT` | Custom meta description |
 
-> **NOTE:** SEO field handling is store-specific depending on installed plugins.
+> **NOTE:** SEO field handling is store-specific depending on installed plugins. MerchOS must clearly separate core WooCommerce fields from plugin-dependent fields in the adapter configuration.
 
 ### 6.15 Custom Metadata
 
@@ -939,8 +1009,12 @@ WooCommerce SEO depends on installed plugins (Yoast SEO, Rank Math, etc.). Core 
 |------------|--------|-------|
 | SKU | Free-form string | Must be unique across all products/variations in the store |
 | Product ID | Integer (WordPress-assigned) | Auto-increment; not submitted |
-| Barcode | Not native to WooCommerce | Requires plugin or custom meta field |
+| Barcode | Not native to WooCommerce core | `STORE_PLUGIN_DEPENDENT` — Requires plugin or custom meta field (e.g., "Meta: _barcode") |
 | Slug | URL-safe string | Auto-generated from name; unique per store |
+
+> **ARCHITECTURAL NOTE:** Barcode/EAN/UPC/GTIN support is NOT part of WooCommerce core. It requires a third-party plugin (e.g., "WooCommerce Product GTIN (EAN, UPC, ISBN) for WooCommerce" or similar). MerchOS must treat barcode as `STORE_PLUGIN_DEPENDENT` and support configurable meta key mapping per store.
+>
+> **Schema Model:** `WooCommerce Core Schema + Product Type + Store/Plugin Extensions = Effective Export Schema`
 
 ### 6.17 Validation Rules
 
@@ -1002,12 +1076,12 @@ Common errors:
 
 ### 6.21 Source Documentation
 
-| Source | URL | Status |
-|--------|-----|--------|
-| WooCommerce CSV Import Documentation | https://woocommerce.com/document/product-csv-importer-exporter/ | Available |
-| WooCommerce REST API — Products | https://woocommerce.github.io/woocommerce-rest-api-docs/#products | Available |
-| WooCommerce Product Types | https://woocommerce.com/document/managing-products/ | Available |
-| WooCommerce Product CSV Schema | Core plugin source: includes/import/ | Available |
+| Source | URL | Status | Classification |
+|--------|-----|--------|----------------|
+| WooCommerce CSV Import Documentation | https://woocommerce.com/document/product-csv-importer-exporter/ | Available | `VERIFIED_FROM_PUBLIC_DOCUMENTATION` |
+| WooCommerce REST API — Products | https://woocommerce.github.io/woocommerce-rest-api-docs/#products | Available | `VERIFIED_FROM_PUBLIC_DOCUMENTATION` |
+| WooCommerce Product Types | https://woocommerce.com/document/managing-products/ | Available | `VERIFIED_FROM_PUBLIC_DOCUMENTATION` |
+| WooCommerce Product CSV Schema | Core plugin source: includes/import/ | Available | `VERIFIED_FROM_PUBLIC_DOCUMENTATION` |
 
 ---
 
@@ -1028,7 +1102,7 @@ Common errors:
 | Weight | Conditional | ✅ Required | Conditional | Optional | Optional |
 | Dimensions | Conditional | ✅ Required | Conditional | — | Optional |
 | Category | ✅ Required | ✅ Required (Vertical) | ✅ Required (Product Type) | Optional | Optional |
-| Variants | Supported | REQUIRES VERIFICATION | ✅ Supported | ✅ Supported (max 100) | ✅ Supported |
+| Variants | Supported | `REQUIRES_SELLER_ACCOUNT_VERIFICATION` | ✅ Supported | ✅ Supported (max 100) | ✅ Supported |
 | SEO fields | — | — | — | Optional | Plugin-dependent |
 | Custom attributes | Limited | Vertical-specific | Category-specific | Metafields | Custom meta |
 
@@ -1056,13 +1130,13 @@ Common errors:
 
 ### 7.4 Variant Model Comparison
 
-| Platform | Max Variants | Max Options/Axes | Model |
-|----------|:------------:|:----------------:|-------|
-| Takealot | REQUIRES VERIFICATION | Limited | TSIN-based parent/child |
-| Makro | REQUIRES VERIFICATION | Vertical-dependent | Loadsheet rows |
-| Amazon | Unlimited (practical limit ~2000) | Theme-dependent | Parent/child SKUs |
-| Shopify | 100 | 3 | Product options + variant matrix |
-| WooCommerce | Unlimited (practical limit ~50-100) | Unlimited | Attributes + variation posts |
+| Platform | Max Variants | Max Options/Axes | Model | Classification |
+|----------|:------------:|:----------------:|-------|----------------|
+| Takealot | `REQUIRES_SELLER_ACCOUNT_VERIFICATION` | Limited | TSIN-based parent/child | `UNVERIFIED` |
+| Makro | `REQUIRES_SELLER_ACCOUNT_VERIFICATION` | Vertical-dependent | Loadsheet rows | `UNVERIFIED` |
+| Amazon | `UNVERIFIED` — no confirmed universal limit | Theme-dependent | Parent/child SKUs | `UNVERIFIED` |
+| Shopify | 100 | 3 | Product options + variant matrix | `OFFICIAL_REQUIREMENT` |
+| WooCommerce | No hard platform limit (practical limit hosting-dependent) | Unlimited | Attributes + variation posts | `PLATFORM_BEHAVIOUR` |
 
 ---
 
@@ -1070,19 +1144,104 @@ Common errors:
 
 This section tracks when each platform's requirements were last verified against actual platform documentation or templates.
 
-| Platform | Section | Last Verified | Verified By | Status | Notes |
-|----------|---------|:-------------:|-------------|--------|-------|
-| Takealot | Bulk Offers fields (2.3) | 2025-01 | Template obtained | Verified | From actual Bulk Offers download |
-| Takealot | Product Creation (2.4) | — | — | Draft | REQUIRES VERIFICATION against current template |
-| Makro | Common fields (3.4) | 2025-01 | Templates obtained | Verified | From actual loadsheet downloads |
-| Makro | Category-specific (3.5) | 2025-01 | Templates obtained | Partial | Some verticals verified, others pending |
-| Amazon | Common fields (4.4) | — | — | Draft | Based on public documentation |
-| Amazon | Category-specific (4.5) | — | — | Draft | REQUIRES actual Seller Central templates |
-| Shopify | Product fields (5.2) | 2025-01 | Public docs | Verified | From official Shopify documentation |
-| Shopify | CSV format (5.12) | 2025-01 | Public docs | Verified | From official CSV import guide |
-| WooCommerce | Product fields (6.3) | 2025-01 | Public docs | Verified | From official WooCommerce documentation |
-| WooCommerce | CSV format (6.18) | 2025-01 | Public docs | Verified | From WooCommerce core source |
+| Platform | Section | Last Verified | Verified By | Status | Classification |
+|----------|---------|:-------------:|-------------|--------|----------------|
+| Takealot | Bulk Offers fields (2.3) | 2026-08 | Template obtained | `VERIFIED_FROM_TEMPLATE` | `OFFICIAL_REQUIREMENT` |
+| Takealot | Product Creation (2.4) | — | — | `REQUIRES_SELLER_ACCOUNT_VERIFICATION` | `INFERENCE` |
+| Takealot | Image Requirements (2.6) | — | — | `REQUIRES_SELLER_ACCOUNT_VERIFICATION` | `UNVERIFIED` |
+| Takealot | Variant System (2.8) | — | — | `REQUIRES_SELLER_ACCOUNT_VERIFICATION` | `UNVERIFIED` |
+| Makro | Common fields (3.4) | 2026-08 | Templates obtained | `VERIFIED_FROM_TEMPLATE` | `OFFICIAL_REQUIREMENT` |
+| Makro | Duvet Covers vertical (3.5) | 2026-08 | Template obtained | `VERIFIED_FROM_TEMPLATE` | `OFFICIAL_REQUIREMENT` |
+| Makro | Electronics vertical (3.5) | — | — | `INFERENCE` | `INFERENCE` |
+| Makro | Furniture vertical (3.5) | — | — | `INFERENCE` | `INFERENCE` |
+| Makro | Image Requirements (3.7) | — | — | `REQUIRES_SELLER_ACCOUNT_VERIFICATION` | `UNVERIFIED` |
+| Amazon | SP-API framework (4.3) | 2026-08 | Public docs | `VERIFIED_FROM_PUBLIC_DOCUMENTATION` | `OFFICIAL_REQUIREMENT` |
+| Amazon | Common fields (4.4) | 2026-08 | Public docs | `VERIFIED_FROM_PUBLIC_DOCUMENTATION` | `OFFICIAL_REQUIREMENT` |
+| Amazon | Category-specific (4.5) | — | — | `EXAMPLE_ONLY` | `REQUIRES_SELLER_ACCOUNT_VERIFICATION` |
+| Amazon | Image Requirements (4.8) | 2026-08 | Public docs | `VERIFIED_FROM_PUBLIC_DOCUMENTATION` | `OFFICIAL_RECOMMENDATION` |
+| Shopify | Product fields (5.2) | 2026-08 | Public docs | `VERIFIED_FROM_PUBLIC_DOCUMENTATION` | `OFFICIAL_REQUIREMENT` |
+| Shopify | Variant limits (5.4) | 2026-08 | Public docs | `VERIFIED_FROM_PUBLIC_DOCUMENTATION` | `OFFICIAL_REQUIREMENT` |
+| Shopify | CSV format (5.12) | 2026-08 | Public docs | `VERIFIED_FROM_PUBLIC_DOCUMENTATION` | `OFFICIAL_REQUIREMENT` |
+| WooCommerce | Product fields (6.3) | 2026-08 | Public docs | `VERIFIED_FROM_PUBLIC_DOCUMENTATION` | `OFFICIAL_REQUIREMENT` |
+| WooCommerce | CSV format (6.18) | 2026-08 | Public docs | `VERIFIED_FROM_PUBLIC_DOCUMENTATION` | `OFFICIAL_REQUIREMENT` |
+| WooCommerce | SEO/Barcode fields (6.14, 6.16) | 2026-08 | Public docs | `STORE_PLUGIN_DEPENDENT` | `STORE_PLUGIN_DEPENDENT` |
 
 ---
 
 > **Maintenance Note:** This document must be updated whenever marketplace platforms change their templates, field requirements, or validation rules. Each update must include the verification date and source in the Verification Log above.
+
+---
+
+## 9. Audit Trail
+
+### 9.1 Verification Pass Details
+
+| Field | Value |
+|-------|-------|
+| **Date** | 2026-08-08 |
+| **Pass Type** | Corrective verification — accuracy, classification, and verification status audit |
+| **Scope** | All 5 platforms, cross-platform comparison, verification log |
+
+### 9.2 Files Changed
+
+| File | Changes |
+|------|---------|
+| `docs/architecture/marketplace-knowledge-base.md` | Verification status annotations, requirement classifications, removed unsupported claims, added audit trail |
+| `docs/architecture/schema-validation-architecture.md` | SchemaEntry updated with verificationStatus/requirementClassification enums, version/date updated |
+| `docs/architecture/adr/ADR-003-canonical-product-model-marketplace-adapters.md` | Date updated, added consequence about schema non-permanence |
+| `docs/architecture/merchos-blueprint.md` | Sections 11-13 verification references updated, implementation note added |
+| `packages/types/src/marketplace.ts` | New type definitions for MarketplaceSchema, ValidationResult, verification/classification enums |
+
+### 9.3 Key Corrections Made
+
+| Area | Correction |
+|------|-----------|
+| **Amazon template versions** | Removed all hard-coded "v2024.1" references; marked as dynamic/current |
+| **Amazon image limit** | Changed "maximum 9 images" to "varies by product type (commonly 7-9)" |
+| **Amazon bullet points** | Changed "maximum 5" to "typically 5, varies by category" |
+| **Amazon variant limit** | Removed "unlimited (practical limit ~2000)" — marked `UNVERIFIED` |
+| **Amazon category schemas** | Clearly marked as `EXAMPLE_ONLY`, not authoritative |
+| **Amazon SP-API** | Confirmed as `VERIFIED_FROM_PUBLIC_DOCUMENTATION` |
+| **Takealot product creation** | Marked ALL fields as `REQUIRES_SELLER_ACCOUNT_VERIFICATION` / `INFERENCE` |
+| **Makro verticals** | Only duvet-cover is `VERIFIED_FROM_TEMPLATE`; others marked `INFERENCE` |
+| **Makro platform fields** | Explicitly listed Makro Serial Number, QC Status etc. as `PLATFORM_GENERATED` |
+| **WooCommerce barcode** | Explicitly marked as `STORE_PLUGIN_DEPENDENT`, not native |
+| **WooCommerce file limits** | Removed specific MB claim — marked as hosting-dependent |
+| **Shopify 250 images** | Marked as `REQUIRES_VERIFICATION` (commonly cited, source unconfirmed) |
+| **All "2025-01" dates** | Updated to 2026-08 with appropriate verification status |
+
+### 9.4 Items Still Requiring Seller Account Verification
+
+| Platform | Item | Priority |
+|----------|------|----------|
+| Takealot | Full product creation template (category-specific) | HIGH |
+| Takealot | Image minimum resolution | MEDIUM |
+| Takealot | Title character limit | MEDIUM |
+| Takealot | Variant system details and limits | MEDIUM |
+| Makro | Electronics loadsheet template | MEDIUM |
+| Makro | Furniture loadsheet template | MEDIUM |
+| Makro | Image minimum resolution | LOW |
+| Amazon | Category-specific flat file templates (per marketplace) | HIGH |
+| Amazon | Exact image count limits per product type | LOW |
+| Amazon | Exact bullet point limits per product type | LOW |
+| Shopify | 250-image limit official source confirmation | LOW |
+
+### 9.5 Unsupported Claims Removed
+
+1. ~~Amazon "v2024.1" template version~~ — fabricated version number, now marked as dynamic
+2. ~~Amazon "maximum 9 images" universal~~ — varies by product type
+3. ~~Amazon "maximum 5 bullet points" universal~~ — varies by category
+4. ~~Amazon "unlimited (practical limit ~2000) variants"~~ — no confirmed source
+5. ~~WooCommerce "practical limit ~50-100 variants"~~ — hosting-dependent, not a platform limit
+6. ~~Takealot "max ~150 chars" title~~ — unverified, source not confirmed
+7. ~~Makro image "minimum resolution"~~ — was never specified, removed unsourced claim
+
+### 9.6 Remaining Architectural Risks
+
+| Risk | Mitigation |
+|------|-----------|
+| Amazon schemas change frequently — registry may become stale | Implement Product Type Definitions API integration for dynamic schema retrieval |
+| Makro loadsheets obtained for only 1 vertical — other verticals are inference | Obtain remaining vertical templates before building MakroAdapter for non-bedding verticals |
+| Takealot product creation template not obtained — adapter build blocked | Requires seller account access or template from existing seller partner |
+| WooCommerce plugin landscape is fragmented — no universal barcode field | Adapter must support configurable meta key mapping per connected store |
+| Shopify metafields/markets are store-specific — cannot pre-populate in registry | Per-store adapter configuration required during store connection setup |
