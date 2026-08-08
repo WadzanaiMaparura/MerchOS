@@ -1,8 +1,8 @@
 # MerchOS Platform Architecture Blueprint
 
-> **Version:** 0.2  
+> **Version:** 0.3  
 > **Status:** Living Document  
-> **Last Updated:** 2025
+> **Last Updated:** 2026-08
 
 This Blueprint is the authoritative engineering architecture reference for the MerchOS platform. It serves as the single source of truth for authentication, authorization, security, API design, and portal architecture decisions. All engineering teams should reference this document for architectural guidance.
 
@@ -1381,7 +1381,8 @@ Platform → Category/Vertical → Schema Version → Fields → Rules → Allow
 Key characteristics:
 - **Category/vertical awareness** — mandatory for Makro (vertical-specific loadsheets) and Amazon (product-type templates)
 - **Versioned** — supports template updates without breaking existing exports
-- **Verification-tracked** — each schema records when it was last verified against the platform
+- **Verification-tracked** — each schema records when it was last verified against the platform, with both a `verificationStatus` (source confidence) and `requirementClassification` (authority level)
+- **Dynamic for Amazon** — Amazon schemas should be retrieved via the Product Type Definitions API rather than hard-coded
 
 ### 12.6 Services
 
@@ -1487,5 +1488,9 @@ This section documents the phased implementation plan for the marketplace export
 3. **Validation before adapters** — The Validation Engine works for all platforms from Phase 1 (using registry data). Adapters add export generation and platform-specific logic on top of existing validation.
 
 4. **Incremental value** — Each phase delivers working export capability for its target platform(s). Sellers benefit from each phase completion without waiting for all platforms.
+
+5. **Implementation begins only after schema framework accuracy is confirmed** — Adapter implementation for any platform should not begin until the relevant Schema Registry entries have been verified against actual platform templates or documentation. Building adapters against unverified or inferred schemas risks rework.
+
+6. **Marketplace requirements are external configuration** — As documented in [ADR-003](./adr/ADR-003-canonical-product-model-marketplace-adapters.md), marketplace requirements are treated as external knowledge/configuration and are never assumed to be permanently static. Schema Registry entries must be maintained as platforms evolve.
 
 ---

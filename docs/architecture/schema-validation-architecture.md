@@ -1,8 +1,8 @@
 # MerchOS Schema Registry & Validation Architecture
 
-> **Version:** 1.0  
+> **Version:** 1.1  
 > **Status:** Living Document  
-> **Last Updated:** 2025-01  
+> **Last Updated:** 2026-08  
 > **Related ADR:** [ADR-003: Canonical Product Model with Marketplace Adapters](./adr/ADR-003-canonical-product-model-marketplace-adapters.md)
 
 This document specifies the architecture for the MerchOS Schema Registry, Validation Engine, Platform Adapters, and Export Pipeline. It defines how canonical product data is validated against marketplace-specific requirements and transformed into platform-compliant export formats.
@@ -215,30 +215,31 @@ The Schema Registry is the single source of truth for marketplace-specific field
 ```
 Schema Registry
 ├── Platform: takealot
-│   ├── Schema: bulk-offers (v1.0)
+│   ├── Schema: bulk-offers (v1.0) [VERIFIED_FROM_TEMPLATE]
 │   │   └── Fields: barcode, sku, soh, sellingPrice, rrp, leadtime
-│   └── Schema: product-creation (v1.0)
+│   └── Schema: product-creation (v1.0) [REQUIRES_SELLER_ACCOUNT_VERIFICATION]
 │       ├── Category: electronics
 │       │   └── Fields: common + warranty, model_number, ...
 │       └── Category: general
 │           └── Fields: common fields
 ├── Platform: makro
-│   ├── Vertical: duvet-covers (v1.0)
+│   ├── Vertical: duvet-covers (v1.0) [VERIFIED_FROM_TEMPLATE]
 │   │   └── Fields: common + size, material, thread_count, ...
-│   ├── Vertical: electronics (v1.0)
+│   ├── Vertical: electronics (v1.0) [INFERENCE]
 │   │   └── Fields: common + wattage, voltage, ...
-│   └── Vertical: furniture (v1.0)
+│   └── Vertical: furniture (v1.0) [INFERENCE]
 │       └── Fields: common + material, assembly, ...
 ├── Platform: amazon
-│   ├── Product Type: SHIRT (v2024.1)
+│   ├── Product Type: (dynamic — via Product Type Definitions API)
+│   │   └── Fields: retrieved per product type and marketplace
+│   ├── Example: clothing (EXAMPLE_ONLY)
 │   │   └── Fields: common + department, colour, size, ...
-│   ├── Product Type: LAPTOP_COMPUTER (v2024.1)
-│   │   └── Fields: common + screen_size, ram, storage, ...
-│   └── Product Type: ... (many more)
-├── Platform: shopify
-│   └── Schema: product-csv (v2024.1)
+│   └── Example: electronics (EXAMPLE_ONLY)
+│       └── Fields: common + screen_size, ram, storage, ...
+├── Platform: shopify [VERIFIED_FROM_PUBLIC_DOCUMENTATION]
+│   └── Schema: product-csv (current)
 │       └── Fields: handle, title, body_html, vendor, ...
-└── Platform: woocommerce
+└── Platform: woocommerce [VERIFIED_FROM_PUBLIC_DOCUMENTATION]
     ├── Product Type: simple (v1.0)
     │   └── Fields: name, sku, regular_price, ...
     ├── Product Type: variable (v1.0)
@@ -259,12 +260,13 @@ SchemaEntry {
   categoryOrVertical: string    // Category identifier (or "default" if non-category-specific)
   schemaId: string              // Unique schema identifier
   schemaVersion: string         // Semantic version (e.g., "1.0.0")
-  templateVersion: string       // Platform's template version (if applicable)
+  templateVersion: string       // Platform's template version (if applicable; dynamic for Amazon)
 
   // Metadata
   sourceDocumentation: string[] // URLs to source documentation
   dateVerified: ISO8601         // When last verified against platform
-  verificationStatus: enum      // draft | verified | deprecated
+  verificationStatus: enum      // VERIFIED | VERIFIED_FROM_TEMPLATE | VERIFIED_FROM_PUBLIC_DOCUMENTATION | REQUIRES_SELLER_ACCOUNT_VERIFICATION | DRAFT | DEPRECATED
+  requirementClassification: enum // OFFICIAL_REQUIREMENT | OFFICIAL_RECOMMENDATION | PLATFORM_BEHAVIOUR | MERCHOS_BEST_PRACTICE | INFERENCE | UNVERIFIED
   notes: string                 // Human-readable notes
 
   // Fields
@@ -321,9 +323,11 @@ The registry supports multiple concurrent versions of a schema to handle:
 | Version Component | Example | Purpose |
 |-------------------|---------|---------|
 | Schema version | 1.0.0 | MerchOS's version of the schema definition |
-| Template version | 2024.1 | Platform's official template version |
+| Template version | (dynamic, platform-assigned) | Platform's official template version — do not hard-code |
 | Marketplace | za, us, uk | Regional marketplace variant |
 | Status | draft → verified → deprecated | Lifecycle tracking |
+| Verification status | VERIFIED_FROM_TEMPLATE / VERIFIED_FROM_PUBLIC_DOCUMENTATION / REQUIRES_SELLER_ACCOUNT_VERIFICATION / DRAFT / DEPRECATED | Source confidence |
+| Requirement classification | OFFICIAL_REQUIREMENT / OFFICIAL_RECOMMENDATION / PLATFORM_BEHAVIOUR / MERCHOS_BEST_PRACTICE / INFERENCE / UNVERIFIED | Requirement authority level |
 
 ### 3.6 Registry Operations
 
@@ -425,7 +429,7 @@ ValidationFinding {
   "targetPlatform": "takealot",
   "targetCategory": "general",
   "schemaVersion": "1.0.0",
-  "timestamp": "2025-01-28T10:30:00Z",
+  "timestamp": "2026-08-08T10:30:00Z",
   "exportAllowed": false,
   "errorCount": 2,
   "warningCount": 1,

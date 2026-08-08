@@ -4,7 +4,7 @@
 
 **Accepted**
 
-Date: 2025-01-28
+Date: 2026-08-08
 
 ## Context
 
@@ -139,6 +139,7 @@ flowchart TD
 | **Initial schema capture effort** | Populating the registry for 5 platforms across multiple categories requires significant upfront research. Some platforms (Amazon, Makro) have category-specific requirements that multiply the schema count. | Phased implementation: all 5 platforms exist in the registry from Phase 1 (core fields), with category-specific schemas added as marketplace adapters are built. |
 | **Mapping complexity** | Some canonical fields map to different platform fields depending on context (e.g., "description" may map to different fields on different platforms with different length limits). | Mapping rules are explicit in the schema registry. No implicit or convention-based mapping — every transformation is declared. |
 | **Validation rule maintenance** | Validation rules may change when platforms update their requirements. Rules must be kept in sync with actual platform behaviour. | Schema verification dates track freshness. Platform rejection patterns are mapped back to validation rules to identify drift. |
+| **Schema non-permanence** | Marketplace requirements are treated as external knowledge/configuration and are never assumed to be permanently static. Platform templates, field requirements, allowed values, and validation rules can change at any time without notice. | Schema Registry versioning, verification status tracking, and the feedback loop from platform rejections all contribute to detecting and adapting to schema changes. No hard-coded marketplace rules in application code. |
 
 ## Alternatives Considered
 
