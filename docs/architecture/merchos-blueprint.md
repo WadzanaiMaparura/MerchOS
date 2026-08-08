@@ -20,6 +20,9 @@ This Blueprint is the authoritative engineering architecture reference for the M
 8. [Seller Portal Isolation](#8-seller-portal-isolation)
 9. [Architecture Diagrams](#9-architecture-diagrams)
 10. [Future Roles](#10-future-roles)
+11. [Canonical Product Model](#11-canonical-product-model)
+12. [Marketplace Export Architecture](#12-marketplace-export-architecture)
+13. [Implementation Roadmap](#13-implementation-roadmap)
 
 ---
 
@@ -1100,10 +1103,14 @@ graph TB
         MarketplaceLambda[Marketplace Service<br/><i>Lambda</i>]
         UsersLambda[Users Service<br/><i>Lambda</i>]
         SystemLambda[System Service<br/><i>Lambda</i>]
+        SchemaRegistryLambda[SchemaRegistryService<br/><i>Lambda</i>]
+        ValidationLambda[ValidationEngine<br/><i>Lambda</i>]
+        ExportLambda[ExportEngine<br/><i>Lambda</i>]
     end
 
     subgraph Data["Data Layer"]
         DDB[(DynamoDB)]
+        S3Assets[(S3<br/><i>Asset Store</i>)]
     end
 
     subgraph SharedPkg["Shared Packages"]
@@ -1124,6 +1131,9 @@ graph TB
     APIGW -->|Validated request| MarketplaceLambda
     APIGW -->|Validated request| UsersLambda
     APIGW -->|Validated request| SystemLambda
+    APIGW -->|Validated request| SchemaRegistryLambda
+    APIGW -->|Validated request| ValidationLambda
+    APIGW -->|Validated request| ExportLambda
 
     ProductsLambda --> DDB
     SubscriptionLambda --> DDB
@@ -1131,6 +1141,10 @@ graph TB
     MarketplaceLambda --> DDB
     UsersLambda --> DDB
     SystemLambda --> DDB
+    SchemaRegistryLambda --> DDB
+    ValidationLambda --> DDB
+    ExportLambda --> DDB
+    ExportLambda --> S3Assets
 
     ProductsLambda -.->|Consumes| RBAC
     SubscriptionLambda -.->|Consumes| RBAC
@@ -1138,8 +1152,14 @@ graph TB
     MarketplaceLambda -.->|Consumes| RBAC
     UsersLambda -.->|Consumes| RBAC
     SystemLambda -.->|Consumes| RBAC
+    SchemaRegistryLambda -.->|Consumes| RBAC
+    ValidationLambda -.->|Consumes| RBAC
+    ExportLambda -.->|Consumes| RBAC
     AP -.->|Consumes| RBAC
     SP -.->|Consumes| RBAC
+
+    ValidationLambda -->|Reads schemas| SchemaRegistryLambda
+    ExportLambda -->|Validates before export| ValidationLambda
 ```
 
 ### 9.4 Diagram Maintenance
@@ -1227,5 +1247,245 @@ These guarantees mean that the only artifact that changes when adding a role is 
 ### 10.6 Detailed Governance and Expansion Procedure
 
 For the complete step-by-step role expansion procedure, governance checklist, and permission design guidelines, see the [RBAC Future-Proofing Addendum](./rbac-future-proofing-addendum.md).
+
+---
+
+
+## 11. Canonical Product Model
+
+This section documents the MerchOS internal product model — the platform-independent representation of product data that serves as the single source of truth for all marketplace exports.
+
+### 11.1 Design Philosophy
+
+The MerchOS canonical product model is **independent of any marketplace's schema**. It does not mirror Takealot's CSV structure, Amazon's flat file format, Shopify's product resource, or any other platform's data model. Instead, it represents the complete product truth in a normalized structure from which any platform-specific format can be derived.
+
+This decision is documented in [ADR-003: Canonical Product Model with Marketplace Adapters](./adr/ADR-003-canonical-product-model-marketplace-adapters.md).
+
+### 11.2 Data Domain Separation
+
+The canonical model separates product data into three domains:
+
+| Domain | Contents | Purpose |
+|--------|----------|---------|
+| **Core Content** | Title, descriptions, brand, identifiers, physical attributes, images, variants | Platform-neutral product identity; what the product IS |
+| **Commercial/Listing** | Price, RRP, stock, leadtime, fulfilment method, listing status | How the product is sold; may vary per marketplace |
+| **Platform-Specific** | Platform identifiers (ASIN, TSIN), category mappings, export history | Per-marketplace metadata and state |
+
+This separation enables:
+- Editing content once and exporting to multiple platforms
+- Per-marketplace pricing and inventory strategies
+- Clear boundaries between "what the product is" and "how it's sold"
+
+### 11.3 Image Asset References
+
+Product images are stored canonically in **S3** and referenced by S3 key in the product model. Platform adapters resolve S3 keys to publicly accessible URLs appropriate for each marketplace's requirements.
+
+This approach ensures:
+- Single source of truth for image assets
+- No dependency on third-party image hosting for canonical storage
+- Platform adapters can generate URLs meeting each marketplace's specific requirements (HTTPS, resolution, format)
+- Image processing (resizing, format conversion) handled independently of product data
+
+### 11.4 Product Lifecycle States
+
+| State | Description | Permitted Actions |
+|-------|-------------|-------------------|
+| **Draft** | Product under creation; content being populated | Edit, enrich, add images |
+| **Ready** | All core content populated; eligible for validation | Validate, edit |
+| **Validated** | Passed validation for at least one target platform | Export, edit (re-validates) |
+| **Exported** | Successfully exported to one or more platforms | Re-export, update, archive |
+| **Archived** | No longer active; retained for history | Unarchive, view history |
+
+State transitions are tracked per product and per marketplace (a product may be "Exported" to Takealot but only "Validated" for Amazon).
+
+### 11.5 Variant Model
+
+The canonical variant model is platform-independent:
+- A product defines **option axes** (e.g., Colour, Size) — not limited to any platform's maximum
+- Each combination of option values defines a **variant**
+- Variants inherit parent content data and override specific fields (price, SKU, barcode, images, stock)
+- Platform adapters translate the canonical variant structure to each platform's model (Shopify's 3-option limit, Amazon's variation themes, WooCommerce's attributes)
+
+### 11.6 Cross-References
+
+- Detailed canonical model specification: [Schema & Validation Architecture — Section 2](./schema-validation-architecture.md#2-canonical-product-model)
+- Architecture decision: [ADR-003](./adr/ADR-003-canonical-product-model-marketplace-adapters.md)
+
+---
+
+## 12. Marketplace Export Architecture
+
+This section documents the architecture for exporting products from MerchOS to target marketplaces. The export system uses a schema registry, validation engine, and platform-specific adapters to generate deterministic, platform-compliant output.
+
+### 12.1 Export Pipeline Overview
+
+The export pipeline follows a strict sequence where validation acts as a hard gate before any export file is generated:
+
+```mermaid
+flowchart TD
+    CP[Canonical Product] --> TS[Target Selection<br/><i>platform + category + mode</i>]
+    TS --> SR[Schema Registry Lookup]
+    SR --> MT[Mapping & Transformation]
+    MT --> VE[Validation Engine]
+    VE --> VR{Validation<br/>Report}
+    VR -->|ERRORS present| BLK[Export Blocked<br/><i>Return report to user</i>]
+    VR -->|No ERRORS| EG[Export Generation]
+    EG --> OUT[Platform Output<br/><i>CSV / TSV / XLSX / API</i>]
+```
+
+### 12.2 Adapter Pattern
+
+Each marketplace has a dedicated adapter encapsulating all platform-specific logic:
+
+| Adapter | Target Platform | Key Responsibility |
+|---------|----------------|-------------------|
+| TakealotAdapter | Takealot (South Africa) | Bulk offers + product creation workflows |
+| MakroAdapter | Makro Marketplace (South Africa) | Vertical-specific loadsheet generation |
+| AmazonAdapter | Amazon (multi-marketplace) | Product-type-dependent schema handling |
+| ShopifyAdapter | Shopify (global) | Handle/variant/metafield management |
+| WooCommerceAdapter | WooCommerce (self-hosted) | Product type + custom metadata |
+
+All five adapters are first-class — no platform is treated as secondary or future. The adapter interface is uniform: schema selection → field mapping → transformation → validation → export formatting.
+
+### 12.3 Validation Gate
+
+The Validation Engine is a **mandatory gate** in the export pipeline:
+
+- Products with **ERROR** findings cannot be exported — the pipeline stops and returns the validation report
+- Products with **WARNING** findings may be exported — the user receives the report for review
+- Validation is **deterministic** — same product + same schema = same report
+- The engine **never** silently truncates, invents, or alters data
+
+This ensures that platform rejections are caught before submission, reducing failed exports and QC cycles.
+
+### 12.4 Export Format Generation
+
+Each adapter generates the exact output format required by its target platform:
+
+| Platform | Output Format | Key Format Requirements |
+|----------|--------------|------------------------|
+| Takealot | CSV (offers) / XLSX (products) | Exact column order; ZAR currency |
+| Makro | CSV loadsheet | Vertical-specific columns; exact template match |
+| Amazon | TSV flat file | Tab-separated; includes metadata headers; template version |
+| Shopify | CSV | Multi-row per product (variants/images); specific boolean format |
+| WooCommerce | CSV | Multi-row for variable products; pipe-separated attributes |
+
+### 12.5 Schema Registry
+
+The Schema Registry stores marketplace-specific field requirements organized hierarchically:
+
+```
+Platform → Category/Vertical → Schema Version → Fields → Rules → Allowed Values
+```
+
+Key characteristics:
+- **Category/vertical awareness** — mandatory for Makro (vertical-specific loadsheets) and Amazon (product-type templates)
+- **Versioned** — supports template updates without breaking existing exports
+- **Verification-tracked** — each schema records when it was last verified against the platform
+
+### 12.6 Services
+
+The export architecture introduces three services to the MerchOS backend:
+
+| Service | Type | Responsibility |
+|---------|------|---------------|
+| SchemaRegistryService | Lambda | CRUD operations on schema entries; schema lookup by platform/category/version |
+| ValidationEngine | Lambda | Evaluates products against schemas; produces validation reports |
+| ExportEngine | Lambda | Orchestrates the export pipeline; generates platform-specific output files |
+
+These services are documented in the [System Topology diagram](#93-system-topology) and interact with DynamoDB for schema storage and S3 for asset access and export file storage.
+
+### 12.7 Cross-References
+
+- Complete architecture specification: [Schema & Validation Architecture](./schema-validation-architecture.md)
+- Marketplace field requirements: [Marketplace Knowledge Base](./marketplace-knowledge-base.md)
+- Architecture decision: [ADR-003](./adr/ADR-003-canonical-product-model-marketplace-adapters.md)
+
+---
+
+## 13. Implementation Roadmap
+
+This section documents the phased implementation plan for the marketplace export architecture. All five platforms exist in the architecture and requirements registry from Phase 1 — no platform is deferred to "future" status.
+
+### 13.1 Phase 1: Foundation — Canonical Product + Schema Registry + Validation Framework
+
+**Scope:** Establish the core infrastructure that all marketplace exports build upon.
+
+| Deliverable | Description |
+|-------------|-------------|
+| Canonical Product Model | DynamoDB schema for platform-independent product storage (content + commercial + platform-specific domains) |
+| Schema Registry | Service for storing/retrieving marketplace field definitions, validation rules, and export templates |
+| Validation Engine | Core validation framework with severity levels (ERROR/WARNING/INFO), rule evaluation, and report generation |
+| Schema Entries (all 5 platforms) | Initial schema entries for Takealot, Makro, Amazon, Shopify, and WooCommerce — core fields and rules populated from the Marketplace Knowledge Base |
+| Image Asset Store | S3 bucket structure for canonical image storage with per-tenant/product organization |
+| Adapter Interface | Common adapter interface definition that all platform adapters implement |
+
+**Key outcome:** All 5 platforms exist in the Schema Registry with their core requirements documented. The Validation Engine can evaluate products against any registered schema. No export generation yet.
+
+### 13.2 Phase 2: Takealot + Makro Adapters
+
+**Scope:** Build complete export adapters for the two South African platforms using actual templates already obtained.
+
+| Deliverable | Description |
+|-------------|-------------|
+| TakealotAdapter | Bulk Offers export (6-field CSV) + product creation export |
+| MakroAdapter | Vertical-specific loadsheet generation (validated against actual Makro templates) |
+| Schema verification | Verify and update schema entries against actual obtained templates |
+| End-to-end export | Complete pipeline from canonical product → validation → export file for both platforms |
+| Rejection mapping | Map known Takealot/Makro rejection codes back to MerchOS validation findings |
+
+**Key outcome:** Sellers can export products to Takealot and Makro with pre-validated, platform-compliant output files.
+
+### 13.3 Phase 3: Amazon Adapter
+
+**Scope:** Build the Amazon adapter with product-type-aware schema handling.
+
+| Deliverable | Description |
+|-------------|-------------|
+| AmazonAdapter | Product-type-dependent schema selection; flat file generation; processing report interpretation |
+| Template import | Mechanism to import Seller Central flat file templates as schema definitions |
+| Variation support | Parent/child variation handling with Amazon-specific themes |
+| Multi-marketplace | Support for US, UK, and other Amazon marketplaces (marketplace-specific schemas) |
+| Feed submission | TSV flat file generation matching Amazon's template version requirements |
+
+**Key outcome:** Sellers can export products to Amazon with correct product-type templates, including variation relationships and marketplace-specific formatting.
+
+### 13.4 Phase 4: Shopify Adapter
+
+**Scope:** Build the Shopify adapter for CSV export and API integration.
+
+| Deliverable | Description |
+|-------------|-------------|
+| ShopifyAdapter | CSV generation with multi-row variant/image support; handle generation |
+| Metafield mapping | Per-store metafield configuration and mapping |
+| Option/variant translation | Canonical variant model → Shopify's 3-option / 100-variant model |
+| Store connection | Per-tenant Shopify store configuration for store-specific schema extensions |
+| API export path | Admin API integration for direct product creation/update (in addition to CSV) |
+
+**Key outcome:** Sellers can export products to their Shopify stores via CSV or API with correct variant expansion and store-specific metafield mapping.
+
+### 13.5 Phase 5: WooCommerce Adapter
+
+**Scope:** Build the WooCommerce adapter for self-hosted store integration.
+
+| Deliverable | Description |
+|-------------|-------------|
+| WooCommerceAdapter | CSV generation for simple, variable, grouped, and external product types |
+| Attribute handling | Pipe-separated attribute values; parent/variation row generation |
+| Custom metadata | Per-store custom meta field mapping (plugin-dependent fields) |
+| Store connection | Per-tenant WooCommerce store configuration (REST API credentials) |
+| API export path | WooCommerce REST API integration for direct product creation/update |
+
+**Key outcome:** Sellers can export products to their WooCommerce stores via CSV or API with correct product type handling and store-specific metadata configuration.
+
+### 13.6 Phase Notes
+
+1. **All 5 platforms in Phase 1** — The Schema Registry and Marketplace Knowledge Base include all five platforms from the start. No platform is architecturally deferred; only adapter implementation is phased.
+
+2. **Template availability drives sequencing** — Takealot and Makro adapters are Phase 2 because their actual templates have been obtained. Amazon is Phase 3 because category templates require Seller Central access.
+
+3. **Validation before adapters** — The Validation Engine works for all platforms from Phase 1 (using registry data). Adapters add export generation and platform-specific logic on top of existing validation.
+
+4. **Incremental value** — Each phase delivers working export capability for its target platform(s). Sellers benefit from each phase completion without waiting for all platforms.
 
 ---
