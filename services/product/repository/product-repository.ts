@@ -14,7 +14,7 @@ import {
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
-  DeleteCommand,
+  UpdateCommand,
   QueryCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { CanonicalProduct } from '@merch-os/types';
@@ -244,9 +244,16 @@ export class ProductRepository {
       );
     }
 
-    // Preserve createdAt from the incoming product, update updatedAt
+    // Read existing item to get the stored createdAt (incoming value is NOT trusted)
+    const existing = await this.get(tenantId, productId);
+    if (!existing) {
+      throw new ProductNotFoundError(tenantId, productId);
+    }
+
+    // Preserve stored createdAt; refresh updatedAt
     const updatedProduct: CanonicalProduct = {
       ...product,
+      createdAt: existing.createdAt, // NEVER trust incoming createdAt
       updatedAt: new Date().toISOString(),
     };
 
@@ -280,25 +287,55 @@ export class ProductRepository {
   }
 
   // -------------------------------------------------------------------------
-  // Delete
+  // Delete (Soft Delete — archives the product)
   // -------------------------------------------------------------------------
 
-  async delete(tenantId: string, productId: string): Promise<CanonicalProduct | null> {
-    const result = await this.docClient.send(
-      new DeleteCommand({
-        TableName: this.tableName,
-        Key: {
-          PK: tenantPK(tenantId),
-          SK: productSK(productId),
-        },
-        ReturnValues: 'ALL_OLD',
-      })
-    );
+  /**
+   * Soft-deletes a product by setting lifecycleState to 'archived'.
+   * The DynamoDB item is NOT removed — it remains for audit, history, and recovery.
+   *
+   * @returns The archived product, or throws ProductNotFoundError if not found.
+   */
+  async delete(tenantId: string, productId: string): Promise<CanonicalProduct> {
+    const now = new Date().toISOString();
 
-    if (!result.Attributes) {
-      return null;
+    try {
+      const result = await this.docClient.send(
+        new UpdateCommand({
+          TableName: this.tableName,
+          Key: {
+            PK: tenantPK(tenantId),
+            SK: productSK(productId),
+          },
+          UpdateExpression: 'SET lifecycleState = :archived, updatedAt = :now',
+          ConditionExpression: 'attribute_exists(PK)',
+          ExpressionAttributeValues: {
+            ':archived': 'archived',
+            ':now': now,
+          },
+          ReturnValues: 'ALL_NEW',
+        })
+      );
+
+      if (!result.Attributes) {
+        throw new ProductNotFoundError(tenantId, productId);
+      }
+
+      return fromItem(result.Attributes);
+    } catch (error: unknown) {
+      if (
+        error instanceof Error &&
+        error.name === 'ConditionalCheckFailedException'
+      ) {
+        throw new ProductNotFoundError(tenantId, productId);
+      }
+      if (error instanceof ProductNotFoundError) {
+        throw error;
+      }
+      throw new ProductPersistenceError(
+        `Failed to archive product: ${productId}`,
+        error instanceof Error ? error : undefined
+      );
     }
-
-    return fromItem(result.Attributes);
   }
 }
