@@ -10,7 +10,7 @@ import {
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
-  DeleteCommand,
+  UpdateCommand,
   QueryCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { CanonicalProduct } from '@merch-os/types';
@@ -317,38 +317,63 @@ describe('ProductRepository', () => {
   // -------------------------------------------------------------------------
 
   describe('update', () => {
-    it('should update a product and set updatedAt', async () => {
+    it('should update a product, preserve stored createdAt, and refresh updatedAt', async () => {
+      // Mock get (reads existing item to get stored createdAt)
+      const existingProduct = makeProduct({
+        createdAt: '2026-08-01T10:00:00.000Z',
+        updatedAt: '2026-08-01T10:00:00.000Z',
+      });
+      ddbMock.on(GetCommand).resolves({ Item: makeDynamoItem(existingProduct) });
       ddbMock.on(PutCommand).resolves({});
 
       const repo = createRepo();
-      const product = makeProduct({
-        createdAt: '2024-01-01T00:00:00.000Z',
+      const incomingProduct = makeProduct({
+        createdAt: '2099-01-01T00:00:00.000Z', // caller tries to overwrite
         updatedAt: '2024-01-01T00:00:00.000Z',
       });
 
-      const result = await repo.update('tenant-abc', 'prod-001', product);
+      const result = await repo.update('tenant-abc', 'prod-001', incomingProduct);
 
-      // updatedAt should change
-      expect(result.updatedAt).not.toBe('2024-01-01T00:00:00.000Z');
+      // Stored createdAt is preserved, incoming value is ignored
+      expect(result.createdAt).toBe('2026-08-01T10:00:00.000Z');
+      // updatedAt should be refreshed to current time
+      expect(result.updatedAt).not.toBe('2026-08-01T10:00:00.000Z');
+      expect(result.updatedAt).not.toBe('2099-01-01T00:00:00.000Z');
       expect(result.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-      // createdAt should be preserved
-      expect(result.createdAt).toBe('2024-01-01T00:00:00.000Z');
 
       // Verify condition expression
-      const calls = ddbMock.commandCalls(PutCommand);
-      const input = calls[0]!.args[0].input;
+      const putCalls = ddbMock.commandCalls(PutCommand);
+      const input = putCalls[0]!.args[0].input;
       expect(input.ConditionExpression).toBe(
         'attribute_exists(PK) AND PK = :callerTenantPK'
       );
       expect(input.ExpressionAttributeValues![':callerTenantPK']).toBe(
         'TENANT#tenant-abc'
       );
+      // Verify stored createdAt is in the persisted item
+      expect(input.Item!['createdAt']).toBe('2026-08-01T10:00:00.000Z');
+    });
+
+    it('should NOT allow incoming createdAt to overwrite stored value', async () => {
+      const existingProduct = makeProduct({
+        createdAt: '2026-08-01T10:00:00.000Z',
+      });
+      ddbMock.on(GetCommand).resolves({ Item: makeDynamoItem(existingProduct) });
+      ddbMock.on(PutCommand).resolves({});
+
+      const repo = createRepo();
+      const incomingProduct = makeProduct({
+        createdAt: '2099-01-01T00:00:00.000Z', // Attempt to override
+      });
+
+      const result = await repo.update('tenant-abc', 'prod-001', incomingProduct);
+
+      // Must use stored value, NOT incoming
+      expect(result.createdAt).toBe('2026-08-01T10:00:00.000Z');
     });
 
     it('should throw ProductNotFoundError when product does not exist', async () => {
-      const error = new Error('Conditional check failed');
-      error.name = 'ConditionalCheckFailedException';
-      ddbMock.on(PutCommand).rejects(error);
+      ddbMock.on(GetCommand).resolves({ Item: undefined });
 
       const repo = createRepo();
       const product = makeProduct();
@@ -378,41 +403,135 @@ describe('ProductRepository', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Delete
+  // Delete (Soft Delete)
   // -------------------------------------------------------------------------
 
-  describe('delete', () => {
-    it('should delete and return the product', async () => {
-      const product = makeProduct();
-      ddbMock.on(DeleteCommand).resolves({
-        Attributes: makeDynamoItem(product),
-      });
+  describe('delete (soft delete)', () => {
+    it('should archive the product and return it with lifecycleState=archived', async () => {
+      const product = makeProduct({ lifecycleState: 'ready' });
+      const archivedItem = {
+        ...makeDynamoItem(product),
+        lifecycleState: 'archived',
+        updatedAt: '2026-08-08T12:00:00.000Z',
+      };
+      ddbMock.on(UpdateCommand).resolves({ Attributes: archivedItem });
 
       const repo = createRepo();
       const result = await repo.delete('tenant-abc', 'prod-001');
 
-      expect(result).not.toBeNull();
-      expect(result!.productId).toBe('prod-001');
-      // DynamoDB keys should be stripped
+      expect(result.lifecycleState).toBe('archived');
+      expect(result.productId).toBe('prod-001');
+      expect(result.tenantId).toBe('tenant-abc');
+      // DynamoDB keys stripped
       expect((result as Record<string, unknown>)['PK']).toBeUndefined();
 
-      // Verify ReturnValues
-      const calls = ddbMock.commandCalls(DeleteCommand);
+      // Verify UpdateCommand was used (NOT DeleteCommand)
+      const calls = ddbMock.commandCalls(UpdateCommand);
+      expect(calls).toHaveLength(1);
       const input = calls[0]!.args[0].input;
-      expect(input.ReturnValues).toBe('ALL_OLD');
+      expect(input.UpdateExpression).toBe(
+        'SET lifecycleState = :archived, updatedAt = :now'
+      );
+      expect(input.ConditionExpression).toBe('attribute_exists(PK)');
+      expect(input.ExpressionAttributeValues![':archived']).toBe('archived');
+      expect(input.ReturnValues).toBe('ALL_NEW');
       expect(input.Key).toEqual({
         PK: 'TENANT#tenant-abc',
         SK: 'PRODUCT#prod-001',
       });
     });
 
-    it('should return null when product does not exist', async () => {
-      ddbMock.on(DeleteCommand).resolves({ Attributes: undefined });
+    it('should throw ProductNotFoundError when product does not exist', async () => {
+      const error = new Error('Conditional check failed');
+      error.name = 'ConditionalCheckFailedException';
+      ddbMock.on(UpdateCommand).rejects(error);
 
       const repo = createRepo();
-      const result = await repo.delete('tenant-abc', 'prod-nonexistent');
 
-      expect(result).toBeNull();
+      await expect(
+        repo.delete('tenant-abc', 'prod-nonexistent')
+      ).rejects.toThrow(ProductNotFoundError);
+    });
+
+    it('should preserve all product data except lifecycleState and updatedAt', async () => {
+      const product = makeProduct({
+        lifecycleState: 'validated',
+        content: {
+          title: 'Important Product',
+          shortDescription: 'Must be preserved',
+          longDescription: 'Full description here',
+          bulletPoints: ['Feature 1', 'Feature 2'],
+          brand: 'PremiumBrand',
+          manufacturer: 'Manufacturer Inc',
+          sku: 'SKU-PRESERVE',
+          barcode: '1234567890123',
+          mpn: 'MFG-001',
+          weight: 1500,
+          weightUnit: 'g',
+          length: 30,
+          width: 20,
+          height: 10,
+          dimensionUnit: 'cm',
+          materials: ['Cotton', 'Polyester'],
+          attributes: { color: 'blue', size: 'L' },
+          imageRefs: [{ imageId: 'img-1', s3Key: 'tenant/prod/img.jpg', position: 1, altText: null, mimeType: 'image/jpeg', width: 1000, height: 1000, fileSize: 50000, variantId: null }],
+          variants: [{ variantId: 'var-1', sku: 'SKU-VAR-1', barcode: null, optionValues: { size: 'M' }, priceOverride: null, stockOverride: null, imageRefs: [] }],
+        },
+        commercial: {
+          sellingPrice: 299.99,
+          rrp: 399.99,
+          salePrice: null,
+          currency: 'ZAR',
+          stockQuantity: 50,
+          lowStockThreshold: 5,
+          fulfilmentMethod: 'self',
+          leadtimeDays: 3,
+          handlingTimeDays: 1,
+          listingStatus: 'active',
+          saleStartDate: null,
+          saleEndDate: null,
+        },
+        createdAt: '2026-01-15T08:00:00.000Z',
+      });
+
+      // The UpdateCommand only changes lifecycleState and updatedAt;
+      // ALL other fields are preserved in the DynamoDB item.
+      const archivedItem = {
+        ...makeDynamoItem(product),
+        lifecycleState: 'archived',
+        updatedAt: '2026-08-08T14:00:00.000Z',
+      };
+      ddbMock.on(UpdateCommand).resolves({ Attributes: archivedItem });
+
+      const repo = createRepo();
+      const result = await repo.delete('tenant-abc', 'prod-001');
+
+      // Verify data preservation
+      expect(result.content.title).toBe('Important Product');
+      expect(result.content.sku).toBe('SKU-PRESERVE');
+      expect(result.content.barcode).toBe('1234567890123');
+      expect(result.content.variants).toHaveLength(1);
+      expect(result.content.imageRefs).toHaveLength(1);
+      expect(result.commercial.sellingPrice).toBe(299.99);
+      expect(result.commercial.stockQuantity).toBe(50);
+      expect(result.createdAt).toBe('2026-01-15T08:00:00.000Z');
+      expect(result.lifecycleState).toBe('archived');
+    });
+
+    it('should NOT use DeleteCommand (physical delete)', async () => {
+      const archivedItem = {
+        ...makeDynamoItem(makeProduct()),
+        lifecycleState: 'archived',
+      };
+      ddbMock.on(UpdateCommand).resolves({ Attributes: archivedItem });
+
+      const repo = createRepo();
+      await repo.delete('tenant-abc', 'prod-001');
+
+      // Verify NO DeleteCommand calls
+      // DeleteCommand is not imported, so this is a compile-time guarantee
+      const updateCalls = ddbMock.commandCalls(UpdateCommand);
+      expect(updateCalls).toHaveLength(1);
     });
   });
 
@@ -425,7 +544,8 @@ describe('ProductRepository', () => {
       ddbMock.on(GetCommand).resolves({ Item: undefined });
       ddbMock.on(QueryCommand).resolves({ Items: [] });
       ddbMock.on(PutCommand).resolves({});
-      ddbMock.on(DeleteCommand).resolves({ Attributes: undefined });
+      const archivedItem = { ...makeDynamoItem(makeProduct({ tenantId: 'tenant-xyz' })), lifecycleState: 'archived' };
+      ddbMock.on(UpdateCommand).resolves({ Attributes: archivedItem });
 
       const repo = createRepo();
 
@@ -454,10 +574,10 @@ describe('ProductRepository', () => {
       const putCalls = ddbMock.commandCalls(PutCommand);
       expect(putCalls[0]!.args[0].input.Item!['PK']).toBe('TENANT#tenant-xyz');
 
-      // Delete
+      // Delete (soft) — uses UpdateCommand with tenant-scoped key
       await repo.delete('tenant-xyz', 'prod-001');
-      const deleteCalls = ddbMock.commandCalls(DeleteCommand);
-      expect(deleteCalls[0]!.args[0].input.Key!['PK']).toBe('TENANT#tenant-xyz');
+      const updateCalls = ddbMock.commandCalls(UpdateCommand);
+      expect(updateCalls[0]!.args[0].input.Key!['PK']).toBe('TENANT#tenant-xyz');
     });
   });
 
