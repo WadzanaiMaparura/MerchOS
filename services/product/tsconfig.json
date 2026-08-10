@@ -9,7 +9,8 @@
     "declarationMap": false
   },
   "include": [
-    "repository/**/*.ts"
+    "repository/**/*.ts",
+    "service/**/*.ts"
   ],
   "exclude": [
     "node_modules",
