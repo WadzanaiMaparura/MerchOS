@@ -8,7 +8,11 @@
 
 import { CanonicalProduct } from '@merch-os/types';
 import { ProductRepository } from '../repository/product-repository';
-import { ProductNotFoundError } from '../repository/errors';
+import {
+  ProductNotFoundError,
+  ProductAlreadyExistsError,
+  ProductPersistenceError,
+} from '../repository/errors';
 import { ListProductsOptions, PaginatedProducts } from '../repository/types';
 import { CreateProductInput, UpdateProductInput } from './types';
 import {
@@ -94,11 +98,21 @@ export class ProductService {
       updatedAt: '', // Set by repository
     };
 
-    // 5. Persist
-    const created = await this.repository.create(product);
-
-    // 6. Return
-    return created;
+    // 5. Persist (map repository errors to service errors)
+    try {
+      const created = await this.repository.create(product);
+      return created;
+    } catch (error) {
+      if (error instanceof ProductAlreadyExistsError) {
+        throw new ProductSkuAlreadyExistsError(tenantId, input.sku);
+      }
+      if (error instanceof ProductPersistenceError) {
+        throw new ProductValidationError(
+          `Failed to create product: ${(error as Error).message}`
+        );
+      }
+      throw error;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -235,15 +249,25 @@ export class ProductService {
       platformSpecific: existing.platformSpecific,
     };
 
-    // 5. Persist
-    const updated = await this.repository.update(
-      tenantId,
-      productId,
-      mergedProduct
-    );
-
-    // 6. Return
-    return updated;
+    // 5. Persist (map repository errors to service errors)
+    try {
+      const updated = await this.repository.update(
+        tenantId,
+        productId,
+        mergedProduct
+      );
+      return updated;
+    } catch (error) {
+      if (error instanceof ProductNotFoundError) {
+        throw error; // Already a domain error
+      }
+      if (error instanceof ProductPersistenceError) {
+        throw new ProductValidationError(
+          `Failed to update product: ${(error as Error).message}`
+        );
+      }
+      throw error;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -254,7 +278,19 @@ export class ProductService {
     tenantId: string,
     productId: string
   ): Promise<CanonicalProduct> {
-    return this.repository.delete(tenantId, productId);
+    try {
+      return await this.repository.delete(tenantId, productId);
+    } catch (error) {
+      if (error instanceof ProductNotFoundError) {
+        throw error; // Already a domain error
+      }
+      if (error instanceof ProductPersistenceError) {
+        throw new ProductValidationError(
+          `Failed to archive product: ${(error as Error).message}`
+        );
+      }
+      throw error;
+    }
   }
 
   // ---------------------------------------------------------------------------
