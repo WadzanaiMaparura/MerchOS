@@ -244,39 +244,41 @@ The `Product` API DTO includes fields NOT present in `CanonicalProduct`:
 
 ## 8. Persistence Boundaries
 
-### 8.1 DynamoDB Table Design — PROPOSED, NOT IMPLEMENTED
+### 8.1 DynamoDB Table Design — APPROVED, REPOSITORY IMPLEMENTED
 
-> ⚠️ **STATUS: PROPOSED — NOT IMPLEMENTED**
->
-> The DynamoDB table, repository layer, and persistence logic described below have NOT been deployed. This section documents the **proposed** design based on identified access patterns. It will be implemented during the Product Service phase.
+> **STATUS:**
+> - DynamoDB persistence design: **APPROVED**
+> - ProductRepository implementation: **COMPLETE** (`services/product/repository/product-repository.ts`)
+> - Unit tests: **21 passing** (`services/product/repository/__tests__/product-repository.test.ts`)
+> - AWS DynamoDB infrastructure: **NOT DEPLOYED** — table creation is deferred to the infrastructure deployment phase
 
-The canonical product is designed to be persisted through a Product Repository backed by a single-table DynamoDB design:
+The DynamoDB product persistence design is approved and the ProductRepository implementation is complete. The AWS DynamoDB infrastructure remains undeployed until the infrastructure deployment phase.
 
-**Primary Table (PROPOSED):**
+**Primary Table:** `merch-os-products` (env: `PRODUCTS_TABLE`)
 
 | Access Pattern | PK | SK | Notes |
 |---------------|----|----|-------|
 | Create product | `TENANT#{tenantId}` | `PRODUCT#{productId}` | ConditionExpression: attribute_not_exists(PK) |
 | Get product by ID | `TENANT#{tenantId}` | `PRODUCT#{productId}` | GetItem — single item read |
 | List products for tenant | `TENANT#{tenantId}` | `begins_with(PRODUCT#)` | Query — paginated with ExclusiveStartKey |
-| Update product | `TENANT#{tenantId}` | `PRODUCT#{productId}` | ConditionExpression: attribute_exists(PK) |
-| Delete product | `TENANT#{tenantId}` | `PRODUCT#{productId}` | Soft-delete: set lifecycleState = 'archived' |
+| Update product | `TENANT#{tenantId}` | `PRODUCT#{productId}` | ConditionExpression: attribute_exists(PK); createdAt preserved from stored value |
+| Delete (soft) | `TENANT#{tenantId}` | `PRODUCT#{productId}` | UpdateCommand: lifecycleState → 'archived'; item NOT removed |
 
-**GSI1 — SKU Lookup (PROPOSED):**
+**GSI1 — SKU Lookup:**
 
 | Access Pattern | GSI1-PK | GSI1-SK | Notes |
 |---------------|---------|---------|-------|
-| Get product by SKU | `TENANT#{tenantId}#SKU` | `SKU#{sku}` | Unique within tenant |
+| Get product by SKU | `TENANT#{tenantId}#SKU` | `SKU#{sku}` | Query lookup; see §8.3 for uniqueness note |
 
-**Variant Storage (PROPOSED):**
-- Variants will be stored as a nested attribute within the product item (sub-document pattern)
+**Variant Storage:**
+- Variants are stored as a nested attribute within the product item (sub-document pattern)
 - For products with large variant counts, sub-items may be used: PK=`TENANT#{tenantId}`, SK=`PRODUCT#{productId}#VARIANT#{variantId}`
 
-**Export State (PROPOSED):**
-- Marketplace export state will be stored within the `platformSpecific.exportHistory` attribute of the product item
+**Export State:**
+- Marketplace export state is stored within the `platformSpecific.exportHistory` attribute of the product item
 - No separate table or item for export tracking
 
-### 8.2 Cost Model (PROPOSED)
+### 8.2 Cost Model
 
 | Resource | Configuration | Rationale |
 |----------|---------------|-----------|
@@ -284,6 +286,47 @@ The canonical product is designed to be persisted through a Product Repository b
 | S3 | Standard storage class | Write-once, read-many image pattern |
 | Lambda | Serverless (no provisioned concurrency) | Zero cost at idle |
 | Networking | No NAT Gateway, no VPC | Reduces cold starts; eliminates fixed costs |
+
+### 8.3 SKU Uniqueness — Product Service Responsibility
+
+> **SKU lookup: IMPLEMENTED** — The GSI1 provides efficient tenant-scoped SKU lookup via `findBySku(tenantId, sku)`.
+>
+> **SKU uniqueness enforcement: NOT YET IMPLEMENTED** — Deferred to the Product Service phase.
+
+The GSI1 enables efficient lookup of a product by tenant + SKU. However, DynamoDB GSI key values do not need to be unique — multiple items with the same GSI1PK/GSI1SK can coexist. The GSI itself does not enforce uniqueness.
+
+**Current behaviour:** If two products with the same tenant + SKU are created, `findBySku()` returns the first match. No error is raised at the repository level.
+
+**Future enforcement:** When the Product Service is implemented, it should enforce SKU uniqueness as a business rule. Options include:
+- Check-then-create pattern (read GSI → conditional write if no match)
+- DynamoDB transactional write (TransactWriteItems with a uniqueness record)
+- Application-level validation in the service layer before calling `create()`
+
+This decision is intentionally deferred to the Product Service design phase. The repository provides the lookup mechanism; the service layer owns the business rule.
+
+### 8.4 Product Lifecycle — Soft Delete
+
+Product deletion is a **soft delete**:
+- `delete(tenantId, productId)` sets `lifecycleState = 'archived'` and refreshes `updatedAt`
+- The DynamoDB item is **NOT physically removed**
+- Archived products remain queryable via `get()`, `listByTenant()`, and `findBySku()`
+- Filtering by lifecycle state (e.g., excluding archived products from listings) is a Product Service concern
+
+### 8.5 Implementation Status
+
+| Component | Status | Location |
+|-----------|--------|----------|
+| Product Domain Model | ✅ IMPLEMENTED | `packages/types/src/marketplace.ts` → `CanonicalProduct` |
+| ProductRepository | ✅ IMPLEMENTED | `services/product/repository/product-repository.ts` |
+| Soft Delete | ✅ IMPLEMENTED | `lifecycleState → 'archived'` via UpdateCommand |
+| Pagination | ✅ IMPLEMENTED | Base64-encoded `LastEvaluatedKey` tokens |
+| Tenant Isolation | ✅ IMPLEMENTED | All operations require `tenantId`; PK enforces isolation |
+| SKU Lookup | ✅ IMPLEMENTED | GSI1 Query: `TENANT#{tenantId}#SKU` / `SKU#{sku}` |
+| SKU Uniqueness | ⏳ PRODUCT SERVICE PHASE | GSI provides lookup; uniqueness is a business rule |
+| DynamoDB Infrastructure | ⏳ NOT DEPLOYED | Table creation deferred to infrastructure phase |
+| Product Service | ⏳ NOT IMPLEMENTED | CRUD API with business rules (next phase) |
+| API Layer | ⏳ NOT IMPLEMENTED | API Gateway routes (next phase) |
+| Marketplace Exporters | ⏳ NOT IMPLEMENTED | Schema Registry → Validation → Export (future phase) |
 
 ---
 
