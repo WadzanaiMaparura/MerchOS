@@ -233,9 +233,11 @@ export interface ExportHistoryEntry {
  *   Shopify, WooCommerce) dictates its structure. Platform adapters transform
  *   this model into marketplace-specific formats at export time.
  *
- * - **Persisted in DynamoDB** — Stored with partition key TENANT#{tenantId} and
- *   sort key PRODUCT#{productId}. Tenant isolation is enforced at the persistence
- *   layer.
+ * - **Designed for DynamoDB persistence** — The Product Repository (not yet
+ *   implemented) will persist this model using partition key TENANT#{tenantId}
+ *   and sort key PRODUCT#{productId}. Tenant isolation will be enforced at the
+ *   persistence layer. See the PROPOSED access patterns in
+ *   docs/architecture/canonical-product-model.md §8.
  *
  * - **Input to the export pipeline** — The Schema Registry → Validation Engine →
  *   Platform Adapter → Export Generator pipeline consumes this model.

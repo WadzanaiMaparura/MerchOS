@@ -244,11 +244,15 @@ The `Product` API DTO includes fields NOT present in `CanonicalProduct`:
 
 ## 8. Persistence Boundaries
 
-### 8.1 DynamoDB Table Design (Documented — Not Implemented)
+### 8.1 DynamoDB Table Design — PROPOSED, NOT IMPLEMENTED
 
-The canonical product is persisted in a single-table DynamoDB design:
+> ⚠️ **STATUS: PROPOSED — NOT IMPLEMENTED**
+>
+> The DynamoDB table, repository layer, and persistence logic described below have NOT been deployed. This section documents the **proposed** design based on identified access patterns. It will be implemented during the Product Service phase.
 
-**Primary Table:**
+The canonical product is designed to be persisted through a Product Repository backed by a single-table DynamoDB design:
+
+**Primary Table (PROPOSED):**
 
 | Access Pattern | PK | SK | Notes |
 |---------------|----|----|-------|
@@ -258,21 +262,21 @@ The canonical product is persisted in a single-table DynamoDB design:
 | Update product | `TENANT#{tenantId}` | `PRODUCT#{productId}` | ConditionExpression: attribute_exists(PK) |
 | Delete product | `TENANT#{tenantId}` | `PRODUCT#{productId}` | Soft-delete: set lifecycleState = 'archived' |
 
-**GSI1 (SKU Lookup):**
+**GSI1 — SKU Lookup (PROPOSED):**
 
 | Access Pattern | GSI1-PK | GSI1-SK | Notes |
 |---------------|---------|---------|-------|
 | Get product by SKU | `TENANT#{tenantId}#SKU` | `SKU#{sku}` | Unique within tenant |
 
-**Variant Storage:**
-- Variants are stored as a nested attribute within the product item (sub-document pattern)
+**Variant Storage (PROPOSED):**
+- Variants will be stored as a nested attribute within the product item (sub-document pattern)
 - For products with large variant counts, sub-items may be used: PK=`TENANT#{tenantId}`, SK=`PRODUCT#{productId}#VARIANT#{variantId}`
 
-**Export State:**
-- Marketplace export state is stored within the `platformSpecific.exportHistory` attribute of the product item
+**Export State (PROPOSED):**
+- Marketplace export state will be stored within the `platformSpecific.exportHistory` attribute of the product item
 - No separate table or item for export tracking
 
-### 8.2 Cost Model
+### 8.2 Cost Model (PROPOSED)
 
 | Resource | Configuration | Rationale |
 |----------|---------------|-----------|

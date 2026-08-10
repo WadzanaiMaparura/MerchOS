@@ -100,7 +100,9 @@ DRAFT → INGESTED → ENRICHED → REVIEW → VALIDATED → EXPORT_READY → PU
 
 The canonical model tracks high-level export-readiness. The full state machine (used in the API DTO) provides visibility into intermediate processing steps for the UI.
 
-### DynamoDB Access Patterns (Documented — Not Implemented)
+### DynamoDB Access Patterns — PROPOSED, NOT IMPLEMENTED
+
+> ⚠️ The DynamoDB table and repository have NOT been deployed. These are the proposed access patterns that will guide the Product Repository implementation in the next phase.
 
 | Operation | Partition Key | Sort Key / Condition | Notes |
 |-----------|--------------|---------------------|-------|
@@ -110,7 +112,7 @@ The canonical model tracks high-level export-readiness. The full state machine (
 | Get product by SKU | GSI1: `TENANT#{tenantId}#SKU` | `SKU#{sku}` | Lookup by seller-defined identifier |
 | Update product | `TENANT#{tenantId}` | `PRODUCT#{productId}` | Condition: attribute_exists |
 | Delete product | `TENANT#{tenantId}` | `PRODUCT#{productId}` | Soft-delete via lifecycle → archived |
-| Retrieve variants | Within product item | — | Stored as nested attribute or sub-items |
+| Retrieve variants | Within product item | — | Nested attribute or sub-items (to be determined) |
 | Marketplace export state | Within product item | — | In `platformSpecific.exportHistory` |
 
 ### Cost Control Principles
