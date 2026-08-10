@@ -12,6 +12,7 @@ export default defineConfig({
     environment: 'node',
     include: [
       'repository/__tests__/**/*.test.ts',
+      'service/__tests__/**/*.test.ts',
     ],
     coverage: {
       provider: 'v8',
