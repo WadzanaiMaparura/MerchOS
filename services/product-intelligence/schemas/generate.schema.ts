@@ -17,8 +17,11 @@ export const generationTypeEnum = z.enum([
 
 /**
  * Enum values for all supported marketplace identifiers.
+ *
+ * Aligns with the 5 target sales channels defined in `packages/types/src/common.ts` (ChannelId).
+ * 'custom' is excluded as it has no platform-specific content rules.
  */
-export const marketplaceIdEnum = z.enum(['amazon', 'shopify', 'ebay']);
+export const marketplaceIdEnum = z.enum(['takealot', 'makro', 'amazon', 'shopify', 'woocommerce']);
 
 /**
  * Schema for product price data.

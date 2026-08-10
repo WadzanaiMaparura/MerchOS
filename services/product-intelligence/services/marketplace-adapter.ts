@@ -1,6 +1,36 @@
 /**
  * Marketplace Adapter service for the Product Intelligence Engine.
  *
+ * ─── PURPOSE & SCOPE ─────────────────────────────────────────────────────────
+ *
+ * This service provides **content-length guidance** for AI-generated content.
+ * It is used by the Product Intelligence Engine during content generation to
+ * produce outputs that approximate each platform's typical constraints.
+ *
+ * ⚠️  THIS IS NOT AN EXPORT VALIDATION SERVICE.
+ *
+ * The actual export validation (hard-fail enforcement of marketplace rules)
+ * will be performed by the Validation Engine + Schema Registry as specified in:
+ *   docs/architecture/schema-validation-architecture.md
+ *
+ * The Schema Registry will provide:
+ *   - Category-specific limits (e.g., Amazon "Clothing" title = 80 chars vs general = 200)
+ *   - Version-tracked, verified constraints with RequirementClassification metadata
+ *   - Runtime lookup by (platform + category + version)
+ *
+ * Until the Schema Registry is operational, these hard-coded defaults serve as
+ * provisional guidance to keep AI-generated content within reasonable bounds.
+ *
+ * ─── ARCHITECTURE RELATIONSHIP ───────────────────────────────────────────────
+ *
+ * Content Generation Flow (this service):
+ *   ProductData → AI Generation → MarketplaceAdapter (soft guidance) → GenerationResult
+ *
+ * Export Validation Flow (Schema Registry — not yet implemented):
+ *   CanonicalProduct → SchemaRegistry.lookup() → ValidationEngine → Export/Reject
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
  * Applies marketplace-specific content rules to generated output including
  * character limits, formatting rules (allowed HTML, restricted characters),
  * and A+ content / enhanced brand content structuring. Returns compliance
@@ -8,7 +38,7 @@
  *
  * This is a synchronous, pure rule-based service — no Bedrock invocation needed.
  *
- * Supported marketplaces: Amazon, Shopify, eBay.
+ * Supported marketplaces: Takealot, Makro, Amazon, Shopify, WooCommerce.
  *
  * @module marketplace-adapter
  * @see Requirements 8.1, 8.2, 8.3, 8.4, 8.5
@@ -23,27 +53,80 @@ import type { GenerationType, MarketplaceId, MarketplaceAdaptedContent } from '.
 /**
  * Character limits per marketplace and content type.
  *
- * - Amazon: title 200, description 2000, bullets 500/each, keywords 250
- * - Shopify: title 255, description 5000, bullets unlimited, keywords unlimited
- * - eBay: title 80, description 4000, bullets 1000/each, keywords 1000
+ * ⚠️  PROVISIONAL DEFAULTS — will be replaced by Schema Registry lookup.
+ *
+ * These are **content-generation guidance limits**, NOT export validation limits.
+ * They tell the AI "aim for this length" so generated content is approximately
+ * correct for each platform. The actual hard limits (which vary by category,
+ * product-type, and seller tier) will be enforced by the Validation Engine at
+ * export time using the Schema Registry.
+ *
+ * @deprecated These hard-coded values will be replaced by runtime Schema Registry
+ * lookup once the Validation Engine is operational. See:
+ * docs/architecture/schema-validation-architecture.md §3 (Schema Registry)
+ *
+ * Classification key:
+ * - OFFICIAL_REQUIREMENT: documented hard limit in platform API/docs
+ * - OFFICIAL_RECOMMENDATION: platform's recommended limit (soft)
+ * - INFERENCE: inferred from seller-center templates or competitive analysis
+ * - VARIES_BY_CATEGORY: the actual limit depends on product category
  */
 const CHARACTER_LIMITS: Record<MarketplaceId, Partial<Record<GenerationType, number>>> = {
-  amazon: {
-    title: 200,
-    description: 2000,
-    bullets: 500,
-    keywords: 250,
+  /**
+   * Takealot limits.
+   * Source: Takealot Seller Portal product creation form (2024).
+   * Note: Takealot enforces title limits strictly at import; description is HTML-based.
+   */
+  takealot: {
+    title: 150, // OFFICIAL_REQUIREMENT — hard reject at import if exceeded
+    description: 5000, // OFFICIAL_RECOMMENDATION — HTML allowed, practical max
+    bullets: 500, // INFERENCE — based on typical listing template constraints
+    keywords: 250, // INFERENCE — search term field in seller portal
   },
+  /**
+   * Makro Marketplace limits.
+   * Source: Makro Seller Hub product template (2024).
+   * Note: Limited public documentation; values inferred from upload templates.
+   */
+  makro: {
+    title: 150, // INFERENCE — based on Makro product template column width
+    description: 4000, // INFERENCE — from template max-length attribute
+    bullets: 500, // INFERENCE — estimated from listing display
+    keywords: 200, // INFERENCE — search terms field in upload template
+  },
+  /**
+   * Amazon limits.
+   * Source: Amazon Seller Central Style Guides (2024).
+   * Note: VARIES_BY_CATEGORY — e.g., Clothing titles are limited to 80 chars,
+   * general categories allow up to 200. These are the general-category defaults.
+   */
+  amazon: {
+    title: 200, // OFFICIAL_REQUIREMENT — general category; VARIES_BY_CATEGORY
+    description: 2000, // OFFICIAL_RECOMMENDATION — A+ content can be longer
+    bullets: 500, // OFFICIAL_RECOMMENDATION — per bullet; VARIES_BY_CATEGORY
+    keywords: 250, // OFFICIAL_REQUIREMENT — backend search terms byte limit
+  },
+  /**
+   * Shopify limits.
+   * Source: Shopify Admin API documentation (2024).
+   * Note: Shopify is very permissive; limits are practical maximums.
+   */
   shopify: {
-    title: 255,
-    description: 5000,
+    title: 255, // OFFICIAL_REQUIREMENT — Shopify product title max
+    description: 5000, // INFERENCE — no hard limit, but practical guidance for AI
     // bullets and keywords are unlimited for Shopify
   },
-  ebay: {
-    title: 80,
-    description: 4000,
-    bullets: 1000,
-    keywords: 1000,
+  /**
+   * WooCommerce limits.
+   * Source: WooCommerce REST API / WordPress database schema.
+   * Note: WooCommerce has no strict content limits (it's self-hosted), so these
+   * are practical guidance values for SEO-optimal content length.
+   */
+  woocommerce: {
+    title: 200, // INFERENCE — SEO best practice; no hard platform limit
+    description: 5000, // INFERENCE — practical max for good UX
+    bullets: 500, // INFERENCE — per bullet; no platform constraint
+    keywords: 300, // INFERENCE — meta keywords / tags field
   },
 };
 
@@ -54,36 +137,78 @@ const CHARACTER_LIMITS: Record<MarketplaceId, Partial<Record<GenerationType, num
 /**
  * Allowed HTML tags per marketplace.
  * Tags not in this list will be stripped.
+ *
+ * ⚠️  PROVISIONAL DEFAULTS — will be replaced by Schema Registry lookup.
+ *
+ * @deprecated Will be driven by schema-defined formatting rules per platform + category.
  */
 const ALLOWED_HTML_TAGS: Record<MarketplaceId, RegExp | null> = {
+  // Takealot: allows basic HTML in descriptions (similar to Amazon)
+  // Source: INFERENCE — based on Takealot listing renderer behavior
+  takealot: /^(b|br|p|ul|ol|li|i|em|strong)$/i,
+  // Makro: minimal HTML support in descriptions
+  // Source: INFERENCE — based on Makro product template observations
+  makro: /^(b|br|p|ul|ol|li|i|em|strong)$/i,
   // Amazon: limited HTML in descriptions (b, br, p, ul, ol, li), no HTML in titles
+  // Source: OFFICIAL_REQUIREMENT — Amazon Seller Central Style Guide
   amazon: /^(b|br|p|ul|ol|li|i|em|strong)$/i,
   // Shopify: allows rich HTML including headings, tables, media tags
+  // Source: OFFICIAL_REQUIREMENT — Shopify Liquid template engine supports full HTML
   shopify: /^(h[1-6]|p|br|b|i|em|strong|u|ul|ol|li|a|img|table|thead|tbody|tr|td|th|div|span|blockquote|pre|code|hr|figure|figcaption|video|source)$/i,
-  // eBay: limited HTML, no scripts or iframes
-  ebay: /^(b|br|p|ul|ol|li|i|em|strong|u|a|img|table|tr|td|th|hr|h[1-6]|div|span|font)$/i,
+  // WooCommerce: rich HTML allowed (self-hosted WordPress, full HTML support)
+  // Source: OFFICIAL_REQUIREMENT — WordPress content editor supports full HTML
+  woocommerce: /^(h[1-6]|p|br|b|i|em|strong|u|ul|ol|li|a|img|table|thead|tbody|tr|td|th|div|span|blockquote|pre|code|hr|figure|figcaption|video|source)$/i,
 };
 
 /**
  * Restricted characters per marketplace.
  * Characters matching this pattern will be removed from content.
+ *
+ * ⚠️  PROVISIONAL DEFAULTS — will be replaced by Schema Registry lookup.
+ *
+ * @deprecated Will be driven by schema-defined character restrictions per platform.
  */
 const RESTRICTED_CHARACTERS: Record<MarketplaceId, RegExp> = {
+  // Takealot: restrict trademark symbols and control characters
+  // Source: INFERENCE — based on import rejection patterns
+  takealot: /[™©®\x00-\x08\x0B\x0C\x0E-\x1F]/g,
+  // Makro: restrict trademark symbols and control characters
+  // Source: INFERENCE — based on upload template sanitization
+  makro: /[™©®\x00-\x08\x0B\x0C\x0E-\x1F]/g,
   // Amazon: restrict special characters like ™, ©, ®, excessive punctuation (!!!), all caps abuse
+  // Source: OFFICIAL_RECOMMENDATION — Amazon Style Guide
   amazon: /[™©®]/g,
-  // Shopify: minimal restrictions
+  // Shopify: minimal restrictions (control characters only)
+  // Source: OFFICIAL_REQUIREMENT — Shopify sanitizes control chars
   shopify: /[\x00-\x08\x0B\x0C\x0E-\x1F]/g,
-  // eBay: restrict certain special characters
-  ebay: /[<>]/g,
+  // WooCommerce: minimal restrictions (control characters only, self-hosted)
+  // Source: INFERENCE — WordPress sanitizes control chars on save
+  woocommerce: /[\x00-\x08\x0B\x0C\x0E-\x1F]/g,
 };
 
 /**
  * Content types where HTML is NOT allowed (will be fully stripped).
+ *
+ * ⚠️  PROVISIONAL DEFAULTS — will be replaced by Schema Registry lookup.
+ *
+ * @deprecated Will be driven by schema-defined field format rules per platform.
  */
 const NO_HTML_CONTENT_TYPES: Record<MarketplaceId, Set<GenerationType>> = {
+  // Takealot: no HTML in titles or keywords (plain text fields)
+  // Source: INFERENCE — based on import template field types
+  takealot: new Set(['title', 'keywords']),
+  // Makro: no HTML in titles or keywords
+  // Source: INFERENCE — based on upload template field types
+  makro: new Set(['title', 'keywords']),
+  // Amazon: no HTML in titles or keywords
+  // Source: OFFICIAL_REQUIREMENT — Amazon Seller Central
   amazon: new Set(['title', 'keywords']),
+  // Shopify: no HTML in titles only
+  // Source: OFFICIAL_REQUIREMENT — Shopify product title is plain text
   shopify: new Set(['title']),
-  ebay: new Set(['title', 'keywords']),
+  // WooCommerce: no HTML in titles only (similar to Shopify)
+  // Source: INFERENCE — WordPress post_title is plain text
+  woocommerce: new Set(['title']),
 };
 
 // ---------------------------------------------------------------------------
@@ -261,7 +386,7 @@ export class MarketplaceAdapter {
    * Applies marketplace-specific rules to content.
    *
    * @param content - The raw content to adapt
-   * @param marketplace - The target marketplace (amazon, shopify, ebay)
+   * @param marketplace - The target marketplace (takealot, makro, amazon, shopify, woocommerce)
    * @param contentType - The generation type for context-specific rules
    * @returns MarketplaceAdaptedContent with adapted content, compliance status, warnings, and applied rules
    *

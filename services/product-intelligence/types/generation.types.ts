@@ -24,8 +24,12 @@ export type GenerationType =
 
 /**
  * Supported marketplace identifiers for platform-specific content rules.
+ *
+ * These correspond to the 5 target sales channels in the MerchOS platform.
+ * The canonical channel list is maintained in `packages/types/src/common.ts` as `ChannelId`.
+ * 'custom' from ChannelId is excluded here as it has no platform-specific content rules.
  */
-export type MarketplaceId = 'amazon' | 'shopify' | 'ebay';
+export type MarketplaceId = 'takealot' | 'makro' | 'amazon' | 'shopify' | 'woocommerce';
 
 /**
  * Product data input for generation requests.

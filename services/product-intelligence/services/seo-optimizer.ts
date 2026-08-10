@@ -53,6 +53,14 @@ const META_DESCRIPTION_MAX_LENGTH = 155;
  * Each marketplace has different search algorithm characteristics.
  */
 const MARKETPLACE_SEO_GUIDELINES: Record<MarketplaceId, string> = {
+  takealot:
+    'Takealot search: prioritize exact-match product titles, use category-specific keywords, ' +
+    'include brand and key specifications in titles, optimize for Takealot internal search ranking. ' +
+    'Item specifics and correct category placement are critical for discoverability.',
+  makro:
+    'Makro Marketplace search: optimize for on-site search and category browsing, ' +
+    'include product specifications and brand in titles, use clear descriptive keywords. ' +
+    'Focus on practical product attributes and specifications.',
   amazon:
     'Amazon A9 algorithm: prioritize backend keywords, avoid keyword repetition across fields, ' +
     'use all available search term slots, focus on product relevance and conversion rate. ' +
@@ -61,10 +69,10 @@ const MARKETPLACE_SEO_GUIDELINES: Record<MarketplaceId, string> = {
     'Shopify SEO: optimize for Google search, use natural language keywords, ' +
     'focus on long-tail keywords, include alt text descriptions for images, ' +
     'use structured data markup-friendly content. Meta descriptions should include a call to action.',
-  ebay:
-    'eBay Cassini search: item specifics are critical for ranking, ' +
-    'include category-relevant keywords, avoid unnecessary filler words, ' +
-    'front-load titles with most important keywords. Use all 80 characters for titles.',
+  woocommerce:
+    'WooCommerce SEO: optimize for Google and Yoast SEO plugin scoring, ' +
+    'use focus keywords in titles and first paragraph, include long-tail search phrases, ' +
+    'leverage WordPress category and tag structure for internal linking.',
 };
 
 // ---------------------------------------------------------------------------
