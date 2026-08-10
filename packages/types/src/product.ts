@@ -1,6 +1,28 @@
 /**
- * Product-related DTOs for the MerchOS frontend.
- * These represent the wire format returned by the REST API.
+ * Product-related API DTOs for the MerchOS seller-dashboard frontend.
+ *
+ * This file contains **API response/request DTOs** — the wire format returned by
+ * the REST API and consumed by frontend components. These types are NOT the
+ * canonical domain model.
+ *
+ * - `Product` is the API response shape for full product detail views.
+ * - `ProductSummary` is the lightweight list-view representation.
+ * - Request payloads (`ApproveAttributePayload`, `OverrideAttributePayload`,
+ *   `TransitionPayload`) define the wire format for mutations.
+ *
+ * The **authoritative canonical domain model** is `CanonicalProduct` in
+ * `./marketplace.ts`. That model is marketplace-independent, persisted in
+ * DynamoDB, and serves as input to the export pipeline.
+ *
+ * Conversion between the domain model and these DTOs happens at the service
+ * layer boundary:
+ *
+ *   CanonicalProduct (domain) → Product (API DTO) → Frontend
+ *   Frontend → Request DTOs → CanonicalProduct (domain)
+ *
+ * Do NOT conflate these DTOs with the canonical model. DTOs include
+ * computed/enriched fields (enrichmentLayer, lifecycleHistory, complianceReports)
+ * that are assembled at query time from multiple data sources.
  */
 
 import { ChannelId, LifecycleState } from './common';
