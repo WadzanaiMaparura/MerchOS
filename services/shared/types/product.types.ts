@@ -1,6 +1,33 @@
 /**
- * Canonical product data model interfaces for the MerchOS platform.
- * Requirements: 14.1, 14.2
+ * @deprecated — DO NOT USE THIS FILE FOR NEW DEVELOPMENT.
+ *
+ * This file is superseded by:
+ * - `packages/types/src/marketplace.ts` → `CanonicalProduct` (authoritative domain model)
+ * - `packages/types/src/product.ts` → `Product` (API response DTO for seller-dashboard)
+ *
+ * History:
+ * This file was created during early architecture exploration (Requirements 14.1, 14.2)
+ * but was never wired into any service. It has ZERO consumers in the codebase.
+ *
+ * Why it's deprecated:
+ * - The `Product` interface here duplicates the API DTO in `packages/types/src/product.ts`
+ * - The `Listing extends Product` pattern violates the marketplace architecture established
+ *   in ADR-003 and ADR-004. Marketplace data is handled by Schema Registry + Platform
+ *   Adapters, not by extending the product model.
+ * - The `CanonicalProduct` model in `packages/types/src/marketplace.ts` is the single
+ *   source of truth for product domain logic (per ADR-004).
+ *
+ * For new development:
+ * - Domain logic / persistence → use `CanonicalProduct` from `@merch-os/types`
+ * - API DTOs / frontend types → use `Product` from `@merch-os/types`
+ * - Marketplace export → use Schema Registry + Platform Adapter pattern
+ *
+ * This file is retained (not deleted) to avoid risk of breaking hidden references.
+ * It will be removed in a future cleanup pass after confirming no transitive dependencies.
+ *
+ * @see packages/types/src/marketplace.ts — CanonicalProduct (domain model)
+ * @see packages/types/src/product.ts — Product (API DTO)
+ * @see docs/architecture/adr/ADR-004-canonical-product-domain-model.md
  */
 
 import { ChannelId, LanguageCode } from './common.types';

@@ -224,11 +224,29 @@ export interface ExportHistoryEntry {
 }
 
 /**
- * The full canonical product model.
+ * The full canonical product model — the **authoritative domain model** for MerchOS.
  *
- * This is the platform-independent representation that serves as the
- * single source of truth. No marketplace-specific fields leak into this model.
- * Platform adapters transform this into marketplace-specific formats.
+ * This interface is the single source of truth for product data in the MerchOS
+ * platform. It is:
+ *
+ * - **Marketplace-independent** — No platform's schema (Takealot, Amazon, Makro,
+ *   Shopify, WooCommerce) dictates its structure. Platform adapters transform
+ *   this model into marketplace-specific formats at export time.
+ *
+ * - **Persisted in DynamoDB** — Stored with partition key TENANT#{tenantId} and
+ *   sort key PRODUCT#{productId}. Tenant isolation is enforced at the persistence
+ *   layer.
+ *
+ * - **Input to the export pipeline** — The Schema Registry → Validation Engine →
+ *   Platform Adapter → Export Generator pipeline consumes this model.
+ *
+ * API DTOs (the `Product` interface in `./product.ts`) are derived from this
+ * model at the service boundary. DTOs include additional computed/enriched fields
+ * for frontend display; those fields do NOT exist in this canonical model.
+ *
+ * @see {@link file://./product.ts} — API DTOs derived from this model
+ * @see {@link file://../../docs/architecture/adr/ADR-004-canonical-product-domain-model.md} — ADR
+ * @see {@link file://../../docs/architecture/canonical-product-model.md} — Full specification
  */
 export interface CanonicalProduct {
   productId: string;
@@ -236,6 +254,21 @@ export interface CanonicalProduct {
   content: CanonicalContentData;
   commercial: CanonicalCommercialData;
   platformSpecific: PlatformSpecificData;
+  /**
+   * High-level readiness state relevant to export eligibility.
+   *
+   * The canonical model uses a **simplified lifecycle subset**: draft → ready →
+   * validated → exported → archived. This tracks the product's readiness for
+   * marketplace export.
+   *
+   * The full `LifecycleState` type (in `./common.ts`) represents the complete
+   * product pipeline including ingestion, enrichment, and review stages. That
+   * extended state machine is used in the API DTO (`Product.lifecycleState`)
+   * where the UI needs visibility into intermediate processing steps.
+   *
+   * Mapping: draft ≈ DRAFT, ready ≈ ENRICHED/REVIEW, validated ≈ VALIDATED/EXPORT_READY,
+   * exported ≈ PUBLISHED, archived ≈ ARCHIVED.
+   */
   lifecycleState: 'draft' | 'ready' | 'validated' | 'exported' | 'archived';
   createdAt: string;
   updatedAt: string;

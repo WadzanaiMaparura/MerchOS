@@ -1308,8 +1308,11 @@ The canonical variant model is platform-independent:
 
 ### 11.6 Cross-References
 
-- Detailed canonical model specification: [Schema & Validation Architecture — Section 2](./schema-validation-architecture.md#2-canonical-product-model)
-- Architecture decision: [ADR-003](./adr/ADR-003-canonical-product-model-marketplace-adapters.md)
+- Detailed canonical model specification: [Canonical Product Model Specification](./canonical-product-model.md)
+- Detailed canonical model specification (schema focus): [Schema & Validation Architecture — Section 2](./schema-validation-architecture.md#2-canonical-product-model)
+- Architecture decision (marketplace adapters): [ADR-003](./adr/ADR-003-canonical-product-model-marketplace-adapters.md)
+- Architecture decision (type hierarchy & role clarity): [ADR-004](./adr/ADR-004-canonical-product-domain-model.md)
+- Type definitions: `packages/types/src/marketplace.ts` (`CanonicalProduct`), `packages/types/src/product.ts` (API DTOs)
 
 ---
 
