@@ -131,7 +131,19 @@ export interface Variant {
   };
 }
 
-/** Full product detail as returned by the API. */
+/**
+ * Full product detail as returned by the REST API.
+ *
+ * This is an **API response DTO** — not the canonical domain model and not a persistence
+ * model. It is assembled at query time from `CanonicalProduct` (domain) plus enrichment
+ * data, compliance reports, and lifecycle history from auxiliary data sources.
+ *
+ * `Partial<Product>` is used in supplier-intelligence validation (`ValidatedRecord`) as a
+ * loose record shape during import validation — this is acceptable since validation operates
+ * on incoming data that may not yet have all fields populated.
+ *
+ * @see {@link file://./marketplace.ts} — `CanonicalProduct` (authoritative domain model)
+ */
 export interface Product {
   productId: string;
   tenantId: string;

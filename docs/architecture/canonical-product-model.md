@@ -365,6 +365,33 @@ The `MarketplaceSchema` type defines what a platform needs (required fields, for
 
 ---
 
+## 11. Deprecated/Superseded Types
+
+The following types are **deprecated** and must not be used for new development:
+
+| File | Type | Status | Replacement |
+|------|------|--------|-------------|
+| `services/shared/types/product.types.ts` | `Product` | **DEPRECATED** — zero consumers | `CanonicalProduct` (domain) + `Product` DTO (API) in `packages/types/` |
+| `services/shared/types/product.types.ts` | `Listing` | **DEPRECATED** — zero consumers | Schema Registry + Platform Adapter pattern (see §10) |
+
+### Why `Listing extends Product` was rejected
+
+The `Listing` interface extended `Product` with channel-specific fields, creating a single monolithic type that embedded marketplace-specific data into the product model. This violates the core architectural principle:
+
+> **Marketplace schemas describe destination requirements; they do not define the MerchOS canonical product.**
+
+The correct approach (per ADR-003 and ADR-004) is:
+1. `CanonicalProduct` stores marketplace-independent product data
+2. `PlatformSpecificData` stores per-marketplace identifiers and export history as a separate domain within the canonical model
+3. Platform adapters transform canonical data into marketplace-specific export formats at export time
+4. No "listing" type extends or inherits from the product model
+
+### Cleanup timeline
+
+The deprecated file is retained to avoid breaking hidden references. It will be removed in a future cleanup pass after a full dependency audit confirms no transitive imports.
+
+---
+
 ## References
 
 - [ADR-003: Canonical Product Model with Marketplace Adapters](./adr/ADR-003-canonical-product-model-marketplace-adapters.md)

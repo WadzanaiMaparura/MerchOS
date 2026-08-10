@@ -156,6 +156,17 @@ Confirmed compatibility:
 | New types introduced without role assignment | Code review checklist: "Does this type compete with CanonicalProduct?" |
 | Persistence schema drifts from domain model | DynamoDB access patterns documented here; implementation must conform |
 
+### Deprecated Models
+
+The following models have been explicitly deprecated as part of this ADR's type hierarchy clarification:
+
+| File | Type | Status | Reason |
+|------|------|--------|--------|
+| `services/shared/types/product.types.ts` | `Product` | **DEPRECATED** | Zero consumers in the codebase. Duplicates the API DTO in `packages/types/src/product.ts`. Created during early architecture exploration but never integrated into any service. |
+| `services/shared/types/product.types.ts` | `Listing` | **DEPRECATED** | The `Listing extends Product` pattern was rejected in favour of the Schema Registry + Platform Adapter approach (per ADR-003). Marketplace-specific data is handled by platform adapters at export time, not by extending the product model. |
+
+These files are retained (not deleted) to avoid breaking hidden transitive dependencies. They will be removed in a future cleanup pass.
+
 ## References
 
 - [ADR-003: Canonical Product Model with Marketplace Adapters](./ADR-003-canonical-product-model-marketplace-adapters.md)
