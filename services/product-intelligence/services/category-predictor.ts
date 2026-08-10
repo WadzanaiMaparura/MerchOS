@@ -59,9 +59,11 @@ const MIN_PREDICTIONS = 3;
  * marketplace taxonomy namespace.
  */
 const MARKETPLACE_TAXONOMY_PREFIX: Record<MarketplaceId, string> = {
+  takealot: 'tklot',
+  makro: 'makro',
   amazon: 'amzn',
   shopify: 'shpfy',
-  ebay: 'ebay',
+  woocommerce: 'woo',
 };
 
 // ---------------------------------------------------------------------------

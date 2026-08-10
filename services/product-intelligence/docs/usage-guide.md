@@ -244,9 +244,11 @@ Specify a `marketplace` field to tailor content for specific platforms.
 
 | ID | Platform | Special Handling |
 |----|----------|-----------------|
+| `takealot` | Takealot | Strict title limits, basic HTML in descriptions, SA Consumer Protection Act compliance |
+| `makro` | Makro | Basic HTML, moderate limits, SA Consumer Protection Act compliance |
 | `amazon` | Amazon | A+ content structuring, strict character limits, trademark-restricted characters removed |
 | `shopify` | Shopify | Rich HTML allowed, generous limits |
-| `ebay` | eBay | Short titles (80 char), restricted HTML |
+| `woocommerce` | WooCommerce | Rich HTML allowed, SEO-optimized content guidance |
 
 ### What Marketplace Targeting Does
 

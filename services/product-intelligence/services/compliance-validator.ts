@@ -70,56 +70,56 @@ export const KNOWN_RESTRICTED_TERMS: {
     type: 'prohibited_claim',
     severity: 'error',
     suggestedFix: 'Remove absolute guarantee claim or rephrase as conditional',
-    marketplaces: ['amazon', 'ebay', 'shopify'],
+    marketplaces: ['takealot', 'makro', 'amazon', 'shopify', 'woocommerce'],
   },
   {
     term: 'cure',
     type: 'prohibited_claim',
     severity: 'error',
     suggestedFix: 'Remove medical claim; use "may help support" instead',
-    marketplaces: ['amazon', 'ebay', 'shopify'],
+    marketplaces: ['takealot', 'makro', 'amazon', 'shopify', 'woocommerce'],
   },
   {
     term: 'miracle',
     type: 'prohibited_claim',
     severity: 'error',
     suggestedFix: 'Remove exaggerated claim; use specific factual benefits',
-    marketplaces: ['amazon', 'ebay', 'shopify'],
+    marketplaces: ['takealot', 'makro', 'amazon', 'shopify', 'woocommerce'],
   },
   {
     term: 'best in the world',
     type: 'prohibited_claim',
     severity: 'warning',
     suggestedFix: 'Remove superlative claim or provide substantiation',
-    marketplaces: ['amazon', 'ebay', 'shopify'],
+    marketplaces: ['takealot', 'makro', 'amazon', 'shopify', 'woocommerce'],
   },
   {
     term: '#1 selling',
     type: 'prohibited_claim',
     severity: 'warning',
     suggestedFix: 'Remove unsubstantiated ranking claim or add verification source',
-    marketplaces: ['amazon', 'ebay', 'shopify'],
+    marketplaces: ['takealot', 'makro', 'amazon', 'shopify', 'woocommerce'],
   },
   {
     term: 'FDA approved',
     type: 'restricted_term',
     severity: 'error',
     suggestedFix: 'Remove FDA approval claim unless product has actual FDA clearance',
-    marketplaces: ['amazon', 'ebay', 'shopify'],
+    marketplaces: ['takealot', 'makro', 'amazon', 'shopify', 'woocommerce'],
   },
   {
     term: 'clinically proven',
     type: 'prohibited_claim',
     severity: 'warning',
     suggestedFix: 'Replace with "based on clinical studies" and cite source',
-    marketplaces: ['amazon', 'ebay', 'shopify'],
+    marketplaces: ['takealot', 'makro', 'amazon', 'shopify', 'woocommerce'],
   },
   {
     term: 'risk-free',
     type: 'prohibited_claim',
     severity: 'warning',
     suggestedFix: 'Replace with specific return or refund policy details',
-    marketplaces: ['amazon', 'ebay', 'shopify'],
+    marketplaces: ['takealot', 'makro', 'amazon', 'shopify', 'woocommerce'],
   },
   {
     term: 'anti-aging',
@@ -473,13 +473,27 @@ Example:
 - Must comply with consumer protection regulations
 - No unverified environmental claims (greenwashing)
 - No fake endorsements or testimonials`;
-      case 'ebay':
-        return `- No keyword stuffing or irrelevant keywords
-- No misleading item condition descriptions
-- No link to external sites for transaction completion
-- No "best offer" pressure language in descriptions
-- No stock photos misrepresented as actual product
+      case 'takealot':
+        return `- No unsubstantiated health or medical claims
+- No misleading product descriptions or specifications
+- No competitor disparagement or comparative claims
+- Must comply with South African Consumer Protection Act
+- No external website URLs or contact details in listings
 - No unverified brand affiliation claims`;
+      case 'makro':
+        return `- No misleading product descriptions or specifications
+- Must comply with South African Consumer Protection Act
+- No unverified brand affiliation claims
+- No false advertising or exaggerated claims
+- No external contact details in product descriptions
+- No unverified environmental or safety claims`;
+      case 'woocommerce':
+        return `- No false advertising or misleading claims
+- No prohibited product categories content
+- No hate speech or discriminatory language
+- Must comply with consumer protection regulations
+- No unverified environmental claims (greenwashing)
+- No fake endorsements or testimonials`;
       default:
         return '- Follow general e-commerce content guidelines';
     }

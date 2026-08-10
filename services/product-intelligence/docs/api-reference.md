@@ -45,7 +45,7 @@ Submits a single AI content generation request.
     "price": { "amount": 29.99, "currency": "USD" },
     "existingContent": "string (optional, max 50000)"
   },
-  "marketplace": "amazon" | "shopify" | "ebay",
+  "marketplace": "takealot" | "makro" | "amazon" | "shopify" | "woocommerce",
   "options": {}
 }
 ```
@@ -268,9 +268,11 @@ The engine selects models based on task complexity:
 
 | Marketplace | Title | Description | Bullets (each) | Keywords |
 |-------------|-------|-------------|----------------|----------|
+| Takealot | 150 | 5000 | 500 | 250 |
+| Makro | 150 | 4000 | 500 | 200 |
 | Amazon | 200 | 2000 | 500 | 250 |
 | Shopify | 255 | 5000 | unlimited | unlimited |
-| eBay | 80 | 4000 | 1000 | 1000 |
+| WooCommerce | 200 | 5000 | 500 | 300 |
 
 Content exceeding these limits is truncated at the nearest sentence boundary with `truncated: true` in metadata.
 

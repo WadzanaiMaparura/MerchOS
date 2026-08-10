@@ -96,11 +96,36 @@ const MAX_BULLET_COUNT = 20;
 /** Default word count tolerance percentage (10%) */
 const WORD_COUNT_TOLERANCE = 0.10;
 
-/** Marketplace character limits per content type */
+/**
+ * Marketplace character limits per content type.
+ *
+ * ⚠️  PROVISIONAL DEFAULTS — content-generation guidance only.
+ *
+ * These limits guide the AI on target output length for each platform. They are
+ * NOT export-validation limits. The actual hard constraints (which vary by
+ * category, product-type, and seller tier) will be enforced at export time by
+ * the Validation Engine + Schema Registry.
+ *
+ * @deprecated Will be replaced by runtime Schema Registry lookup.
+ * See: docs/architecture/schema-validation-architecture.md §3
+ *
+ * Classification key:
+ * - OFFICIAL_REQUIREMENT: documented hard limit in platform API/docs
+ * - OFFICIAL_RECOMMENDATION: platform's recommended limit (soft)
+ * - INFERENCE: inferred from templates or competitive analysis
+ * - VARIES_BY_CATEGORY: actual limit depends on product category
+ */
 const MARKETPLACE_LIMITS: Record<MarketplaceId, { title: number; description: number }> = {
+  // Source: Takealot Seller Portal (2024) — OFFICIAL_REQUIREMENT for title
+  takealot: { title: 150, description: 5000 },
+  // Source: Makro Seller Hub template (2024) — INFERENCE
+  makro: { title: 150, description: 4000 },
+  // Source: Amazon Style Guide (2024) — OFFICIAL_REQUIREMENT; VARIES_BY_CATEGORY
   amazon: { title: 200, description: 2000 },
+  // Source: Shopify Admin API docs — OFFICIAL_REQUIREMENT for title
   shopify: { title: 255, description: 5000 },
-  ebay: { title: 80, description: 4000 },
+  // Source: WooCommerce/WordPress schema — INFERENCE (no hard platform limit)
+  woocommerce: { title: 200, description: 5000 },
 };
 
 // ---------------------------------------------------------------------------

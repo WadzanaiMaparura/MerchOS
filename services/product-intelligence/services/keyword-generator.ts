@@ -67,6 +67,20 @@ const DEFAULT_HISTORICAL_ACCURACY = 0.75;
  * Marketplace-specific search algorithm characteristics used to tailor keywords.
  */
 const MARKETPLACE_SEARCH_CHARACTERISTICS: Record<MarketplaceId, string> = {
+  takealot: [
+    'Focus on Takealot internal search algorithm relevance.',
+    'Prioritize exact product name and brand keywords.',
+    'Include South African English spelling variants (colour vs color).',
+    'Use category-specific item specifics as keywords.',
+    'Include common local product terminology.',
+  ].join(' '),
+  makro: [
+    'Focus on Makro on-site search and category browsing.',
+    'Include brand, model number, and specification keywords.',
+    'Use South African English spelling and terminology.',
+    'Include practical use-case and application keywords.',
+    'Optimize for both online and in-store search.',
+  ].join(' '),
   amazon: [
     'Focus on backend search terms and indexed keywords.',
     'Prioritize exact-match keywords over broad match.',
@@ -82,12 +96,12 @@ const MARKETPLACE_SEARCH_CHARACTERISTICS: Record<MarketplaceId, string> = {
     'Include seasonal and trending terminology.',
     'Optimize for Google Shopping and organic search.',
   ].join(' '),
-  ebay: [
-    'Focus on item specifics and category-relevant terms.',
-    'Include condition descriptors (new, refurbished, vintage).',
-    'Prioritize brand and model number keywords.',
-    'Include alternate product names and abbreviations.',
-    'Optimize for Cassini search algorithm relevance signals.',
+  woocommerce: [
+    'Focus on Google organic search and product schema.',
+    'Include long-tail keywords optimized for Yoast SEO.',
+    'Prioritize WordPress tag and category terms.',
+    'Include question-based keywords for FAQ schema.',
+    'Optimize for Google Shopping and rich snippets.',
   ].join(' '),
 };
 

@@ -92,6 +92,20 @@ const UNIT_NORMALIZATION: Record<string, { targetUnit: string; factor: number }>
  * Maps generic attribute keys to marketplace-specific attribute names.
  */
 const MARKETPLACE_ATTRIBUTE_SCHEMAS: Record<MarketplaceId, Record<string, string>> = {
+  takealot: {
+    size: 'Size',
+    color: 'Colour',
+    material: 'Material',
+    weight: 'Weight',
+    dimensions: 'Dimensions',
+  },
+  makro: {
+    size: 'Size',
+    color: 'Colour',
+    material: 'Material',
+    weight: 'Weight',
+    dimensions: 'Dimensions',
+  },
   amazon: {
     size: 'item_dimensions_size',
     color: 'color_name',
@@ -106,12 +120,12 @@ const MARKETPLACE_ATTRIBUTE_SCHEMAS: Record<MarketplaceId, Record<string, string
     weight: 'weight',
     dimensions: 'dimensions',
   },
-  ebay: {
-    size: 'Size',
-    color: 'Color',
-    material: 'Material',
-    weight: 'Item Weight',
-    dimensions: 'Item Dimensions',
+  woocommerce: {
+    size: 'size',
+    color: 'color',
+    material: 'material',
+    weight: 'weight',
+    dimensions: 'dimensions',
   },
 };
 
