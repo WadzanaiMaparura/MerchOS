@@ -250,8 +250,8 @@ export interface EnrichmentLayer {
 // ---------------------------------------------------------------------------
 
 /**
- * Canonical Product record — the central data model for MerchOS.
- * Stored in DynamoDB Products table: PK TENANT#<tenantId>, SK PRODUCT#<productId>.
+ * @deprecated Canonical Product record — superseded by CanonicalProduct in packages/types/src/marketplace.ts.
+ * The DynamoDB persistence layer has NOT been implemented for this model.
  * Requirements: 14.1
  */
 export interface Product {

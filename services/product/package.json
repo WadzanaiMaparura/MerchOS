@@ -1,0 +1,24 @@
+{
+  "name": "@merch-os/product",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Product Service — persistence boundary for CanonicalProduct in MerchOS",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run --dir repository/__tests__"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "3.654.0",
+    "@aws-sdk/lib-dynamodb": "3.654.0",
+    "@merch-os/types": "*"
+  },
+  "devDependencies": {
+    "aws-sdk-client-mock": "4.0.1",
+    "typescript": "5.4.5",
+    "vitest": "1.6.0"
+  }
+}
