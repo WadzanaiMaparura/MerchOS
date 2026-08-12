@@ -17,9 +17,6 @@ export interface CreateProductRequest {
   dimensionUnit?: 'cm' | 'in' | 'mm';
   materials?: string[];
   attributes?: Record<string, string | number | boolean>;
-  sellingPrice?: number;
-  rrp?: number;
-  currency?: string;
   stockQuantity?: number;
   fulfilmentMethod?: string;
   leadtimeDays?: number;
@@ -44,16 +41,12 @@ export interface UpdateProductRequest {
   dimensionUnit?: 'cm' | 'in' | 'mm' | null;
   materials?: string[];
   attributes?: Record<string, string | number | boolean>;
-  sellingPrice?: number | null;
-  rrp?: number | null;
-  salePrice?: number | null;
-  currency?: string;
   stockQuantity?: number;
   lowStockThreshold?: number | null;
   fulfilmentMethod?: string | null;
   leadtimeDays?: number | null;
   handlingTimeDays?: number | null;
-  listingStatus?: 'active' | 'draft' | 'archived';
+  listingStatus?: 'active' | 'draft';
 }
 
 /** GET /products query parameters */
