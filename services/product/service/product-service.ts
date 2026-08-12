@@ -9,13 +9,16 @@
 import { CanonicalProduct } from '@merch-os/types';
 import { ProductRepository } from '../repository/product-repository';
 import {
-  ProductNotFoundError,
-  ProductAlreadyExistsError,
-  ProductPersistenceError,
+  ProductNotFoundError as RepoNotFoundError,
+  ProductAlreadyExistsError as RepoAlreadyExistsError,
+  ProductPersistenceError as RepoPersistenceError,
 } from '../repository/errors';
 import { ListProductsOptions, PaginatedProducts } from '../repository/types';
 import { CreateProductInput, UpdateProductInput } from './types';
 import {
+  ProductAlreadyExistsError,
+  ProductNotFoundError,
+  ProductPersistenceError,
   ProductSkuAlreadyExistsError,
   ProductValidationError,
   InvalidProductLifecycleError,
@@ -98,16 +101,19 @@ export class ProductService {
       updatedAt: '', // Set by repository
     };
 
-    // 5. Persist (map repository errors to service errors)
+    // 5. Persist (map repository errors to service-level errors)
     try {
       const created = await this.repository.create(product);
       return created;
     } catch (error) {
-      if (error instanceof ProductAlreadyExistsError) {
-        throw error; // Product identity conflict — pass through as domain error
+      if (error instanceof RepoAlreadyExistsError) {
+        throw new ProductAlreadyExistsError(tenantId, productId);
       }
-      if (error instanceof ProductPersistenceError) {
-        throw error; // Persistence failure — pass through (NOT a validation error)
+      if (error instanceof RepoPersistenceError) {
+        throw new ProductPersistenceError(
+          (error as Error).message,
+          error as Error
+        );
       }
       throw error;
     }
@@ -247,7 +253,7 @@ export class ProductService {
       platformSpecific: existing.platformSpecific,
     };
 
-    // 5. Persist (map repository errors to service errors)
+    // 5. Persist (map repository errors to service-level errors)
     try {
       const updated = await this.repository.update(
         tenantId,
@@ -256,11 +262,14 @@ export class ProductService {
       );
       return updated;
     } catch (error) {
-      if (error instanceof ProductNotFoundError) {
-        throw error; // Already a domain error
+      if (error instanceof RepoNotFoundError) {
+        throw new ProductNotFoundError(tenantId, productId);
       }
-      if (error instanceof ProductPersistenceError) {
-        throw error; // Persistence failure — pass through (NOT a validation error)
+      if (error instanceof RepoPersistenceError) {
+        throw new ProductPersistenceError(
+          (error as Error).message,
+          error as Error
+        );
       }
       throw error;
     }
@@ -277,11 +286,14 @@ export class ProductService {
     try {
       return await this.repository.delete(tenantId, productId);
     } catch (error) {
-      if (error instanceof ProductNotFoundError) {
-        throw error; // Already a domain error
+      if (error instanceof RepoNotFoundError) {
+        throw new ProductNotFoundError(tenantId, productId);
       }
-      if (error instanceof ProductPersistenceError) {
-        throw error; // Persistence failure — pass through (NOT a validation error)
+      if (error instanceof RepoPersistenceError) {
+        throw new ProductPersistenceError(
+          (error as Error).message,
+          error as Error
+        );
       }
       throw error;
     }

@@ -1,5 +1,8 @@
 export { ProductService } from './product-service';
 export {
+  ProductNotFoundError,
+  ProductAlreadyExistsError,
+  ProductPersistenceError,
   ProductSkuAlreadyExistsError,
   ProductValidationError,
   InvalidProductLifecycleError,
