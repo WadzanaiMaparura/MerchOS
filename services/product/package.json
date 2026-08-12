@@ -17,6 +17,7 @@
     "@merch-os/types": "*"
   },
   "devDependencies": {
+    "@types/aws-lambda": "8.10.140",
     "aws-sdk-client-mock": "4.0.1",
     "typescript": "5.4.5",
     "vitest": "1.6.0"
