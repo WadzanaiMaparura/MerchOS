@@ -19,6 +19,7 @@ import { logger } from './powertools';
 
 export interface TenantContext {
   tenantId: string;
+  userId?: string;
 }
 
 /** Roles that can bypass tenant isolation (platform-level access) */
@@ -210,4 +211,65 @@ function attachTenantContext(
   } else {
     (authorizer as Record<string, unknown>)['tenantContext'] = context;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Exported utility: Extract resolved TenantContext from event
+// ---------------------------------------------------------------------------
+
+/**
+ * Extracts the resolved TenantContext from an API Gateway event.
+ *
+ * Reads from the authorizer context in priority order:
+ * 1. tenantContextMiddleware output: authorizer.tenantContext
+ * 2. API Gateway JWT authorizer: authorizer.jwt.claims['custom:tenantId']
+ * 3. Lambda authorizer: authorizer.lambda['custom:tenantId']
+ *
+ * Returns null if no tenant claim is found.
+ * Client-supplied tenantId (body/query/path) is NEVER used.
+ *
+ * @param event - The raw API Gateway event object
+ * @returns TenantContext if a trusted tenant claim exists, null otherwise
+ */
+export function extractTenantContext(event: Record<string, unknown>): TenantContext | null {
+  const requestContext = event['requestContext'] as Record<string, unknown> | undefined;
+  const authorizer = requestContext?.['authorizer'] as Record<string, unknown> | undefined;
+
+  if (!authorizer) return null;
+
+  // Pattern 1: tenantContextMiddleware already resolved context
+  const tenantCtx = authorizer['tenantContext'] as Record<string, unknown> | undefined;
+  if (tenantCtx?.['tenantId']) {
+    return {
+      tenantId: tenantCtx['tenantId'] as string,
+      userId: tenantCtx['userId'] as string | undefined,
+    };
+  }
+
+  // Pattern 2: API Gateway JWT authorizer (Cognito user pool)
+  const jwt = authorizer['jwt'] as Record<string, unknown> | undefined;
+  if (jwt) {
+    const claims = jwt['claims'] as Record<string, unknown> | undefined;
+    const tenantId = claims?.['custom:tenantId'] as string | undefined;
+    if (tenantId) {
+      return {
+        tenantId,
+        userId: claims?.['sub'] as string | undefined,
+      };
+    }
+  }
+
+  // Pattern 3: Lambda authorizer
+  const lambda = authorizer['lambda'] as Record<string, unknown> | undefined;
+  if (lambda) {
+    const lambdaTenantId = lambda['custom:tenantId'] as string | undefined;
+    if (lambdaTenantId) {
+      return {
+        tenantId: lambdaTenantId,
+        userId: lambda['sub'] as string | undefined,
+      };
+    }
+  }
+
+  return null;
 }
