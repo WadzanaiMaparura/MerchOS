@@ -104,12 +104,10 @@ export class ProductService {
       return created;
     } catch (error) {
       if (error instanceof ProductAlreadyExistsError) {
-        throw new ProductSkuAlreadyExistsError(tenantId, input.sku);
+        throw error; // Product identity conflict — pass through as domain error
       }
       if (error instanceof ProductPersistenceError) {
-        throw new ProductValidationError(
-          `Failed to create product: ${(error as Error).message}`
-        );
+        throw error; // Persistence failure — pass through (NOT a validation error)
       }
       throw error;
     }
@@ -262,9 +260,7 @@ export class ProductService {
         throw error; // Already a domain error
       }
       if (error instanceof ProductPersistenceError) {
-        throw new ProductValidationError(
-          `Failed to update product: ${(error as Error).message}`
-        );
+        throw error; // Persistence failure — pass through (NOT a validation error)
       }
       throw error;
     }
@@ -285,9 +281,7 @@ export class ProductService {
         throw error; // Already a domain error
       }
       if (error instanceof ProductPersistenceError) {
-        throw new ProductValidationError(
-          `Failed to archive product: ${(error as Error).message}`
-        );
+        throw error; // Persistence failure — pass through (NOT a validation error)
       }
       throw error;
     }
