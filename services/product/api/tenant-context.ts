@@ -1,22 +1,40 @@
 /**
- * Extracts the trusted tenant context from an authenticated API Gateway event.
+ * TenantContext extraction for the Product API Lambda handlers.
  *
- * Reads the tenant identity from the Cognito JWT claim `custom:tenantId` as
- * validated by API Gateway's Cognito/JWT authorizer. The user identity comes
- * from the `sub` claim.
+ * ─── AUTHORITATIVE CONTRACT ───────────────────────────────────────────────
  *
- * Supported authorizer patterns:
+ * The canonical TenantContext contract is defined by the shared middleware:
+ *   services/shared/middleware/tenant-context.ts
+ *
+ * This extraction utility implements the same contract for direct use in
+ * Product API handlers without requiring the full middy middleware pipeline.
+ * Both implementations read from the same authorizer context structure.
+ *
+ * ─── TRUST MODEL ──────────────────────────────────────────────────────────
+ *
+ * Authoritative tenant claim: custom:tenantId (Cognito custom attribute)
+ * Authenticated user identity: sub (Cognito user UUID)
+ *
+ * The tenantId NEVER comes from client-supplied request data:
+ * - NOT from request body
+ * - NOT from query parameters
+ * - NOT from path parameters
+ * - NOT from custom HTTP headers
+ *
+ * API Gateway validates the JWT before invocation (Cognito user-pool authorizer).
+ * This function consumes the pre-validated authorizer context.
+ *
+ * ─── PATTERNS SUPPORTED ──────────────────────────────────────────────────
+ *
  * 1. Shared tenantContextMiddleware output:
  *    event.requestContext.authorizer.tenantContext.tenantId
- * 2. API Gateway JWT authorizer:
+ * 2. API Gateway JWT authorizer (Cognito):
  *    event.requestContext.authorizer.jwt.claims['custom:tenantId']
  * 3. Lambda authorizer:
  *    event.requestContext.authorizer.lambda['custom:tenantId']
  *
- * The tenantId NEVER comes from client-supplied request data (body, query, path).
- * Missing tenant claim → return null (handler returns 401).
- *
- * @see docs/architecture/merchos-blueprint.md §1 (Authentication Architecture)
+ * @see services/shared/middleware/tenant-context.ts — Shared middleware (middy)
+ * @see docs/architecture/merchos-blueprint.md §1 — Authentication Architecture
  */
 export interface TenantContext {
   /** Tenant identity from Cognito custom:tenantId claim */
@@ -25,6 +43,11 @@ export interface TenantContext {
   userId?: string;
 }
 
+/**
+ * Extracts the trusted TenantContext from an API Gateway event.
+ *
+ * Returns null if no tenant claim is found (handler should return 401).
+ */
 export function extractTenantContext(event: Record<string, unknown>): TenantContext | null {
   const requestContext = event['requestContext'] as Record<string, unknown> | undefined;
   const authorizer = requestContext?.['authorizer'] as Record<string, unknown> | undefined;
@@ -41,7 +64,6 @@ export function extractTenantContext(event: Record<string, unknown>): TenantCont
   }
 
   // Pattern 2: API Gateway JWT authorizer (Cognito user pool)
-  // event.requestContext.authorizer.jwt.claims['custom:tenantId']
   const jwt = authorizer['jwt'] as Record<string, unknown> | undefined;
   if (jwt) {
     const claims = jwt['claims'] as Record<string, unknown> | undefined;
@@ -55,7 +77,6 @@ export function extractTenantContext(event: Record<string, unknown>): TenantCont
   }
 
   // Pattern 3: Lambda authorizer
-  // event.requestContext.authorizer.lambda['custom:tenantId']
   const lambda = authorizer['lambda'] as Record<string, unknown> | undefined;
   if (lambda) {
     const tenantId = lambda['custom:tenantId'] as string | undefined;
@@ -67,6 +88,6 @@ export function extractTenantContext(event: Record<string, unknown>): TenantCont
     }
   }
 
-  // No tenant claim found in any pattern
+  // No tenant claim found — handler must return 401
   return null;
 }
