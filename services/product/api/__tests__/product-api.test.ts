@@ -6,7 +6,7 @@
  * - Missing tenant context → 401
  * - Missing/invalid path params → 400
  * - Domain errors mapped to correct HTTP status codes
- * - Client-supplied tenantId in body cannot override trusted context
+ * - Strict schema rejects pricing fields, system-managed fields, and wrong types
  * - Pagination works
  */
 
@@ -138,6 +138,7 @@ beforeEach(() => {
   setArchiveService(mockService as any);
 });
 
+
 // ---------------------------------------------------------------------------
 // POST /products — Create Product
 // ---------------------------------------------------------------------------
@@ -219,10 +220,7 @@ describe('POST /products — createProduct', () => {
     expect(body.error.field).toBe('title');
   });
 
-  it('does not allow client to supply tenantId in body — uses trusted context', async () => {
-    const product = makeSampleProduct();
-    mockService.createProduct.mockResolvedValue(product);
-
+  it('returns 400 when tenantId is supplied in body — strict schema rejects it', async () => {
     const event = makeEvent({
       body: JSON.stringify({
         title: 'Test',
@@ -232,12 +230,9 @@ describe('POST /products — createProduct', () => {
       }),
     });
 
-    await createHandler(event);
-    // Service should be called with the trusted tenantId, not attacker's
-    expect(mockService.createProduct).toHaveBeenCalledWith(
-      TENANT_ID,
-      expect.objectContaining({ title: 'Test' })
-    );
+    const result = await createHandler(event);
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body as string).error.code).toBe('VALIDATION_ERROR');
   });
 
   it('returns 500 for unknown errors without leaking details', async () => {
@@ -445,23 +440,15 @@ describe('PUT /products/{productId} — updateProduct', () => {
     expect(JSON.parse(result.body as string).error.code).toBe('PRODUCT_SKU_ALREADY_EXISTS');
   });
 
-  it('path productId is authoritative — body productId is ignored', async () => {
-    const product = makeSampleProduct();
-    mockService.updateProduct.mockResolvedValue(product);
-
+  it('returns 400 when body contains productId — strict schema rejects it', async () => {
     const event = makeEvent({
       pathParameters: { productId: PRODUCT_ID },
       body: JSON.stringify({ productId: 'attacker-id', title: 'Updated' }),
     });
 
-    await updateHandler(event);
-    // Service is called with path productId, not body productId
-    expect(mockService.updateProduct).toHaveBeenCalledWith(
-      TENANT_ID,
-      PRODUCT_ID,
-      expect.objectContaining({ productId: 'attacker-id', title: 'Updated' })
-    );
-    // The service itself ignores body productId — the handler passes the path value separately
+    const result = await updateHandler(event);
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body as string).error.code).toBe('VALIDATION_ERROR');
   });
 });
 
@@ -533,5 +520,200 @@ describe('Error mapper coverage', () => {
     const result = await createHandler(event);
     expect(result.statusCode).toBe(409);
     expect(JSON.parse(result.body as string).error.code).toBe('PRODUCT_ALREADY_EXISTS');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Strict schema enforcement — pricing fields rejected
+// ---------------------------------------------------------------------------
+
+describe('Strict schema — pricing fields rejected', () => {
+  it('returns 400 when sellingPrice is in create request body', async () => {
+    const event = makeEvent({
+      body: JSON.stringify({ title: 'Test', sku: 'SKU-001', brand: 'Brand', sellingPrice: 99.99 }),
+    });
+
+    const result = await createHandler(event);
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body as string).error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('returns 400 when rrp is in create request body', async () => {
+    const event = makeEvent({
+      body: JSON.stringify({ title: 'Test', sku: 'SKU-001', brand: 'Brand', rrp: 129.99 }),
+    });
+
+    const result = await createHandler(event);
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body as string).error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('returns 400 when currency is in create request body', async () => {
+    const event = makeEvent({
+      body: JSON.stringify({ title: 'Test', sku: 'SKU-001', brand: 'Brand', currency: 'USD' }),
+    });
+
+    const result = await createHandler(event);
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body as string).error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('returns 400 when sellingPrice is in update request body', async () => {
+    const event = makeEvent({
+      pathParameters: { productId: PRODUCT_ID },
+      body: JSON.stringify({ title: 'Updated', sellingPrice: 49.99 }),
+    });
+
+    const result = await updateHandler(event);
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body as string).error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('returns 400 when rrp is in update request body', async () => {
+    const event = makeEvent({
+      pathParameters: { productId: PRODUCT_ID },
+      body: JSON.stringify({ title: 'Updated', rrp: 149.99 }),
+    });
+
+    const result = await updateHandler(event);
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body as string).error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('returns 400 when currency is in update request body', async () => {
+    const event = makeEvent({
+      pathParameters: { productId: PRODUCT_ID },
+      body: JSON.stringify({ title: 'Updated', currency: 'EUR' }),
+    });
+
+    const result = await updateHandler(event);
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body as string).error.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Strict schema enforcement — system-managed fields rejected
+// ---------------------------------------------------------------------------
+
+describe('Strict schema — system-managed fields rejected', () => {
+  it('returns 400 when tenantId is in create request body', async () => {
+    const event = makeEvent({
+      body: JSON.stringify({ title: 'Test', sku: 'SKU-001', brand: 'Brand', tenantId: 'attacker-tenant' }),
+    });
+
+    const result = await createHandler(event);
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body as string).error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('returns 400 when productId is in create request body', async () => {
+    const event = makeEvent({
+      body: JSON.stringify({ title: 'Test', sku: 'SKU-001', brand: 'Brand', productId: 'injected-id' }),
+    });
+
+    const result = await createHandler(event);
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body as string).error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('returns 400 when createdAt is in create request body', async () => {
+    const event = makeEvent({
+      body: JSON.stringify({ title: 'Test', sku: 'SKU-001', brand: 'Brand', createdAt: '2020-01-01T00:00:00Z' }),
+    });
+
+    const result = await createHandler(event);
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body as string).error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('returns 400 when updatedAt is in create request body', async () => {
+    const event = makeEvent({
+      body: JSON.stringify({ title: 'Test', sku: 'SKU-001', brand: 'Brand', updatedAt: '2020-01-01T00:00:00Z' }),
+    });
+
+    const result = await createHandler(event);
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body as string).error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('returns 400 when lifecycleState is in create request body', async () => {
+    const event = makeEvent({
+      body: JSON.stringify({ title: 'Test', sku: 'SKU-001', brand: 'Brand', lifecycleState: 'active' }),
+    });
+
+    const result = await createHandler(event);
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body as string).error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('returns 400 when tenantId is in update request body', async () => {
+    const event = makeEvent({
+      pathParameters: { productId: PRODUCT_ID },
+      body: JSON.stringify({ title: 'Updated', tenantId: 'attacker-tenant' }),
+    });
+
+    const result = await updateHandler(event);
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body as string).error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('returns 400 when createdAt is in update request body', async () => {
+    const event = makeEvent({
+      pathParameters: { productId: PRODUCT_ID },
+      body: JSON.stringify({ title: 'Updated', createdAt: '2020-01-01T00:00:00Z' }),
+    });
+
+    const result = await updateHandler(event);
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body as string).error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('returns 400 when updatedAt is in update request body', async () => {
+    const event = makeEvent({
+      pathParameters: { productId: PRODUCT_ID },
+      body: JSON.stringify({ title: 'Updated', updatedAt: '2020-01-01T00:00:00Z' }),
+    });
+
+    const result = await updateHandler(event);
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body as string).error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('returns 400 when lifecycleState is in update request body', async () => {
+    const event = makeEvent({
+      pathParameters: { productId: PRODUCT_ID },
+      body: JSON.stringify({ title: 'Updated', lifecycleState: 'archived' }),
+    });
+
+    const result = await updateHandler(event);
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body as string).error.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Strict schema enforcement — wrong types rejected
+// ---------------------------------------------------------------------------
+
+describe('Strict schema — wrong types rejected', () => {
+  it('returns 400 when title is a number (wrong type)', async () => {
+    const event = makeEvent({
+      body: JSON.stringify({ title: 123, sku: 'SKU-001', brand: 'Brand' }),
+    });
+
+    const result = await createHandler(event);
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body as string).error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('returns 400 when sku is an array (wrong type)', async () => {
+    const event = makeEvent({
+      body: JSON.stringify({ title: 'Test', sku: [], brand: 'Brand' }),
+    });
+
+    const result = await createHandler(event);
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body as string).error.code).toBe('VALIDATION_ERROR');
   });
 });

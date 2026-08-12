@@ -14,7 +14,8 @@
   "dependencies": {
     "@aws-sdk/client-dynamodb": "3.654.0",
     "@aws-sdk/lib-dynamodb": "3.654.0",
-    "@merch-os/types": "*"
+    "@merch-os/types": "*",
+    "zod": "3.23.8"
   },
   "devDependencies": {
     "@types/aws-lambda": "8.10.140",
