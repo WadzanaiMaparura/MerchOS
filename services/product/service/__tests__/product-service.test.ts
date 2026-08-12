@@ -2,8 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CanonicalProduct } from '@merch-os/types';
 import { ProductService } from '../product-service';
 import { ProductRepository } from '../../repository/product-repository';
-import { ProductNotFoundError, ProductAlreadyExistsError, ProductPersistenceError } from '../../repository/errors';
+import { ProductNotFoundError as RepoNotFoundError, ProductAlreadyExistsError as RepoAlreadyExistsError, ProductPersistenceError as RepoPersistenceError } from '../../repository/errors';
 import {
+  ProductNotFoundError,
+  ProductAlreadyExistsError,
+  ProductPersistenceError,
   ProductSkuAlreadyExistsError,
   ProductValidationError,
   InvalidProductLifecycleError,
@@ -497,7 +500,7 @@ describe('ProductService', () => {
 
     it('should throw ProductNotFoundError when product does not exist', async () => {
       repo.delete.mockRejectedValue(
-        new ProductNotFoundError(TENANT_ID, 'non-existent')
+        new RepoNotFoundError(TENANT_ID, 'non-existent')
       );
 
       await expect(
@@ -511,14 +514,14 @@ describe('ProductService', () => {
   // =========================================================================
 
   describe('error mapping', () => {
-    it('should pass through ProductAlreadyExistsError from repository.create() (NOT as SKU error)', async () => {
+    it('should map repository ProductAlreadyExistsError to service ProductAlreadyExistsError', async () => {
       const input = makeCreateInput();
       repo.findBySku.mockResolvedValue(null); // SKU check passes
       repo.create.mockRejectedValue(
-        new ProductAlreadyExistsError(TENANT_ID, 'some-id')
+        new RepoAlreadyExistsError(TENANT_ID, 'some-id')
       );
 
-      // Must throw ProductAlreadyExistsError (product identity conflict)
+      // Must throw service-level ProductAlreadyExistsError
       await expect(
         service.createProduct(TENANT_ID, input)
       ).rejects.toThrow(ProductAlreadyExistsError);
@@ -529,14 +532,14 @@ describe('ProductService', () => {
       ).rejects.not.toThrow(ProductSkuAlreadyExistsError);
     });
 
-    it('should pass through ProductPersistenceError from repository.create() (NOT as validation error)', async () => {
+    it('should map repository ProductPersistenceError to service ProductPersistenceError (NOT validation)', async () => {
       const input = makeCreateInput();
       repo.findBySku.mockResolvedValue(null);
       repo.create.mockRejectedValue(
-        new ProductPersistenceError('DynamoDB write failed')
+        new RepoPersistenceError('DynamoDB write failed')
       );
 
-      // Must throw ProductPersistenceError (persistence failure)
+      // Must throw service-level ProductPersistenceError
       await expect(
         service.createProduct(TENANT_ID, input)
       ).rejects.toThrow(ProductPersistenceError);
@@ -547,11 +550,11 @@ describe('ProductService', () => {
       ).rejects.not.toThrow(ProductValidationError);
     });
 
-    it('should pass through ProductPersistenceError from repository.update() (NOT as validation error)', async () => {
+    it('should map repository ProductPersistenceError from update to service ProductPersistenceError', async () => {
       const existing = makeCanonicalProduct();
       repo.get.mockResolvedValue(existing);
       repo.update.mockRejectedValue(
-        new ProductPersistenceError('DynamoDB conditional write failed')
+        new RepoPersistenceError('DynamoDB conditional write failed')
       );
 
       await expect(
@@ -563,9 +566,9 @@ describe('ProductService', () => {
       ).rejects.not.toThrow(ProductValidationError);
     });
 
-    it('should pass through ProductPersistenceError from repository.delete() (NOT as validation error)', async () => {
+    it('should map repository ProductPersistenceError from archive to service ProductPersistenceError', async () => {
       repo.delete.mockRejectedValue(
-        new ProductPersistenceError('DynamoDB update failed')
+        new RepoPersistenceError('DynamoDB update failed')
       );
 
       await expect(
@@ -577,9 +580,9 @@ describe('ProductService', () => {
       ).rejects.not.toThrow(ProductValidationError);
     });
 
-    it('should preserve ProductNotFoundError from repository (already a domain error)', async () => {
+    it('should map repository ProductNotFoundError from archive to service ProductNotFoundError', async () => {
       repo.delete.mockRejectedValue(
-        new ProductNotFoundError(TENANT_ID, PRODUCT_ID)
+        new RepoNotFoundError(TENANT_ID, PRODUCT_ID)
       );
 
       await expect(
@@ -588,7 +591,6 @@ describe('ProductService', () => {
     });
 
     it('SKU conflict is separate from product-exists conflict', async () => {
-      // SKU conflict: detected by findBySku BEFORE create
       const input = makeCreateInput({ sku: 'TAKEN-SKU' });
       const otherProduct = makeCanonicalProduct({ productId: 'other-id' });
       repo.findBySku.mockResolvedValue(otherProduct);
@@ -597,12 +599,11 @@ describe('ProductService', () => {
         service.createProduct(TENANT_ID, input)
       ).rejects.toThrow(ProductSkuAlreadyExistsError);
 
-      // repository.create() never called
       expect(repo.create).not.toHaveBeenCalled();
     });
 
     it('validation errors remain separate from persistence errors', async () => {
-      const input = makeCreateInput({ title: '' }); // Invalid
+      const input = makeCreateInput({ title: '' });
 
       await expect(
         service.createProduct(TENANT_ID, input)
