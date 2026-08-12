@@ -10,11 +10,13 @@
   },
   "include": [
     "repository/**/*.ts",
-    "service/**/*.ts"
+    "service/**/*.ts",
+    "api/**/*.ts"
   ],
   "exclude": [
     "node_modules",
     "dist",
-    "repository/__tests__"
+    "repository/__tests__",
+    "api/__tests__"
   ]
 }
