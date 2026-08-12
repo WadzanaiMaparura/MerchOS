@@ -72,9 +72,13 @@ export function tenantContextMiddleware(): middy.MiddlewareObj {
         tenantId: tenantId ?? 'none',
       });
 
-      // Still attach tenant context if available (useful for audit logging)
-      const context: TenantContext = { tenantId: tenantId ?? 'platform' };
-      attachTenantContext(event, requestContext, authorizer, context);
+      // Attach tenant context if available; do NOT invent a fake tenant
+      if (tenantId) {
+        const context: TenantContext = { tenantId };
+        attachTenantContext(event, requestContext, authorizer, context);
+      }
+      // Admin/Support without a specific tenantId may proceed for cross-tenant operations
+      // but NO fake "platform" tenantId is created
       return;
     }
 
