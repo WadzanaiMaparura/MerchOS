@@ -2,8 +2,8 @@
  * Role-Based Access Control (RBAC) middleware for MerchOS Lambda handlers.
  *
  * Uses the centralized @merch-os/rbac package for permission evaluation.
- * Reads the user's role from the JWT claims injected by the API Gateway
- * Lambda authorizer and returns HTTP 401/403 if authentication/authorization fails.
+ * Reads the user's role from the JWT claims provided by the API Gateway
+ * HTTP API JWT authorizer and returns HTTP 401/403 if authentication/authorization fails.
  *
  * Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6
  */
@@ -55,10 +55,10 @@ export type { EndpointPermission, AuthorizationContext, AuthErrorResponse };
 /**
  * Middy middleware that enforces RBAC for a required endpoint permission.
  *
- * Reads the user's JWT claims from the API Gateway authorizer context
- * (event.requestContext.authorizer.lambda) and uses `createAuthorizationCheck`
- * from `@merch-os/rbac` to validate the user's role against the endpoint's
- * required permission.
+ * Reads the user's JWT claims from the API Gateway HTTP API JWT authorizer
+ * context (event.requestContext.authorizer.jwt.claims) and uses
+ * `createAuthorizationCheck` from `@merch-os/rbac` to validate the user's
+ * role against the endpoint's required permission.
  *
  * On success: attaches `AuthorizationContext` to `event.requestContext.authorizer.rbac`
  * On failure: short-circuits with HTTP 401 or 403 and a structured JSON error body.
@@ -75,12 +75,9 @@ export function rbacMiddleware(endpointPermission: EndpointPermission): middy.Mi
     const authorizer = requestContext?.['authorizer'] as
       | Record<string, unknown>
       | undefined;
-    const lambda = authorizer?.['lambda'] as
-      | Record<string, unknown>
-      | undefined;
 
-    // Extract JWT claims from the API Gateway authorizer context
-    const claims = extractClaims(lambda);
+    // Extract JWT claims from the API Gateway HTTP API JWT authorizer context
+    const claims = extractClaims(authorizer);
 
     // Run authorization check
     const result = getAuthorize()(claims, endpointPermission);
@@ -131,17 +128,25 @@ export function rbacMiddleware(endpointPermission: EndpointPermission): middy.Mi
 // ---------------------------------------------------------------------------
 
 /**
- * Extract JwtClaims from the API Gateway Lambda authorizer context.
- * The authorizer puts decoded JWT claims as individual fields in the lambda object.
+ * Extract JwtClaims from the API Gateway HTTP API JWT authorizer context.
+ * For HTTP API JWT authorizer: event.requestContext.authorizer.jwt.claims
  */
-function extractClaims(lambda: Record<string, unknown> | undefined): JwtClaims | null {
-  if (!lambda) {
+function extractClaims(authorizer: Record<string, unknown> | undefined): JwtClaims | null {
+  if (!authorizer) {
     return null;
   }
 
-  const sub = lambda['sub'] as string | undefined;
-  const iss = lambda['iss'] as string | undefined;
-  const exp = lambda['exp'] as number | undefined;
+  // HTTP API JWT authorizer: authorizer.jwt.claims
+  const jwt = authorizer['jwt'] as Record<string, unknown> | undefined;
+  const claimsObj = jwt?.['claims'] as Record<string, unknown> | undefined;
+
+  if (!claimsObj) {
+    return null;
+  }
+
+  const sub = claimsObj['sub'] as string | undefined;
+  const iss = claimsObj['iss'] as string | undefined;
+  const exp = claimsObj['exp'] as number | undefined;
 
   // If essential claims are missing, treat as no JWT
   if (!sub || !iss || exp === undefined) {
@@ -150,7 +155,7 @@ function extractClaims(lambda: Record<string, unknown> | undefined): JwtClaims |
 
   // cognito:groups may come as a JSON-encoded string array or an actual array
   let groups: string[] | undefined;
-  const rawGroups = lambda['cognito:groups'];
+  const rawGroups = claimsObj['cognito:groups'];
   if (Array.isArray(rawGroups)) {
     groups = rawGroups as string[];
   } else if (typeof rawGroups === 'string') {
@@ -164,7 +169,7 @@ function extractClaims(lambda: Record<string, unknown> | undefined): JwtClaims |
     }
   }
 
-  const tenantId = lambda['custom:tenantId'] as string | undefined;
+  const tenantId = claimsObj['custom:tenantId'] as string | undefined;
 
   const claims: JwtClaims = {
     sub,

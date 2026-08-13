@@ -50,7 +50,7 @@ describe('tenantContextMiddleware', () => {
       expect(tenantContext.tenantId).toBe('tenant-123');
     });
 
-    it('extracts tenantId from Lambda authorizer and attaches to tenantContext', async () => {
+    it('rejects request when only Lambda authorizer context exists (not supported)', async () => {
       const request = createRequest({
         requestContext: {
           authorizer: {
@@ -63,10 +63,9 @@ describe('tenantContextMiddleware', () => {
 
       const result = await middleware.before!(request as any, {} as any);
 
-      expect(result).toBeUndefined();
-      const tenantContext = (request.event as any).requestContext.authorizer.tenantContext;
-      expect(tenantContext).toBeDefined();
-      expect(tenantContext.tenantId).toBe('tenant-456');
+      // Lambda authorizer is NOT supported — missing tenant claim
+      expect(result).toBeDefined();
+      expect((result as any).statusCode).toBe(401);
     });
   });
 
@@ -176,8 +175,10 @@ describe('tenantContextMiddleware', () => {
       const request = createRequest({
         requestContext: {
           authorizer: {
-            lambda: {
-              'custom:tenantId': 'tenant-789',
+            jwt: {
+              claims: {
+                'custom:tenantId': 'tenant-789',
+              },
             },
             rbac: {
               role: 'Support',

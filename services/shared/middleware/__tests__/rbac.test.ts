@@ -20,12 +20,12 @@ beforeAll(() => {
 });
 
 /**
- * Helper to build a fake middy request object simulating API Gateway event structure.
+ * Helper to build a fake middy request object simulating API Gateway HTTP API event structure.
  */
-function buildRequest(lambdaClaims: Record<string, unknown> | null) {
+function buildRequest(jwtClaims: Record<string, unknown> | null) {
   const event: Record<string, unknown> = {
     requestContext: {
-      authorizer: lambdaClaims !== null ? { lambda: lambdaClaims } : {},
+      authorizer: jwtClaims !== null ? { jwt: { claims: jwtClaims } } : {},
     },
   };
   return { event, response: undefined as unknown };
@@ -45,7 +45,7 @@ describe('rbacMiddleware', () => {
   const endpoint: EndpointPermission = { resource: 'products', action: 'read' };
 
   describe('authentication failures (401)', () => {
-    it('returns 401 when no authorizer lambda context exists', async () => {
+    it('returns 401 when no authorizer JWT context exists', async () => {
       const middleware = rbacMiddleware(endpoint);
       const request = { event: { requestContext: { authorizer: {} } }, response: undefined as unknown };
 
