@@ -222,12 +222,13 @@ function attachTenantContext(
 // ---------------------------------------------------------------------------
 
 /**
- * Extracts the resolved TenantContext from an API Gateway event.
+ * Extracts the resolved TenantContext from an API Gateway HTTP API event.
  *
- * Reads from the authorizer context in priority order:
- * 1. tenantContextMiddleware output: authorizer.tenantContext
- * 2. API Gateway JWT authorizer: authorizer.jwt.claims['custom:tenantId']
- * 3. Lambda authorizer: authorizer.lambda['custom:tenantId']
+ * Reads from the tenantContext attached by tenantContextMiddleware,
+ * or directly from the API Gateway HTTP API JWT authorizer claims.
+ *
+ * Authentication model: API Gateway HTTP API + Cognito JWT authorizer.
+ * Lambda authorizer is NOT used.
  *
  * Returns null if no tenant claim is found.
  * Client-supplied tenantId (body/query/path) is NEVER used.
@@ -250,7 +251,8 @@ export function extractTenantContext(event: Record<string, unknown>): TenantCont
     };
   }
 
-  // Pattern 2: API Gateway JWT authorizer (Cognito user pool)
+  // Pattern 2: API Gateway HTTP API JWT authorizer (Cognito user pool)
+  // event.requestContext.authorizer.jwt.claims['custom:tenantId']
   const jwt = authorizer['jwt'] as Record<string, unknown> | undefined;
   if (jwt) {
     const claims = jwt['claims'] as Record<string, unknown> | undefined;
@@ -259,18 +261,6 @@ export function extractTenantContext(event: Record<string, unknown>): TenantCont
       return {
         tenantId,
         userId: claims?.['sub'] as string | undefined,
-      };
-    }
-  }
-
-  // Pattern 3: Lambda authorizer
-  const lambda = authorizer['lambda'] as Record<string, unknown> | undefined;
-  if (lambda) {
-    const lambdaTenantId = lambda['custom:tenantId'] as string | undefined;
-    if (lambdaTenantId) {
-      return {
-        tenantId: lambdaTenantId,
-        userId: lambda['sub'] as string | undefined,
       };
     }
   }

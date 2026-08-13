@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { extractTenantContext } from '../tenant-context';
+import { extractTenantContext } from '../../../shared/middleware/tenant-context-types';
 
 describe('extractTenantContext (Product API)', () => {
   // =========================================================================

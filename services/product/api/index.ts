@@ -5,8 +5,8 @@ export { handler as listProductsHandler, setProductService as setListProductsSer
 export { handler as updateProductHandler, setProductService as setUpdateProductService } from './handlers/update-product';
 export { handler as archiveProductHandler, setProductService as setArchiveProductService } from './handlers/archive-product';
 export { mapErrorToResponse } from './error-mapper';
-export { extractTenantContext } from './tenant-context';
-export type { TenantContext } from './tenant-context';
+export { extractTenantContext } from '../../shared/middleware/tenant-context-types';
+export type { TenantContext } from '../../shared/middleware/tenant-context-types';
 export type {
   CreateProductRequest,
   UpdateProductRequest,
