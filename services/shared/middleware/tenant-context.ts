@@ -135,28 +135,19 @@ export function tenantContextMiddleware(): middy.MiddlewareObj {
 // ---------------------------------------------------------------------------
 
 /**
- * Extract tenantId from the authorizer context.
- * Supports both JWT authorizer (jwt.claims) and Lambda authorizer (lambda) patterns.
+ * Extract tenantId from the API Gateway HTTP API JWT authorizer context.
+ * Reads from: event.requestContext.authorizer.jwt.claims['custom:tenantId']
  */
 function extractTenantId(authorizer: Record<string, unknown> | undefined): string | undefined {
   if (!authorizer) {
     return undefined;
   }
 
-  // Pattern 1: JWT authorizer — event.requestContext.authorizer.jwt.claims
+  // HTTP API JWT authorizer — event.requestContext.authorizer.jwt.claims
   const jwt = authorizer['jwt'] as Record<string, unknown> | undefined;
   if (jwt) {
     const claims = jwt['claims'] as Record<string, unknown> | undefined;
     const tenantId = claims?.['custom:tenantId'] as string | undefined;
-    if (tenantId) {
-      return tenantId;
-    }
-  }
-
-  // Pattern 2: Lambda authorizer — event.requestContext.authorizer.lambda
-  const lambda = authorizer['lambda'] as Record<string, unknown> | undefined;
-  if (lambda) {
-    const tenantId = lambda['custom:tenantId'] as string | undefined;
     if (tenantId) {
       return tenantId;
     }
