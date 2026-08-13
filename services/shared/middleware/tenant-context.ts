@@ -1,9 +1,9 @@
 /**
  * Tenant Context middleware for MerchOS Lambda handlers.
  *
- * Extracts tenantId from JWT claims (supports both JWT and Lambda authorizer
- * patterns), validates tenant isolation, and attaches tenant context to the
- * request for downstream handlers.
+ * Extracts tenantId from JWT claims provided by the API Gateway HTTP API
+ * JWT authorizer, validates tenant isolation, and attaches tenant context to
+ * the request for downstream handlers.
  *
  * Platform Admin/Support roles bypass tenant validation to allow cross-tenant access.
  *
@@ -32,9 +32,8 @@ const BYPASS_ROLES: ReadonlySet<string> = new Set(['Admin', 'Support']);
 /**
  * Middy middleware that extracts and validates tenant context from JWT claims.
  *
- * Reads `custom:tenantId` from either:
- *   - event.requestContext.authorizer.jwt.claims['custom:tenantId'] (JWT authorizer)
- *   - event.requestContext.authorizer.lambda['custom:tenantId'] (Lambda authorizer)
+ * Reads `custom:tenantId` from:
+ *   - event.requestContext.authorizer.jwt.claims['custom:tenantId'] (HTTP API JWT authorizer)
  *
  * If a tenantId is present in the request path parameters or body, validates
  * it matches the JWT tenantId. A mismatch returns HTTP 403.

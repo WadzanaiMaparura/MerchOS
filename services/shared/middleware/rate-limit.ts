@@ -112,19 +112,11 @@ function defaultIdentifierFn(event: Record<string, unknown>): string {
     | undefined;
 
   // Try JWT authorizer pattern
+  // HTTP API JWT authorizer: event.requestContext.authorizer.jwt.claims.sub
   const jwt = authorizer?.['jwt'] as Record<string, unknown> | undefined;
   if (jwt) {
     const claims = jwt['claims'] as Record<string, unknown> | undefined;
     const sub = claims?.['sub'] as string | undefined;
-    if (sub) {
-      return `USER#${sub}`;
-    }
-  }
-
-  // Try Lambda authorizer pattern
-  const lambda = authorizer?.['lambda'] as Record<string, unknown> | undefined;
-  if (lambda) {
-    const sub = lambda['sub'] as string | undefined;
     if (sub) {
       return `USER#${sub}`;
     }
