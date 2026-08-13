@@ -6,7 +6,7 @@
 
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { ProductService } from '../../service';
-import { extractTenantContext } from '../tenant-context';
+import { extractTenantContext } from '../../../shared/middleware/tenant-context-types';
 import { mapErrorToResponse } from '../error-mapper';
 import { createProductSchema } from '../schemas';
 
