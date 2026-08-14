@@ -43,7 +43,7 @@ The platform is AWS-native, serverless-first, API-first, and event-driven. All i
 │              ┌──────────────────────┼──────────────────────┐                   │
 │              │              Lambda Router / Handler Layer   │                   │
 │              │  ┌──────────────┐  ┌──────────────┐  ┌────────────────┐        │
-│              │  │  Auth Lambda │  │  Product API │  │  Inventory API │        │
+│              │  │  JWT Authz   │  │  Product API │  │  Inventory API │        │
 │              │  │  (Cognito)   │  │  Lambda      │  │  Lambda        │        │
 │              │  └──────────────┘  └──────────────┘  └────────────────┘        │
 │              └─────────────────────────────────────────────────────────        │
@@ -127,7 +127,7 @@ Seller Dashboard notified (in-app + email)
 - `tenant-registration-fn` — creates tenant record, provisions DynamoDB namespaces, emits `tenant.created` event.
 - `tenant-suspension-fn` — invoked by admin API; updates tenant status, revokes Cognito tokens, emits `tenant.suspended`.
 - `tenant-deletion-fn` — Step Functions workflow trigger; orchestrates data purge across all storage systems.
-- `tenant-auth-authorizer-fn` — Lambda authorizer for API Gateway; validates JWT and injects TenantID into request context.
+- `tenant-auth-authorizer-fn` — ~~Lambda authorizer~~ **SUPERSEDED**: Authentication is now handled by API Gateway HTTP API JWT authorizer (Cognito). No custom Lambda authorizer is used. JWT claims (custom:tenantId, sub, cognito:groups) are validated by API Gateway and passed to the integration via requestContext.authorizer.jwt.claims.
 
 **DynamoDB Tables**:
 - `Tenants` table — PK: `TENANT#<tenantId>`, SK: `METADATA`. Stores plan, status, createdAt, contactEmail, KMS key ARN.
@@ -135,7 +135,7 @@ Seller Dashboard notified (in-app + email)
 **Tenant Isolation Enforcement**:
 - All DynamoDB operations use `ConditionExpression: TenantID = :callerTenantId`.
 - S3 key prefix policy enforced via IAM condition: `s3:prefix` must start with `${aws:PrincipalTag/TenantID}/`.
-- Lambda authorizer injects `tenantId` header; downstream Lambdas reject requests where the header is absent.
+- ~~Lambda authorizer injects `tenantId` header~~ **SUPERSEDED**: Tenant identity is provided via API Gateway JWT authorizer claims (custom:tenantId). The shared TenantContext middleware reads validated claims from requestContext.authorizer.jwt.claims.
 
 **EventBridge Events Emitted**: `tenant.created`, `tenant.suspended`, `tenant.reactivated`, `tenant.deleted`.
 
@@ -145,7 +145,7 @@ Seller Dashboard notified (in-app + email)
 
 **Responsibility**: User identity, JWT issuance, RBAC enforcement, MFA, SAML federation.
 
-**AWS Services**: Cognito (2 user pools: tenant pool + admin pool), Lambda (post-confirmation trigger, pre-token trigger), API Gateway Lambda Authorizer, Secrets Manager.
+**AWS Services**: Cognito (single user pool), Lambda (post-confirmation trigger, pre-token trigger), API Gateway HTTP API with JWT Authorizer, Secrets Manager.
 
 **Cognito Pools**:
 - `merch-os-tenant-pool` — Seller users. Custom attributes: `tenantId`, `role` (Owner / Admin / Editor / Viewer). SAML IdP federation enabled for Enterprise tenants.
@@ -154,7 +154,7 @@ Seller Dashboard notified (in-app + email)
 **Lambda Functions**:
 - `cognito-post-confirmation-fn` — writes user record to DynamoDB, assigns default Viewer role.
 - `cognito-pre-token-fn` — injects `tenantId` and `role` claims into JWT.
-- `api-authorizer-fn` — API Gateway Lambda authorizer; validates JWT, checks token expiry, returns IAM allow/deny policy with `tenantId` context.
+- `api-authorizer-fn` — ~~API Gateway Lambda authorizer~~ **SUPERSEDED**: JWT validation is now handled natively by API Gateway HTTP API JWT authorizer. No custom Lambda authorizer is required. See ADR-002.
 - `account-lockout-fn` — triggered by Cognito failed-authentication events; counts failures; locks account after 5 failures in 10 minutes; sends SES email.
 
 **RBAC Matrix**:

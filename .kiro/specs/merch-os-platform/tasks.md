@@ -64,20 +64,23 @@ MerchOS is implemented as a TypeScript monorepo using Turborepo, AWS CDK for all
     - Send SES email to Tenant Owner on lockout
     - _Requirements: 2.11_
 
-- [ ] 5. Implement Lambda authorizer and RBAC middleware
-  - [ ] 5.1 Implement `api-authorizer-fn` Lambda
-    - Validate JWT (RS256) from `Authorization: Bearer` header against Cognito JWKS endpoint
-    - Reject with HTTP 401 on missing or expired token
-    - Return IAM allow/deny policy; inject `tenantId` into request context
-    - Block suspended tenants with HTTP 403
+- [ ] 5. Configure API Gateway HTTP API JWT authorization and RBAC middleware
+  - [ ] 5.1 Configure API Gateway HTTP API JWT authorizer (Cognito)
+    - Configure API Gateway HTTP API JWT authorizer referencing the Cognito user pool
+    - API Gateway validates JWT signature, expiration, and issuer natively
+    - Validated claims (custom:tenantId, sub, cognito:groups) available in requestContext.authorizer.jwt.claims
+    - No custom Lambda authorizer required — API Gateway handles JWT validation
+    - Block suspended tenants with HTTP 403 (via RBAC middleware)
     - _Requirements: 1.4, 1.6, 2.7, 13.9_
+    - _Note: Supersedes the originally planned `api-authorizer-fn` Lambda authorizer_
   - [ ]* 5.2 Write property test for JWT validity window
     - **Property 5: JWT Access Token Validity Window** — for any issued token, `exp - iat ≤ 3600`
     - **Validates: Requirements 2.7**
     - File: `services/tenant/authorizer/__tests__/jwt-window.property.test.ts`
-  - [ ] 5.3 Create RBAC middleware in `services/shared/middleware/rbac.ts`
+  - [x] 5.3 Create RBAC middleware in `services/shared/middleware/rbac.ts`
     - Implement role × action matrix (Owner/Admin/Editor/Viewer) as defined in design
     - Return HTTP 403 with no side effects for denied actions
+    - Reads roles from `requestContext.authorizer.jwt.claims['cognito:groups']`
     - _Requirements: 2.5, 2.6_
   - [ ]* 5.4 Write property test for RBAC denial
     - **Property 4: RBAC Denial for Unauthorised Roles** — for any role R and action A where RBAC matrix marks R as not permitted, return HTTP 403
@@ -108,7 +111,7 @@ MerchOS is implemented as a TypeScript monorepo using Turborepo, AWS CDK for all
 
 - [ ] 7. Implement CDK API Stack (foundation routes)
   - [ ] 7.1 Create `infrastructure/lib/api-stack.ts` with API Gateway v2
-    - Define API Gateway v2 HTTP API, base path `/v1/`, JWT authorizer referencing `api-authorizer-fn`
+    - Define API Gateway v2 HTTP API, base path `/v1/`, with Cognito JWT authorizer
     - Add routes for tenant, auth, and health endpoints
     - Configure per-tenant usage plans and rate limiting (HTTP 429 + `Retry-After`)
     - _Requirements: 13.1, 13.2, 13.8_
