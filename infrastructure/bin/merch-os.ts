@@ -32,8 +32,7 @@ const authStack = new AuthStack(app, `MerchOS-Auth-${env}`, {
 new AuthApiStack(app, `MerchOS-AuthApi-${env}`, {
   env: cdkEnv,
   environment: env,
-  tenantPool: authStack.tenantPool,
-  adminPool: authStack.adminPool,
+  userPool: authStack.userPool,
   sellerDashboardClient: authStack.sellerDashboardClient,
   platformKey: foundationStack.platformKey,
   eventBus: foundationStack.eventBus,

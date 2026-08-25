@@ -29,8 +29,7 @@ import * as path from 'path';
 
 export interface AuthApiStackProps extends cdk.StackProps {
   environment: string;
-  tenantPool: cognito.UserPool;
-  adminPool: cognito.UserPool;
+  userPool: cognito.UserPool;
   sellerDashboardClient: cognito.UserPoolClient;
   platformKey: kms.Key;
   eventBus: events.EventBus;
@@ -120,9 +119,9 @@ export class AuthApiStack extends cdk.Stack {
       },
     });
 
-    // JWT Authorizer for Cognito Tenant Pool
+    // JWT Authorizer for Cognito User Pool
     const jwtAuthorizer = new HttpJwtAuthorizer('CognitoJwtAuthorizer', 
-      `https://cognito-idp.${region}.amazonaws.com/${props.tenantPool.userPoolId}`,
+      `https://cognito-idp.${region}.amazonaws.com/${props.userPool.userPoolId}`,
       {
         jwtAudience: [props.sellerDashboardClient.userPoolClientId],
       }
@@ -137,10 +136,9 @@ export class AuthApiStack extends cdk.Stack {
     const triggersPath = path.join(__dirname, '../../services/auth/triggers');
 
     const commonLambdaEnv: Record<string, string> = {
-      COGNITO_TENANT_POOL_ID: props.tenantPool.userPoolId,
-      COGNITO_ADMIN_POOL_ID: props.adminPool.userPoolId,
+      COGNITO_USER_POOL_ID: props.userPool.userPoolId,
       COGNITO_SELLER_CLIENT_ID: props.sellerDashboardClient.userPoolClientId,
-      COGNITO_ISSUER: `https://cognito-idp.${region}.amazonaws.com/${props.tenantPool.userPoolId}`,
+      COGNITO_ISSUER: `https://cognito-idp.${region}.amazonaws.com/${props.userPool.userPoolId}`,
       INVITATIONS_TABLE: this.invitationsTable.tableName,
       SESSIONS_TABLE: this.sessionsTable.tableName,
       RATE_LIMITS_TABLE: this.rateLimitsTable.tableName,
@@ -201,7 +199,7 @@ export class AuthApiStack extends cdk.Stack {
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['cognito-idp:AdminInitiateAuth'],
-        resources: [props.tenantPool.userPoolArn],
+        resources: [props.userPool.userPoolArn],
       }),
     ]);
 
@@ -210,7 +208,7 @@ export class AuthApiStack extends cdk.Stack {
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['cognito-idp:AdminInitiateAuth'],
-        resources: [props.tenantPool.userPoolArn],
+        resources: [props.userPool.userPoolArn],
       }),
     ]);
 
@@ -219,7 +217,7 @@ export class AuthApiStack extends cdk.Stack {
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['cognito-idp:GlobalSignOut'],
-        resources: [props.tenantPool.userPoolArn],
+        resources: [props.userPool.userPoolArn],
       }),
     ]);
 
@@ -228,7 +226,7 @@ export class AuthApiStack extends cdk.Stack {
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['cognito-idp:ForgotPassword'],
-        resources: [props.tenantPool.userPoolArn],
+        resources: [props.userPool.userPoolArn],
       }),
     ]);
 
@@ -237,7 +235,7 @@ export class AuthApiStack extends cdk.Stack {
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['cognito-idp:ConfirmForgotPassword'],
-        resources: [props.tenantPool.userPoolArn],
+        resources: [props.userPool.userPoolArn],
       }),
     ]);
 
@@ -246,7 +244,7 @@ export class AuthApiStack extends cdk.Stack {
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['cognito-idp:ConfirmSignUp'],
-        resources: [props.tenantPool.userPoolArn],
+        resources: [props.userPool.userPoolArn],
       }),
     ]);
 
@@ -256,7 +254,7 @@ export class AuthApiStack extends cdk.Stack {
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['cognito-idp:ChangePassword'],
-        resources: [props.tenantPool.userPoolArn],
+        resources: [props.userPool.userPoolArn],
       }),
     ]);
 
@@ -269,7 +267,7 @@ export class AuthApiStack extends cdk.Stack {
           'cognito-idp:VerifySoftwareToken',
           'cognito-idp:AdminSetUserMFAPreference',
         ],
-        resources: [props.tenantPool.userPoolArn],
+        resources: [props.userPool.userPoolArn],
       }),
     ]);
 
@@ -285,7 +283,7 @@ export class AuthApiStack extends cdk.Stack {
           'cognito-idp:AdminAddUserToGroup',
           'cognito-idp:AdminUpdateUserAttributes',
         ],
-        resources: [props.tenantPool.userPoolArn],
+        resources: [props.userPool.userPoolArn],
       }),
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
@@ -299,7 +297,7 @@ export class AuthApiStack extends cdk.Stack {
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['cognito-idp:ListUsersInGroup'],
-        resources: [props.tenantPool.userPoolArn],
+        resources: [props.userPool.userPoolArn],
       }),
     ]);
 
@@ -313,7 +311,7 @@ export class AuthApiStack extends cdk.Stack {
           'cognito-idp:AdminAddUserToGroup',
           'cognito-idp:AdminUpdateUserAttributes',
         ],
-        resources: [props.tenantPool.userPoolArn],
+        resources: [props.userPool.userPoolArn],
       }),
     ]);
 
@@ -322,7 +320,7 @@ export class AuthApiStack extends cdk.Stack {
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['cognito-idp:AdminDisableUser'],
-        resources: [props.tenantPool.userPoolArn],
+        resources: [props.userPool.userPoolArn],
       }),
     ]);
 
@@ -331,7 +329,7 @@ export class AuthApiStack extends cdk.Stack {
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['cognito-idp:AdminGetUser', 'cognito-idp:AdminDeleteUser'],
-        resources: [props.tenantPool.userPoolArn],
+        resources: [props.userPool.userPoolArn],
       }),
     ]);
 
@@ -379,17 +377,17 @@ export class AuthApiStack extends cdk.Stack {
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['cognito-idp:AdminListGroupsForUser'],
-        resources: [props.tenantPool.userPoolArn],
+        resources: [props.userPool.userPoolArn],
       }),
     ]);
 
     const customMessageFn = createLambda('CustomMessage', path.join(triggersPath, 'custom-message.ts'), []);
 
-    // Wire triggers to Cognito tenant pool
-    props.tenantPool.addTrigger(cognito.UserPoolOperation.PRE_SIGN_UP, preSignUpFn);
-    props.tenantPool.addTrigger(cognito.UserPoolOperation.POST_CONFIRMATION, postConfirmationFn);
-    props.tenantPool.addTrigger(cognito.UserPoolOperation.PRE_TOKEN_GENERATION, preTokenGenerationFn);
-    props.tenantPool.addTrigger(cognito.UserPoolOperation.CUSTOM_MESSAGE, customMessageFn);
+    // Wire triggers to Cognito user pool
+    props.userPool.addTrigger(cognito.UserPoolOperation.PRE_SIGN_UP, preSignUpFn);
+    props.userPool.addTrigger(cognito.UserPoolOperation.POST_CONFIRMATION, postConfirmationFn);
+    props.userPool.addTrigger(cognito.UserPoolOperation.PRE_TOKEN_GENERATION, preTokenGenerationFn);
+    props.userPool.addTrigger(cognito.UserPoolOperation.CUSTOM_MESSAGE, customMessageFn);
 
     // -----------------------------------------------------------------------
     // Route Integrations
