@@ -1,9 +1,11 @@
 /**
  * MerchOS Auth Stack
  *
- * Provisions AWS Cognito user pools for tenant and admin authentication:
- * - merch-os-tenant-pool: Seller users with custom attributes (tenantId, role)
- * - merch-os-admin-pool: MerchOS operator users with mandatory MFA
+ * Provisions a single AWS Cognito User Pool for all user types (Seller, Support, Admin)
+ * with role-based access via Cognito Groups.
+ *
+ * Pool: merch-os-users-{env}
+ * Groups: Seller, Support, Admin
  *
  * Requirements: 2.1, 2.3, 2.9
  */
@@ -18,11 +20,15 @@ export interface AuthStackProps extends cdk.StackProps {
 }
 
 export class AuthStack extends cdk.Stack {
-  public readonly tenantPool: cognito.UserPool;
-  public readonly adminPool: cognito.UserPool;
+  public readonly userPool: cognito.UserPool;
   public readonly sellerDashboardClient: cognito.UserPoolClient;
   public readonly apiGatewayClient: cognito.UserPoolClient;
   public readonly adminDashboardClient: cognito.UserPoolClient;
+
+  /**
+   * @deprecated Use userPool instead. Kept for backward compatibility.
+   */
+  public readonly tenantPool: cognito.UserPool;
 
   constructor(scope: Construct, id: string, props: AuthStackProps) {
     super(scope, id, props);
@@ -37,11 +43,11 @@ export class AuthStack extends cdk.Stack {
     cdk.Tags.of(this).add('ManagedBy', 'cdk');
 
     // -----------------------------------------------------------------------
-    // Tenant User Pool
+    // Unified User Pool
     // -----------------------------------------------------------------------
 
-    this.tenantPool = new cognito.UserPool(this, 'TenantPool', {
-      userPoolName: `merch-os-tenant-pool-${env}`,
+    this.userPool = new cognito.UserPool(this, 'UserPool', {
+      userPoolName: `merch-os-users-${env}`,
       selfSignUpEnabled: true,
       signInAliases: { email: true },
       autoVerify: { email: true },
@@ -63,12 +69,46 @@ export class AuthStack extends cdk.Stack {
         tempPasswordValidity: cdk.Duration.days(7),
       },
       accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
+      mfa: cognito.Mfa.OPTIONAL,
+      mfaSecondFactor: {
+        otp: true,
+        sms: false,
+      },
       advancedSecurityMode: cognito.AdvancedSecurityMode.ENFORCED,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
+    // Backward-compat alias
+    this.tenantPool = this.userPool;
+
+    // -----------------------------------------------------------------------
+    // Cognito Groups
+    // -----------------------------------------------------------------------
+
+    new cognito.CfnUserPoolGroup(this, 'SellerGroup', {
+      userPoolId: this.userPool.userPoolId,
+      groupName: 'Seller',
+      description: 'Seller role — tenant-scoped product management',
+    });
+
+    new cognito.CfnUserPoolGroup(this, 'SupportGroup', {
+      userPoolId: this.userPool.userPoolId,
+      groupName: 'Support',
+      description: 'Support role — cross-tenant read access for troubleshooting',
+    });
+
+    new cognito.CfnUserPoolGroup(this, 'AdminGroup', {
+      userPoolId: this.userPool.userPoolId,
+      groupName: 'Admin',
+      description: 'Admin role — unrestricted platform access',
+    });
+
+    // -----------------------------------------------------------------------
+    // App Clients
+    // -----------------------------------------------------------------------
+
     // Seller Dashboard app client (SPA, PKCE, no secret)
-    this.sellerDashboardClient = this.tenantPool.addClient('SellerDashboardClient', {
+    this.sellerDashboardClient = this.userPool.addClient('SellerDashboardClient', {
       userPoolClientName: `seller-dashboard-${env}`,
       authFlows: {
         userSrp: true,
@@ -87,7 +127,7 @@ export class AuthStack extends cdk.Stack {
     });
 
     // API Gateway app client (for backend token validation)
-    this.apiGatewayClient = this.tenantPool.addClient('ApiGatewayClient', {
+    this.apiGatewayClient = this.userPool.addClient('ApiGatewayClient', {
       userPoolClientName: `api-gateway-${env}`,
       authFlows: {
         userSrp: true,
@@ -98,39 +138,8 @@ export class AuthStack extends cdk.Stack {
       refreshTokenValidity: cdk.Duration.days(30),
     });
 
-    // -----------------------------------------------------------------------
-    // Admin User Pool
-    // -----------------------------------------------------------------------
-
-    this.adminPool = new cognito.UserPool(this, 'AdminPool', {
-      userPoolName: `merch-os-admin-pool-${env}`,
-      selfSignUpEnabled: false,
-      signInAliases: { email: true },
-      autoVerify: { email: true },
-      standardAttributes: {
-        email: { required: true, mutable: true },
-      },
-      customAttributes: {
-        role: new cognito.StringAttribute({ mutable: false }),
-      },
-      passwordPolicy: {
-        minLength: 12,
-        requireUppercase: true,
-        requireLowercase: true,
-        requireDigits: true,
-        requireSymbols: true,
-      },
-      mfa: cognito.Mfa.REQUIRED,
-      mfaSecondFactor: {
-        otp: true,
-        sms: false,
-      },
-      advancedSecurityMode: cognito.AdvancedSecurityMode.ENFORCED,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-    });
-
-    // Admin Dashboard app client (SPA, PKCE, no secret, MFA required)
-    this.adminDashboardClient = this.adminPool.addClient('AdminDashboardClient', {
+    // Admin Dashboard app client (SPA, PKCE, no secret — same pool)
+    this.adminDashboardClient = this.userPool.addClient('AdminDashboardClient', {
       userPoolClientName: `admin-dashboard-${env}`,
       authFlows: {
         userSrp: true,
@@ -148,24 +157,38 @@ export class AuthStack extends cdk.Stack {
     });
 
     // -----------------------------------------------------------------------
+    // SUPERSEDED: Admin Pool (commented out — retained for deployed stack reference)
+    // The separate admin pool is no longer used. All user types now exist in the
+    // unified pool above, distinguished by Cognito Groups (Seller, Support, Admin).
+    // -----------------------------------------------------------------------
+    // this.adminPool = new cognito.UserPool(this, 'AdminPool', { ... });
+
+    // -----------------------------------------------------------------------
     // SSM Parameter Store exports
     // -----------------------------------------------------------------------
 
     const ssmPrefix = `/merch-os/${env}`;
 
+    // Primary pool parameters (new canonical paths)
+    new ssm.StringParameter(this, 'UserPoolIdParam', {
+      parameterName: `${ssmPrefix}/cognito/user-pool-id`,
+      stringValue: this.userPool.userPoolId,
+    });
+
+    new ssm.StringParameter(this, 'UserPoolArnParam', {
+      parameterName: `${ssmPrefix}/cognito/user-pool-arn`,
+      stringValue: this.userPool.userPoolArn,
+    });
+
+    // Backward-compat alias (consumed by product-intelligence-stack)
     new ssm.StringParameter(this, 'TenantPoolIdParam', {
       parameterName: `${ssmPrefix}/cognito/tenant-pool-id`,
-      stringValue: this.tenantPool.userPoolId,
+      stringValue: this.userPool.userPoolId,
     });
 
     new ssm.StringParameter(this, 'TenantPoolArnParam', {
       parameterName: `${ssmPrefix}/cognito/tenant-pool-arn`,
-      stringValue: this.tenantPool.userPoolArn,
-    });
-
-    new ssm.StringParameter(this, 'AdminPoolIdParam', {
-      parameterName: `${ssmPrefix}/cognito/admin-pool-id`,
-      stringValue: this.adminPool.userPoolId,
+      stringValue: this.userPool.userPoolArn,
     });
 
     new ssm.StringParameter(this, 'SellerClientIdParam', {
@@ -182,14 +205,14 @@ export class AuthStack extends cdk.Stack {
     // Stack outputs
     // -----------------------------------------------------------------------
 
-    new cdk.CfnOutput(this, 'TenantPoolId', {
-      value: this.tenantPool.userPoolId,
-      exportName: `${id}-TenantPoolId`,
+    new cdk.CfnOutput(this, 'UserPoolId', {
+      value: this.userPool.userPoolId,
+      exportName: `${id}-UserPoolId`,
     });
 
-    new cdk.CfnOutput(this, 'AdminPoolId', {
-      value: this.adminPool.userPoolId,
-      exportName: `${id}-AdminPoolId`,
+    new cdk.CfnOutput(this, 'UserPoolArn', {
+      value: this.userPool.userPoolArn,
+      exportName: `${id}-UserPoolArn`,
     });
   }
 }
