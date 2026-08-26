@@ -25,8 +25,8 @@ const ddbDocMock = mockClient(DynamoDBDocumentClient);
 function buildPreSignUpEvent(overrides: Partial<PreSignUpTriggerEvent> = {}): PreSignUpTriggerEvent {
   return {
     version: '1',
-    region: 'af-south-1',
-    userPoolId: 'af-south-1_testPool',
+    region: 'eu-west-1',
+    userPoolId: 'eu-west-1_testPool',
     userName: 'test-user-id',
     callerContext: {
       awsSdkVersion: '3.0.0',
@@ -53,7 +53,7 @@ describe('pre-sign-up trigger', () => {
   beforeEach(() => {
     ddbDocMock.reset();
     process.env['INVITATIONS_TABLE'] = 'merch-os-invitations-dev';
-    process.env['AWS_REGION'] = 'af-south-1';
+    process.env['AWS_REGION'] = 'eu-west-1';
   });
 
   it('should auto-confirm and assign role when user is invited', async () => {

@@ -184,7 +184,7 @@ Role resolution: extracted from `cognito:groups` claim in JWT.
 
 - AWS CDK v2 installed
 - Node.js 20.x
-- AWS credentials configured for `af-south-1` region
+- AWS credentials configured for `eu-west-1` region
 - Existing Foundation Stack and Auth Stack deployed
 
 ### CDK Commands
@@ -222,13 +222,13 @@ npx cdk destroy AuthApiStack
 
 ```bash
 # Check API Gateway endpoint
-aws apigatewayv2 get-apis --region af-south-1
+aws apigatewayv2 get-apis --region eu-west-1
 
 # Verify Lambda functions
-aws lambda list-functions --region af-south-1 --query "Functions[?starts_with(FunctionName, 'merch-os-auth')]"
+aws lambda list-functions --region eu-west-1 --query "Functions[?starts_with(FunctionName, 'merch-os-auth')]"
 
 # Check DynamoDB tables
-aws dynamodb list-tables --region af-south-1
+aws dynamodb list-tables --region eu-west-1
 ```
 
 ## Environment Variables
@@ -240,14 +240,14 @@ aws dynamodb list-tables --region af-south-1
 | `COGNITO_TENANT_POOL_ID` | SSM | Tenant user pool ID |
 | `COGNITO_ADMIN_POOL_ID` | SSM | Admin user pool ID |
 | `COGNITO_SELLER_CLIENT_ID` | SSM | Seller dashboard app client ID |
-| `COGNITO_ISSUER` | Derived | `https://cognito-idp.af-south-1.amazonaws.com/{poolId}` |
+| `COGNITO_ISSUER` | Derived | `https://cognito-idp.eu-west-1.amazonaws.com/{poolId}` |
 | `INVITATIONS_TABLE` | CDK | Invitations DynamoDB table name |
 | `SESSIONS_TABLE` | CDK | Sessions DynamoDB table name |
 | `RATE_LIMITS_TABLE` | CDK | Rate limits DynamoDB table name |
 | `TENANTS_TABLE` | CDK | Tenants DynamoDB table name |
 | `EVENT_BUS_NAME` | SSM | EventBridge bus name |
 | `ENVIRONMENT` | CDK | `dev` / `staging` / `production` |
-| `AWS_REGION` | Runtime | `af-south-1` |
+| `AWS_REGION` | Runtime | `eu-west-1` |
 
 ### Frontend (Seller Dashboard)
 

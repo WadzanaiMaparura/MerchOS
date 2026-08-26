@@ -64,7 +64,7 @@ beforeEach(() => {
   ebMock.reset();
   resetForTesting();
   process.env['EVENT_BUS_NAME'] = 'merch-os-events-test';
-  process.env['AWS_REGION'] = 'af-south-1';
+  process.env['AWS_REGION'] = 'eu-west-1';
 });
 
 afterEach(() => {

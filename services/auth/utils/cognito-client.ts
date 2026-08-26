@@ -11,7 +11,7 @@ import {
   CognitoIdentityProviderClientConfig,
 } from '@aws-sdk/client-cognito-identity-provider';
 
-const DEFAULT_REGION = 'af-south-1';
+const DEFAULT_REGION = 'eu-west-1';
 
 let clientInstance: CognitoIdentityProviderClient | null = null;
 
@@ -19,7 +19,7 @@ let clientInstance: CognitoIdentityProviderClient | null = null;
  * Returns a singleton CognitoIdentityProviderClient.
  *
  * The client is configured with the region from the AWS_REGION environment
- * variable, falling back to 'af-south-1' if not set.
+ * variable, falling back to 'eu-west-1' if not set.
  *
  * Uses a singleton pattern to reuse the underlying HTTP connection pool
  * across Lambda invocations within the same execution context.

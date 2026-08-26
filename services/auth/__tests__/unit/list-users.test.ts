@@ -68,7 +68,7 @@ describe('list-users handler', () => {
     cognitoMock.reset();
     resetCognitoClient();
     process.env['COGNITO_TENANT_POOL_ID'] = 'us-east-1_testPoolId';
-    process.env['AWS_REGION'] = 'af-south-1';
+    process.env['AWS_REGION'] = 'eu-west-1';
   });
 
   afterEach(() => {

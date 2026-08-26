@@ -68,7 +68,7 @@ describe('forgot-password handler', () => {
     cognitoMock.reset();
     resetCognitoClient();
     process.env['COGNITO_SELLER_CLIENT_ID'] = 'test-client-id';
-    process.env['AWS_REGION'] = 'af-south-1';
+    process.env['AWS_REGION'] = 'eu-west-1';
   });
 
   afterEach(() => {

@@ -87,7 +87,7 @@ describe('invite-user handler', () => {
     process.env['COGNITO_TENANT_POOL_ID'] = 'us-east-1_testPoolId';
     process.env['INVITATIONS_TABLE'] = 'merch-os-invitations-dev';
     process.env['EVENT_BUS_NAME'] = 'merch-os-events-dev';
-    process.env['AWS_REGION'] = 'af-south-1';
+    process.env['AWS_REGION'] = 'eu-west-1';
   });
 
   afterEach(() => {

@@ -22,7 +22,7 @@ import {
   type ImportJobFailedEvent,
 } from '../types/events.types';
 
-const DEFAULT_REGION = 'af-south-1';
+const DEFAULT_REGION = 'eu-west-1';
 
 // ---------------------------------------------------------------------------
 // Params Interfaces
