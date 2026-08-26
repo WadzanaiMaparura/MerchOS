@@ -2,21 +2,35 @@
  * MerchOS Auth Stack
  *
  * Provisions a single AWS Cognito User Pool for all user types (Seller, Support, Admin)
- * with role-based access via Cognito Groups.
+ * with role-based access via Cognito Groups, and all Cognito Lambda triggers.
  *
  * Pool: merch-os-users-{env}
  * Groups: Seller, Support, Admin
+ * Triggers: PreSignUp, PostConfirmation, PreTokenGeneration, CustomMessage
+ *
+ * The triggers live in this stack (not AuthApiStack) to avoid a circular dependency:
+ * addTrigger() modifies the UserPool CloudFormation resource, so the trigger Lambdas
+ * must reside in the same stack as the UserPool.
  *
  * Requirements: 2.1, 2.3, 2.9
  */
 
 import * as cdk from 'aws-cdk-lib';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as events from 'aws-cdk-lib/aws-events';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import * as kms from 'aws-cdk-lib/aws-kms';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
+import * as path from 'path';
 
 export interface AuthStackProps extends cdk.StackProps {
   environment: string;
+  platformKey: kms.Key;
+  eventBus: events.EventBus;
 }
 
 export class AuthStack extends cdk.Stack {
@@ -24,6 +38,8 @@ export class AuthStack extends cdk.Stack {
   public readonly sellerDashboardClient: cognito.UserPoolClient;
   public readonly apiGatewayClient: cognito.UserPoolClient;
   public readonly adminDashboardClient: cognito.UserPoolClient;
+  public readonly invitationsTable: dynamodb.Table;
+  public readonly sessionsTable: dynamodb.Table;
 
   /**
    * @deprecated Use userPool instead. Kept for backward compatibility.
@@ -157,11 +173,161 @@ export class AuthStack extends cdk.Stack {
     });
 
     // -----------------------------------------------------------------------
-    // SUPERSEDED: Admin Pool (commented out — retained for deployed stack reference)
-    // The separate admin pool is no longer used. All user types now exist in the
-    // unified pool above, distinguished by Cognito Groups (Seller, Support, Admin).
+    // DynamoDB Tables (used by Cognito triggers in this stack)
     // -----------------------------------------------------------------------
-    // this.adminPool = new cognito.UserPool(this, 'AdminPool', { ... });
+
+    this.invitationsTable = new dynamodb.Table(this, 'InvitationsTable', {
+      tableName: `merch-os-invitations-${env}`,
+      partitionKey: { name: 'PK', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'SK', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      encryption: dynamodb.TableEncryption.CUSTOMER_MANAGED,
+      encryptionKey: props.platformKey,
+      timeToLiveAttribute: 'expiresAt',
+      pointInTimeRecovery: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    this.invitationsTable.addGlobalSecondaryIndex({
+      indexName: 'email-index',
+      partitionKey: { name: 'email', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'invitationId', type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    this.sessionsTable = new dynamodb.Table(this, 'SessionsTable', {
+      tableName: `merch-os-sessions-${env}`,
+      partitionKey: { name: 'PK', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'SK', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      encryption: dynamodb.TableEncryption.CUSTOMER_MANAGED,
+      encryptionKey: props.platformKey,
+      timeToLiveAttribute: 'expiresAt',
+      pointInTimeRecovery: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    // -----------------------------------------------------------------------
+    // Cognito Lambda Triggers
+    // These MUST live in the same stack as the UserPool because addTrigger()
+    // modifies the UserPool CloudFormation resource to reference Lambda ARNs.
+    // -----------------------------------------------------------------------
+
+    const triggersPath = path.join(__dirname, '../../services/auth/triggers');
+
+    const triggerLambdaProps: Partial<lambdaNodejs.NodejsFunctionProps> = {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: 'handler',
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 256,
+      environment: {
+        COGNITO_USER_POOL_ID: this.userPool.userPoolId,
+        INVITATIONS_TABLE: this.invitationsTable.tableName,
+        SESSIONS_TABLE: this.sessionsTable.tableName,
+        EVENT_BUS_NAME: props.eventBus.eventBusName,
+        ENVIRONMENT: env,
+      },
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        target: 'node20',
+        format: lambdaNodejs.OutputFormat.ESM,
+        mainFields: ['module', 'main'],
+      },
+    };
+
+    // PreSignUp trigger — validates invitation exists
+    const preSignUpRole = new iam.Role(this, 'PreSignUpRole', {
+      assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com') as unknown as iam.IPrincipal,
+      description: 'Execution role for PreSignUp trigger Lambda',
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
+      ],
+    });
+    preSignUpRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['dynamodb:GetItem', 'dynamodb:Query'],
+      resources: [
+        this.invitationsTable.tableArn,
+        `${this.invitationsTable.tableArn}/index/email-index`,
+      ],
+    }));
+
+    const preSignUpFn = new lambdaNodejs.NodejsFunction(this, 'PreSignUp', {
+      ...triggerLambdaProps,
+      functionName: `merch-os-auth-presignup-${env}`,
+      entry: path.join(triggersPath, 'pre-sign-up.ts'),
+      role: preSignUpRole as unknown as iam.IRole,
+    });
+
+    // PostConfirmation trigger — records session, emits event
+    const postConfirmationRole = new iam.Role(this, 'PostConfirmationRole', {
+      assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com') as unknown as iam.IPrincipal,
+      description: 'Execution role for PostConfirmation trigger Lambda',
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
+      ],
+    });
+    postConfirmationRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['dynamodb:PutItem'],
+      resources: [this.sessionsTable.tableArn],
+    }));
+    postConfirmationRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['events:PutEvents'],
+      resources: [props.eventBus.eventBusArn],
+    }));
+
+    const postConfirmationFn = new lambdaNodejs.NodejsFunction(this, 'PostConfirmation', {
+      ...triggerLambdaProps,
+      functionName: `merch-os-auth-postconfirmation-${env}`,
+      entry: path.join(triggersPath, 'post-confirmation.ts'),
+      role: postConfirmationRole as unknown as iam.IRole,
+    });
+
+    // PreTokenGeneration trigger — enriches tokens with group/role claims
+    const preTokenGenerationRole = new iam.Role(this, 'PreTokenGenerationRole', {
+      assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com') as unknown as iam.IPrincipal,
+      description: 'Execution role for PreTokenGeneration trigger Lambda',
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
+      ],
+    });
+    preTokenGenerationRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['cognito-idp:AdminListGroupsForUser'],
+      resources: [this.userPool.userPoolArn],
+    }));
+
+    const preTokenGenerationFn = new lambdaNodejs.NodejsFunction(this, 'PreTokenGeneration', {
+      ...triggerLambdaProps,
+      functionName: `merch-os-auth-pretokengeneration-${env}`,
+      entry: path.join(triggersPath, 'pre-token-generation.ts'),
+      role: preTokenGenerationRole as unknown as iam.IRole,
+    });
+
+    // CustomMessage trigger — customises email templates
+    const customMessageRole = new iam.Role(this, 'CustomMessageRole', {
+      assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com') as unknown as iam.IPrincipal,
+      description: 'Execution role for CustomMessage trigger Lambda',
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
+      ],
+    });
+
+    const customMessageFn = new lambdaNodejs.NodejsFunction(this, 'CustomMessage', {
+      ...triggerLambdaProps,
+      functionName: `merch-os-auth-custommessage-${env}`,
+      entry: path.join(triggersPath, 'custom-message.ts'),
+      role: customMessageRole as unknown as iam.IRole,
+    });
+
+    // Wire triggers to the UserPool (same stack — no circular dependency)
+    this.userPool.addTrigger(cognito.UserPoolOperation.PRE_SIGN_UP, preSignUpFn);
+    this.userPool.addTrigger(cognito.UserPoolOperation.POST_CONFIRMATION, postConfirmationFn);
+    this.userPool.addTrigger(cognito.UserPoolOperation.PRE_TOKEN_GENERATION, preTokenGenerationFn);
+    this.userPool.addTrigger(cognito.UserPoolOperation.CUSTOM_MESSAGE, customMessageFn);
 
     // -----------------------------------------------------------------------
     // SSM Parameter Store exports
@@ -199,6 +365,16 @@ export class AuthStack extends cdk.Stack {
     new ssm.StringParameter(this, 'AdminClientIdParam', {
       parameterName: `${ssmPrefix}/cognito/admin-client-id`,
       stringValue: this.adminDashboardClient.userPoolClientId,
+    });
+
+    new ssm.StringParameter(this, 'InvitationsTableParam', {
+      parameterName: `${ssmPrefix}/dynamodb/invitations-table`,
+      stringValue: this.invitationsTable.tableName,
+    });
+
+    new ssm.StringParameter(this, 'SessionsTableParam', {
+      parameterName: `${ssmPrefix}/dynamodb/sessions-table`,
+      stringValue: this.sessionsTable.tableName,
     });
 
     // -----------------------------------------------------------------------

@@ -28,6 +28,8 @@ const foundationStack = new FoundationStack(app, `MerchOS-Foundation-${env}`, {
 const authStack = new AuthStack(app, `MerchOS-Auth-${env}`, {
   env: cdkEnv,
   environment: env,
+  platformKey: foundationStack.platformKey,
+  eventBus: foundationStack.eventBus,
 });
 
 new AuthApiStack(app, `MerchOS-AuthApi-${env}`, {
@@ -37,6 +39,8 @@ new AuthApiStack(app, `MerchOS-AuthApi-${env}`, {
   sellerDashboardClient: authStack.sellerDashboardClient,
   platformKey: foundationStack.platformKey,
   eventBus: foundationStack.eventBus,
+  invitationsTable: authStack.invitationsTable,
+  sessionsTable: authStack.sessionsTable,
 });
 
 new ProductApiStack(app, `MerchOS-ProductApi-${env}`, {
