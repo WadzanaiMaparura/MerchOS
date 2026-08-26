@@ -4,10 +4,12 @@
  * Provisions the Auth API infrastructure:
  * - HTTP API Gateway with Cognito JWT Authorizer
  * - 14 Lambda handler functions with dedicated IAM roles
- * - 4 Cognito Lambda triggers
- * - 3 DynamoDB tables (invitations, sessions, rate-limits)
+ * - 1 DynamoDB table (rate-limits)
  * - Route integrations for all auth endpoints
  * - SSM Parameter Store exports
+ *
+ * Cognito Lambda triggers and the invitations/sessions tables are defined in
+ * AuthStack (co-located with the UserPool to avoid circular dependencies).
  *
  * Requirements: 2.1, 2.3, 2.9
  */
@@ -33,12 +35,12 @@ export interface AuthApiStackProps extends cdk.StackProps {
   sellerDashboardClient: cognito.UserPoolClient;
   platformKey: kms.Key;
   eventBus: events.EventBus;
+  invitationsTable: dynamodb.Table;
+  sessionsTable: dynamodb.Table;
 }
 
 export class AuthApiStack extends cdk.Stack {
   public readonly httpApi: HttpApi;
-  public readonly invitationsTable: dynamodb.Table;
-  public readonly sessionsTable: dynamodb.Table;
   public readonly rateLimitsTable: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props: AuthApiStackProps) {
@@ -60,36 +62,10 @@ export class AuthApiStack extends cdk.Stack {
     // DynamoDB Tables
     // -----------------------------------------------------------------------
 
-    this.invitationsTable = new dynamodb.Table(this, 'InvitationsTable', {
-      tableName: `merch-os-invitations-${env}`,
-      partitionKey: { name: 'PK', type: dynamodb.AttributeType.STRING },
-      sortKey: { name: 'SK', type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      encryption: dynamodb.TableEncryption.CUSTOMER_MANAGED,
-      encryptionKey: props.platformKey,
-      timeToLiveAttribute: 'expiresAt',
-      pointInTimeRecovery: true,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-    });
-
-    this.invitationsTable.addGlobalSecondaryIndex({
-      indexName: 'email-index',
-      partitionKey: { name: 'email', type: dynamodb.AttributeType.STRING },
-      sortKey: { name: 'invitationId', type: dynamodb.AttributeType.STRING },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
-
-    this.sessionsTable = new dynamodb.Table(this, 'SessionsTable', {
-      tableName: `merch-os-sessions-${env}`,
-      partitionKey: { name: 'PK', type: dynamodb.AttributeType.STRING },
-      sortKey: { name: 'SK', type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      encryption: dynamodb.TableEncryption.CUSTOMER_MANAGED,
-      encryptionKey: props.platformKey,
-      timeToLiveAttribute: 'expiresAt',
-      pointInTimeRecovery: true,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-    });
+    // Invitations and sessions tables are defined in AuthStack (co-located with
+    // Cognito triggers). References passed in via props.
+    const invitationsTable = props.invitationsTable;
+    const sessionsTable = props.sessionsTable;
 
     this.rateLimitsTable = new dynamodb.Table(this, 'RateLimitsTable', {
       tableName: `merch-os-rate-limits-${env}`,
@@ -133,14 +109,13 @@ export class AuthApiStack extends cdk.Stack {
     // -----------------------------------------------------------------------
 
     const handlersPath = path.join(__dirname, '../../services/auth/handlers');
-    const triggersPath = path.join(__dirname, '../../services/auth/triggers');
 
     const commonLambdaEnv: Record<string, string> = {
       COGNITO_USER_POOL_ID: props.userPool.userPoolId,
       COGNITO_SELLER_CLIENT_ID: props.sellerDashboardClient.userPoolClientId,
       COGNITO_ISSUER: `https://cognito-idp.${region}.amazonaws.com/${props.userPool.userPoolId}`,
-      INVITATIONS_TABLE: this.invitationsTable.tableName,
-      SESSIONS_TABLE: this.sessionsTable.tableName,
+      INVITATIONS_TABLE: invitationsTable.tableName,
+      SESSIONS_TABLE: sessionsTable.tableName,
       RATE_LIMITS_TABLE: this.rateLimitsTable.tableName,
       EVENT_BUS_NAME: props.eventBus.eventBusName,
       ENVIRONMENT: env,
@@ -288,7 +263,7 @@ export class AuthApiStack extends cdk.Stack {
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['dynamodb:PutItem'],
-        resources: [this.invitationsTable.tableArn],
+        resources: [invitationsTable.tableArn],
       }),
     ]);
 
@@ -344,50 +319,6 @@ export class AuthApiStack extends cdk.Stack {
       fn.role!.addToPrincipalPolicy(eventBusPolicy);
     });
 
-
-    // -----------------------------------------------------------------------
-    // Cognito Lambda Triggers
-    // -----------------------------------------------------------------------
-
-    const preSignUpFn = createLambda('PreSignUp', path.join(triggersPath, 'pre-sign-up.ts'), [
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ['dynamodb:GetItem', 'dynamodb:Query'],
-        resources: [
-          this.invitationsTable.tableArn,
-          `${this.invitationsTable.tableArn}/index/email-index`,
-        ],
-      }),
-    ]);
-
-    const postConfirmationFn = createLambda('PostConfirmation', path.join(triggersPath, 'post-confirmation.ts'), [
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ['dynamodb:PutItem'],
-        resources: [this.sessionsTable.tableArn],
-      }),
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ['events:PutEvents'],
-        resources: [props.eventBus.eventBusArn],
-      }),
-    ]);
-
-    const preTokenGenerationFn = createLambda('PreTokenGeneration', path.join(triggersPath, 'pre-token-generation.ts'), [
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ['cognito-idp:AdminListGroupsForUser'],
-        resources: [props.userPool.userPoolArn],
-      }),
-    ]);
-
-    const customMessageFn = createLambda('CustomMessage', path.join(triggersPath, 'custom-message.ts'), []);
-
-    // Wire triggers to Cognito user pool
-    props.userPool.addTrigger(cognito.UserPoolOperation.PRE_SIGN_UP, preSignUpFn);
-    props.userPool.addTrigger(cognito.UserPoolOperation.POST_CONFIRMATION, postConfirmationFn);
-    props.userPool.addTrigger(cognito.UserPoolOperation.PRE_TOKEN_GENERATION, preTokenGenerationFn);
-    props.userPool.addTrigger(cognito.UserPoolOperation.CUSTOM_MESSAGE, customMessageFn);
 
     // -----------------------------------------------------------------------
     // Route Integrations
@@ -498,16 +429,6 @@ export class AuthApiStack extends cdk.Stack {
       stringValue: this.httpApi.apiEndpoint,
     });
 
-    new ssm.StringParameter(this, 'InvitationsTableParam', {
-      parameterName: `${ssmPrefix}/dynamodb/invitations-table`,
-      stringValue: this.invitationsTable.tableName,
-    });
-
-    new ssm.StringParameter(this, 'SessionsTableParam', {
-      parameterName: `${ssmPrefix}/dynamodb/sessions-table`,
-      stringValue: this.sessionsTable.tableName,
-    });
-
     new ssm.StringParameter(this, 'RateLimitsTableParam', {
       parameterName: `${ssmPrefix}/dynamodb/rate-limits-table`,
       stringValue: this.rateLimitsTable.tableName,
@@ -520,16 +441,6 @@ export class AuthApiStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'AuthApiEndpoint', {
       value: this.httpApi.apiEndpoint,
       exportName: `${id}-AuthApiEndpoint`,
-    });
-
-    new cdk.CfnOutput(this, 'InvitationsTableName', {
-      value: this.invitationsTable.tableName,
-      exportName: `${id}-InvitationsTableName`,
-    });
-
-    new cdk.CfnOutput(this, 'SessionsTableName', {
-      value: this.sessionsTable.tableName,
-      exportName: `${id}-SessionsTableName`,
     });
 
     new cdk.CfnOutput(this, 'RateLimitsTableName', {
