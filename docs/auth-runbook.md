@@ -18,7 +18,7 @@
 
 ```bash
 # Check token validity
-aws cognito-idp get-user --access-token <token> --region af-south-1
+aws cognito-idp get-user --access-token <token> --region eu-west-1
 ```
 
 ### MFA Locked Out
@@ -35,14 +35,14 @@ aws cognito-idp get-user --access-token <token> --region af-south-1
 aws cognito-idp admin-get-user \
   --user-pool-id <pool-id> \
   --username <email> \
-  --region af-south-1
+  --region eu-west-1
 
 # Disable MFA for the user (admin action)
 aws cognito-idp admin-set-user-mfa-preference \
   --user-pool-id <pool-id> \
   --username <email> \
   --software-token-mfa-settings Enabled=false,PreferredMfa=false \
-  --region af-south-1
+  --region eu-west-1
 ```
 
 After disabling, the user can log in and re-enroll MFA via `POST /auth/mfa/setup`.
@@ -65,13 +65,13 @@ aws dynamodb query \
   --table-name merch-os-rate-limits-dev \
   --key-condition-expression "PK = :pk" \
   --expression-attribute-values '{":pk": {"S": "USER#<userId>"}}' \
-  --region af-south-1
+  --region eu-west-1
 
 # Delete rate limit record (emergency only)
 aws dynamodb delete-item \
   --table-name merch-os-rate-limits-dev \
   --key '{"PK": {"S": "IP#<ip-address>"}, "SK": {"S": "WINDOW#<window-id>"}}' \
-  --region af-south-1
+  --region eu-west-1
 ```
 
 ### Invalid Invitation Token
@@ -88,7 +88,7 @@ aws dynamodb query \
   --table-name merch-os-invitations-dev \
   --key-condition-expression "PK = :pk AND SK = :sk" \
   --expression-attribute-values '{":pk": {"S": "TENANT#<tenantId>"}, ":sk": {"S": "INVITE#<email>"}}' \
-  --region af-south-1
+  --region eu-west-1
 ```
 
 **Resolution**:
@@ -105,7 +105,7 @@ aws dynamodb query \
 aws cognito-idp admin-reset-user-password \
   --user-pool-id <pool-id> \
   --username <email> \
-  --region af-south-1
+  --region eu-west-1
 ```
 
 The user will receive an email with a reset code and must set a new password.
@@ -117,13 +117,13 @@ The user will receive an email with a reset code and must set a new password.
 aws cognito-idp admin-disable-user \
   --user-pool-id <pool-id> \
   --username <email> \
-  --region af-south-1
+  --region eu-west-1
 
 # Re-enable user
 aws cognito-idp admin-enable-user \
   --user-pool-id <pool-id> \
   --username <email> \
-  --region af-south-1
+  --region eu-west-1
 ```
 
 ### Unlock Account (After Too Many Failed Attempts)
@@ -135,7 +135,7 @@ Cognito's adaptive authentication may lock accounts after repeated failures.
 aws cognito-idp admin-get-user \
   --user-pool-id <pool-id> \
   --username <email> \
-  --region af-south-1
+  --region eu-west-1
 
 # If status is RESET_REQUIRED or FORCE_CHANGE_PASSWORD:
 aws cognito-idp admin-set-user-password \
@@ -143,7 +143,7 @@ aws cognito-idp admin-set-user-password \
   --username <email> \
   --password <temporary-password> \
   --permanent false \
-  --region af-south-1
+  --region eu-west-1
 ```
 
 ### Delete User Account
@@ -153,7 +153,7 @@ aws cognito-idp admin-set-user-password \
 aws cognito-idp admin-delete-user \
   --user-pool-id <pool-id> \
   --username <email> \
-  --region af-south-1
+  --region eu-west-1
 ```
 
 **Warning**: This is irreversible. Ensure tenant owner approval before proceeding. Owner accounts cannot be deleted via the API — this must be handled with extreme care.
@@ -169,7 +169,7 @@ curl -H "Authorization: Bearer <token>" \
 aws cognito-idp list-users \
   --user-pool-id <pool-id> \
   --filter "custom:tenantId = \"<tenantId>\"" \
-  --region af-south-1
+  --region eu-west-1
 ```
 
 ## Token Rotation Procedures
@@ -189,7 +189,7 @@ Cognito automatically rotates signing keys. No manual action needed. If you susp
 aws cognito-idp admin-user-global-sign-out \
   --user-pool-id <pool-id> \
   --username <email> \
-  --region af-south-1
+  --region eu-west-1
 ```
 
 ### Refresh Token Revocation (All Users)
@@ -202,13 +202,13 @@ If a security incident requires revoking all active sessions:
 
 ```bash
 # List all users and force sign-out (use with caution)
-aws cognito-idp list-users --user-pool-id <pool-id> --region af-south-1 \
+aws cognito-idp list-users --user-pool-id <pool-id> --region eu-west-1 \
   | jq -r '.Users[].Username' \
   | while read user; do
       aws cognito-idp admin-user-global-sign-out \
         --user-pool-id <pool-id> \
         --username "$user" \
-        --region af-south-1
+        --region eu-west-1
     done
 ```
 
@@ -225,7 +225,7 @@ aws cognito-idp list-users --user-pool-id <pool-id> --region af-south-1 \
 
 ### P1: Complete Auth Outage
 
-1. **Identify scope**: Check AWS Health Dashboard for Cognito issues in af-south-1
+1. **Identify scope**: Check AWS Health Dashboard for Cognito issues in eu-west-1
 2. **Check API Gateway**: Verify the HTTP API is responding
 3. **Check Lambda**: Look for Lambda throttling or errors in CloudWatch
 4. **Communicate**: Notify stakeholders via incident channel
@@ -244,7 +244,7 @@ aws logs filter-log-events \
   --log-group-name /aws/lambda/merch-os-auth-login \
   --filter-pattern "INVALID_CREDENTIALS" \
   --start-time $(date -d '-1 hour' +%s000) \
-  --region af-south-1
+  --region eu-west-1
 ```
 
 ### P3: Cross-Tenant Access Attempt
@@ -260,7 +260,7 @@ aws logs filter-log-events \
 aws events list-events \
   --event-bus-name merch-os-events-dev \
   --filter-pattern '{"detail-type": ["auth.security.cross-tenant"]}' \
-  --region af-south-1
+  --region eu-west-1
 ```
 
 ## Monitoring Alerts to Set Up
@@ -304,12 +304,12 @@ Route to:
 # Describe user pool
 aws cognito-idp describe-user-pool \
   --user-pool-id <pool-id> \
-  --region af-south-1
+  --region eu-west-1
 
 # Check estimated user count
 aws cognito-idp describe-user-pool \
   --user-pool-id <pool-id> \
-  --region af-south-1 \
+  --region eu-west-1 \
   --query 'UserPool.EstimatedNumberOfUsers'
 ```
 
@@ -319,7 +319,7 @@ aws cognito-idp describe-user-pool \
 # Verify triggers are configured correctly
 aws cognito-idp describe-user-pool \
   --user-pool-id <pool-id> \
-  --region af-south-1 \
+  --region eu-west-1 \
   --query 'UserPool.LambdaConfig'
 ```
 
@@ -334,7 +334,7 @@ Expected triggers:
 ```bash
 aws cognito-idp describe-user-pool \
   --user-pool-id <pool-id> \
-  --region af-south-1 \
+  --region eu-west-1 \
   --query 'UserPool.Policies.PasswordPolicy'
 ```
 
@@ -351,11 +351,11 @@ Tables use TTL for automatic cleanup, but periodic checks are recommended:
 
 ```bash
 # Check table status and item count
-aws dynamodb describe-table --table-name merch-os-sessions-dev --region af-south-1 \
+aws dynamodb describe-table --table-name merch-os-sessions-dev --region eu-west-1 \
   --query 'Table.{Status:TableStatus,Items:ItemCount,Size:TableSizeBytes}'
 
 # Verify TTL is enabled
-aws dynamodb describe-time-to-live --table-name merch-os-sessions-dev --region af-south-1
+aws dynamodb describe-time-to-live --table-name merch-os-sessions-dev --region eu-west-1
 ```
 
 ### Useful CloudWatch Insights Queries

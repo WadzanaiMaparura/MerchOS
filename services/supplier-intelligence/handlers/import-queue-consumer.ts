@@ -42,7 +42,7 @@ interface ImportQueueMessage {
 // AWS SDK Clients (singleton for connection reuse across invocations)
 // ---------------------------------------------------------------------------
 
-const region = process.env['AWS_REGION'] ?? 'af-south-1';
+const region = process.env['AWS_REGION'] ?? 'eu-west-1';
 
 let sfnClient: SFNClient | null = null;
 function getSfnClient(): SFNClient {

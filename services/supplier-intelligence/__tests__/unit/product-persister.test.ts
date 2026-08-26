@@ -142,7 +142,7 @@ describe('persistProducts', () => {
     ebMock.on(PutEventsCommand).resolves({ FailedEntryCount: 0, Entries: [{}] });
 
     vi.stubEnv('EVENT_BUS_NAME', 'test-event-bus');
-    vi.stubEnv('AWS_REGION', 'af-south-1');
+    vi.stubEnv('AWS_REGION', 'eu-west-1');
   });
 
   afterEach(() => {

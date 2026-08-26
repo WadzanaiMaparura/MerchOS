@@ -50,7 +50,7 @@ let eventBridgeClient: EventBridgeClient | null = null;
 function getDynamoDocClient(): DynamoDBDocumentClient {
   if (!ddbDocClient) {
     const client = new DynamoDBClient({
-      region: process.env['AWS_REGION'] ?? 'af-south-1',
+      region: process.env['AWS_REGION'] ?? 'eu-west-1',
     });
     ddbDocClient = DynamoDBDocumentClient.from(client);
   }
@@ -60,7 +60,7 @@ function getDynamoDocClient(): DynamoDBDocumentClient {
 function getEventBridgeClient(): EventBridgeClient {
   if (!eventBridgeClient) {
     eventBridgeClient = new EventBridgeClient({
-      region: process.env['AWS_REGION'] ?? 'af-south-1',
+      region: process.env['AWS_REGION'] ?? 'eu-west-1',
     });
   }
   return eventBridgeClient;

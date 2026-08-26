@@ -67,7 +67,7 @@ describe('refresh handler', () => {
     process.env['COGNITO_TENANT_POOL_ID'] = 'us-east-1_testPoolId';
     process.env['COGNITO_SELLER_CLIENT_ID'] = 'test-client-id';
     process.env['RATE_LIMITS_TABLE'] = 'merch-os-rate-limits-dev';
-    process.env['AWS_REGION'] = 'af-south-1';
+    process.env['AWS_REGION'] = 'eu-west-1';
   });
 
   afterEach(() => {

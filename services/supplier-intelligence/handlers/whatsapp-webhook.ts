@@ -86,7 +86,7 @@ interface ExtractedImage {
 // AWS SDK Clients (singleton for connection reuse across invocations)
 // ---------------------------------------------------------------------------
 
-const region = process.env['AWS_REGION'] ?? 'af-south-1';
+const region = process.env['AWS_REGION'] ?? 'eu-west-1';
 
 let s3Client: S3Client | null = null;
 function getS3Client(): S3Client {

@@ -25,8 +25,8 @@ function buildPreTokenEvent(
 ): PreTokenGenerationTriggerEvent {
   return {
     version: '1',
-    region: 'af-south-1',
-    userPoolId: 'af-south-1_testPool',
+    region: 'eu-west-1',
+    userPoolId: 'eu-west-1_testPool',
     userName: 'test-user-id',
     callerContext: {
       awsSdkVersion: '3.0.0',

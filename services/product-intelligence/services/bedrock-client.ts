@@ -86,7 +86,7 @@ export interface RetryConfig {
 // Constants
 // ---------------------------------------------------------------------------
 
-const DEFAULT_REGION = 'af-south-1';
+const DEFAULT_REGION = 'eu-west-1';
 
 const PRODUCT_INTELLIGENCE_EVENT_SOURCE = 'merch-os.product-intelligence';
 const BEDROCK_FAILURE_DETAIL_TYPE = 'product-intelligence.bedrock-failure';

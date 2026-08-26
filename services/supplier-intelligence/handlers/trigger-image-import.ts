@@ -51,7 +51,7 @@ interface TriggerImageImportEvent extends Omit<APIGatewayProxyEventV2, 'body'> {
 // AWS SDK Clients (singleton for connection reuse across invocations)
 // ---------------------------------------------------------------------------
 
-const region = process.env['AWS_REGION'] ?? 'af-south-1';
+const region = process.env['AWS_REGION'] ?? 'eu-west-1';
 
 let ddbDocClient: DynamoDBDocumentClient | null = null;
 function getDynamoDocClient(): DynamoDBDocumentClient {
