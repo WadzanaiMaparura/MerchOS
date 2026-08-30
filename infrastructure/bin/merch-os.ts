@@ -52,9 +52,16 @@ new ProductApiStack(app, `MerchOS-ProductApi-${env}`, {
   eventBus: foundationStack.eventBus,
 });
 
-new SupplierIntelligenceStack(app, `MerchOS-SupplierIntelligence-${env}`, {
+const supplierStack = new SupplierIntelligenceStack(app, `MerchOS-SupplierIntelligence-${env}`, {
   env: cdkEnv,
   environment: env,
 });
+
+// SupplierIntelligence reads Foundation (KMS, EventBus, S3) and Auth (Cognito)
+// values at deploy time via SSM StringParameter.valueForStringParameter. Those
+// lookups have no implicit CloudFormation dependency, so declare them explicitly
+// to guarantee the SSM parameters exist before this stack is deployed.
+supplierStack.addDependency(foundationStack);
+supplierStack.addDependency(authStack);
 
 app.synth();
