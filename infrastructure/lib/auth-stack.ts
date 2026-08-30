@@ -220,8 +220,12 @@ export class AuthStack extends cdk.Stack {
       handler: 'handler',
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
+      // Note: COGNITO_USER_POOL_ID is intentionally NOT set here. The trigger
+      // handlers receive the pool id via the Cognito event payload
+      // (event.userPoolId) and do not read it from the environment. Referencing
+      // this.userPool.userPoolId here would create an intra-stack circular
+      // dependency (UserPool -> LambdaConfig -> Lambda -> env(Ref UserPool)).
       environment: {
-        COGNITO_USER_POOL_ID: this.userPool.userPoolId,
         INVITATIONS_TABLE: this.invitationsTable.tableName,
         SESSIONS_TABLE: this.sessionsTable.tableName,
         EVENT_BUS_NAME: props.eventBus.eventBusName,
@@ -286,7 +290,11 @@ export class AuthStack extends cdk.Stack {
       role: postConfirmationRole as unknown as iam.IRole,
     });
 
-    // PreTokenGeneration trigger — enriches tokens with group/role claims
+    // PreTokenGeneration trigger — enriches tokens with group/role claims.
+    // The handler reads custom:tenantId and custom:role directly from the event
+    // payload (event.request.userAttributes) and does not call any Cognito API,
+    // so no cognito-idp permissions are granted. Referencing the pool ARN here
+    // would also reintroduce the intra-stack circular dependency.
     const preTokenGenerationRole = new iam.Role(this, 'PreTokenGenerationRole', {
       assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com') as unknown as iam.IPrincipal,
       description: 'Execution role for PreTokenGeneration trigger Lambda',
@@ -294,11 +302,6 @@ export class AuthStack extends cdk.Stack {
         iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
       ],
     });
-    preTokenGenerationRole.addToPolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: ['cognito-idp:AdminListGroupsForUser'],
-      resources: [this.userPool.userPoolArn],
-    }));
 
     const preTokenGenerationFn = new lambdaNodejs.NodejsFunction(this, 'PreTokenGeneration', {
       ...triggerLambdaProps,
