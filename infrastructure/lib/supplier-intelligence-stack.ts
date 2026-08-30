@@ -216,19 +216,16 @@ export class SupplierIntelligenceStack extends cdk.Stack {
     });
 
     // -----------------------------------------------------------------------
-    // AWS Powertools Lambda Layer
+    // AWS Powertools packaging
     //
-    // Using the official AWS Lambda Powertools for TypeScript layer (ARM64
-    // build is used here; swap to X86_64 if your Lambda architecture differs).
-    // The layer ARN is region-dependent; resolved at synthesis time via
-    // Fn::Sub so it stays portable across regions.
+    // Powertools (@aws-lambda-powertools/logger, tracer, metrics) are bundled
+    // into each function by esbuild from the workspace dependencies (pinned at
+    // 2.7.0). We intentionally do NOT use the cross-account AWS-managed
+    // Powertools Lambda layer: CloudFormation's EarlyValidation
+    // ResourceExistenceCheck fails against that cross-account layer ARN during
+    // change-set creation. Bundling matches the Auth/AuthApi/ProductApi stacks,
+    // which deploy cleanly.
     // -----------------------------------------------------------------------
-
-    const powertoolsLayer = lambda.LayerVersion.fromLayerVersionArn(
-      this,
-      'PowertoolsLayer',
-      `arn:aws:lambda:${this.region}:094274105915:layer:AWSLambdaPowertoolsTypeScriptV2:50`,
-    );
 
     // -----------------------------------------------------------------------
     // Shared Lambda configuration
@@ -256,7 +253,6 @@ export class SupplierIntelligenceStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
       tracing: lambda.Tracing.ACTIVE, // X-Ray enabled (Req 11.4, 13.3)
-      layers: [powertoolsLayer],
       environment: commonEnv,
       bundling: {
         minify: true,
@@ -264,12 +260,7 @@ export class SupplierIntelligenceStack extends cdk.Stack {
         target: 'node20',
         format: lambdaNodejs.OutputFormat.ESM,
         mainFields: ['module', 'main'],
-        externalModules: [
-          // Provided by the Powertools layer at runtime
-          '@aws-lambda-powertools/logger',
-          '@aws-lambda-powertools/tracer',
-          '@aws-lambda-powertools/metrics',
-        ],
+        // Powertools packages are bundled (not externalized) — see note above.
       },
     };
 
