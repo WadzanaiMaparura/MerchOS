@@ -227,7 +227,7 @@ export class SupplierIntelligenceStack extends cdk.Stack {
     const powertoolsLayer = lambda.LayerVersion.fromLayerVersionArn(
       this,
       'PowertoolsLayer',
-      `arn:aws:lambda:${this.region}:094274105915:layer:AWSLambdaPowertoolsTypeScriptV2:latest`,
+      `arn:aws:lambda:${this.region}:094274105915:layer:AWSLambdaPowertoolsTypeScriptV2:50`,
     );
 
     // -----------------------------------------------------------------------
