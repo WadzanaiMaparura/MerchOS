@@ -164,7 +164,7 @@ export const handler = middy(baseHandler)
   .use(tenantContextMiddleware())
   .use(
     rbacMiddleware({
-      resource: 'supplier',
+      resource: 'suppliers',
       action: 'read',
     }),
   )
