@@ -43,7 +43,7 @@ new AuthApiStack(app, `MerchOS-AuthApi-${env}`, {
   sessionsTable: authStack.sessionsTable,
 });
 
-new ProductApiStack(app, `MerchOS-ProductApi-${env}`, {
+const productApiStack = new ProductApiStack(app, `MerchOS-ProductApi-${env}`, {
   env: cdkEnv,
   environment: env,
   userPool: authStack.userPool,
@@ -63,5 +63,9 @@ const supplierStack = new SupplierIntelligenceStack(app, `MerchOS-SupplierIntell
 // to guarantee the SSM parameters exist before this stack is deployed.
 supplierStack.addDependency(foundationStack);
 supplierStack.addDependency(authStack);
+// SupplierIntelligence reads the Products table name from ProductApi's SSM
+// parameter (/product-api/table-name); declare the dependency so the parameter
+// exists before this stack deploys.
+supplierStack.addDependency(productApiStack);
 
 app.synth();

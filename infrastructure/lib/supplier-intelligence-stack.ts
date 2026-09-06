@@ -533,6 +533,23 @@ export class SupplierIntelligenceStack extends cdk.Stack {
     ], { timeout: cdk.Duration.seconds(300), memorySize: 512 });
 
     // -----------------------------------------------------------------------
+    // Products table name — imported from the Product API stack via SSM,
+    // following the same cross-stack pattern used for Foundation/Auth values.
+    //
+    // The ProductPersister writes Product records and the DuplicateDetector
+    // reads the Products table; both resolve the table name from the
+    // PRODUCTS_TABLE_NAME environment variable at runtime.
+    // -----------------------------------------------------------------------
+
+    const productsTableName = ssm.StringParameter.valueForStringParameter(
+      this,
+      `${ssmPrefix}/product-api/table-name`,
+    );
+
+    productPersisterFn.addEnvironment('PRODUCTS_TABLE_NAME', productsTableName);
+    duplicateDetectorFn.addEnvironment('PRODUCTS_TABLE_NAME', productsTableName);
+
+    // -----------------------------------------------------------------------
     // Expose all Lambda functions as a map for task 12.3 (API Gateway wiring)
     // -----------------------------------------------------------------------
 
