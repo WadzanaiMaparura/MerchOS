@@ -24,6 +24,7 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as kms from 'aws-cdk-lib/aws-kms';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
+import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources';
 import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
 import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
@@ -770,6 +771,16 @@ export class SupplierIntelligenceStack extends cdk.Stack {
     importQueueConsumerFn.addEnvironment(
       'IMPORT_STATE_MACHINE_ARN',
       this.importStateMachine.stateMachineArn,
+    );
+
+    // Connect the FIFO Import Queue to the consumer Lambda. The handler returns
+    // an SQSBatchResponse, so reportBatchItemFailures must be enabled so that
+    // only failed messages are retried (and eventually routed to the DLQ).
+    importQueueConsumerFn.addEventSource(
+      new lambdaEventSources.SqsEventSource(this.importQueue, {
+        batchSize: 1,
+        reportBatchItemFailures: true,
+      }),
     );
 
     // -----------------------------------------------------------------------
