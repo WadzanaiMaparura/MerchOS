@@ -176,6 +176,11 @@ export class AuthApiStack extends cdk.Stack {
         actions: ['cognito-idp:AdminInitiateAuth'],
         resources: [props.userPool.userPoolArn],
       }),
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['dynamodb:UpdateItem'],
+        resources: [this.rateLimitsTable.tableArn],
+      }),
     ]);
 
     // 2. Refresh

@@ -73,7 +73,7 @@ describe('login handler', () => {
     cognitoMock.reset();
     resetCognitoClient();
     mockEmitAuthEvent.mockClear();
-    process.env['COGNITO_TENANT_POOL_ID'] = 'us-east-1_testPoolId';
+    process.env['COGNITO_USER_POOL_ID'] = 'us-east-1_testPoolId';
     process.env['COGNITO_SELLER_CLIENT_ID'] = 'test-client-id';
     process.env['RATE_LIMITS_TABLE'] = 'merch-os-rate-limits-dev';
     process.env['EVENT_BUS_NAME'] = 'merch-os-events-dev';
@@ -81,7 +81,7 @@ describe('login handler', () => {
   });
 
   afterEach(() => {
-    delete process.env['COGNITO_TENANT_POOL_ID'];
+    delete process.env['COGNITO_USER_POOL_ID'];
     delete process.env['COGNITO_SELLER_CLIENT_ID'];
     delete process.env['RATE_LIMITS_TABLE'];
     delete process.env['EVENT_BUS_NAME'];
@@ -203,7 +203,7 @@ describe('login handler', () => {
   });
 
   it('returns 500 when env vars are missing', async () => {
-    delete process.env['COGNITO_TENANT_POOL_ID'];
+    delete process.env['COGNITO_USER_POOL_ID'];
     delete process.env['COGNITO_SELLER_CLIENT_ID'];
 
     const { handler } = await import('../../handlers/login');

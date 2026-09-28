@@ -52,7 +52,7 @@ interface LoginEvent extends APIGatewayProxyEventV2 {
 async function baseHandler(event: LoginEvent): Promise<APIGatewayProxyResultV2> {
   const { email, password } = event.body;
 
-  const userPoolId = process.env['COGNITO_TENANT_POOL_ID'];
+  const userPoolId = process.env['COGNITO_USER_POOL_ID'];
   const clientId = process.env['COGNITO_SELLER_CLIENT_ID'];
 
   if (!userPoolId || !clientId) {
