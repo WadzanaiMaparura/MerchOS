@@ -173,13 +173,13 @@ export class AuthApiStack extends cdk.Stack {
     const loginFn = createLambda('Login', path.join(handlersPath, 'login.ts'), [
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: ['cognito-idp:AdminInitiateAuth'],
-        resources: [props.userPool.userPoolArn],
+        actions: ['dynamodb:UpdateItem'],
+        resources: [this.rateLimitsTable.tableArn],
       }),
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: ['dynamodb:UpdateItem'],
-        resources: [this.rateLimitsTable.tableArn],
+        actions: ['kms:Decrypt'],
+        resources: [props.platformKey.keyArn],
       }),
     ]);
 
