@@ -24,7 +24,7 @@ import { getCognitoClient } from '../utils/cognito-client';
 import { emitAuthEvent } from '../utils/event-emitter';
 import { inputValidationMiddleware } from '../../shared/middleware/input-validation';
 import { rateLimitMiddleware } from '../../shared/middleware/rate-limit';
-import { logger } from '../../shared/middleware/powertools';
+import { logger } from '../../shared/middleware/logger';
 
 // ---------------------------------------------------------------------------
 // Types
