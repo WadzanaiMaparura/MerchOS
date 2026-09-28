@@ -1,7 +1,7 @@
 /**
  * Login Lambda handler for POST /auth/login.
  *
- * Authenticates a user via Cognito AdminInitiateAuth with USER_PASSWORD_AUTH flow.
+ * Authenticates a user via Cognito InitiateAuth with USER_PASSWORD_AUTH flow.
  * Returns JWT tokens on success or an MFA challenge session if MFA is enabled.
  *
  * Rate limited to 5 attempts per IP per 15-minute window to mitigate brute-force attacks.
@@ -12,7 +12,7 @@
 import middy from '@middy/core';
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import {
-  AdminInitiateAuthCommand,
+  InitiateAuthCommand,
   NotAuthorizedException,
   UserNotFoundException,
   UserNotConfirmedException,
@@ -44,7 +44,7 @@ interface LoginEvent extends APIGatewayProxyEventV2 {
 /**
  * Core login handler logic.
  *
- * 1. Calls Cognito AdminInitiateAuth with USER_PASSWORD_AUTH
+ * 1. Calls Cognito InitiateAuth with USER_PASSWORD_AUTH
  * 2. On success: returns token set and emits auth.session.created event
  * 3. On MFA challenge: returns challengeName and session for the client to complete
  * 4. On auth errors: returns appropriate HTTP status with error code
@@ -72,8 +72,7 @@ async function baseHandler(event: LoginEvent): Promise<APIGatewayProxyResultV2> 
   const cognitoClient = getCognitoClient();
 
   try {
-    const command = new AdminInitiateAuthCommand({
-      UserPoolId: userPoolId,
+    const command = new InitiateAuthCommand({
       ClientId: clientId,
       AuthFlow: 'USER_PASSWORD_AUTH',
       AuthParameters: {

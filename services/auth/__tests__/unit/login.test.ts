@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mockClient } from 'aws-sdk-client-mock';
 import {
   CognitoIdentityProviderClient,
-  AdminInitiateAuthCommand,
+  InitiateAuthCommand,
   NotAuthorizedException,
   UserNotFoundException,
   UserNotConfirmedException,
@@ -89,7 +89,7 @@ describe('login handler', () => {
   });
 
   it('returns tokens on successful authentication', async () => {
-    cognitoMock.on(AdminInitiateAuthCommand).resolves({
+    cognitoMock.on(InitiateAuthCommand).resolves({
       AuthenticationResult: {
         AccessToken: 'access-token-123',
         IdToken: 'id-token-456',
@@ -111,7 +111,7 @@ describe('login handler', () => {
   });
 
   it('returns TOTP challenge when MFA is required', async () => {
-    cognitoMock.on(AdminInitiateAuthCommand).resolves({
+    cognitoMock.on(InitiateAuthCommand).resolves({
       ChallengeName: 'SOFTWARE_TOKEN_MFA',
       Session: 'mfa-session-abc',
     });
@@ -127,7 +127,7 @@ describe('login handler', () => {
   });
 
   it('returns SMS challenge when SMS MFA is required', async () => {
-    cognitoMock.on(AdminInitiateAuthCommand).resolves({
+    cognitoMock.on(InitiateAuthCommand).resolves({
       ChallengeName: 'SMS_MFA',
       Session: 'sms-session-xyz',
     });
@@ -143,7 +143,7 @@ describe('login handler', () => {
   });
 
   it('returns 401 for NotAuthorizedException', async () => {
-    cognitoMock.on(AdminInitiateAuthCommand).rejects(
+    cognitoMock.on(InitiateAuthCommand).rejects(
       new NotAuthorizedException({ message: 'Incorrect username or password.', $metadata: {} })
     );
 
@@ -158,7 +158,7 @@ describe('login handler', () => {
   });
 
   it('returns 401 for UserNotFoundException (same error, no enumeration)', async () => {
-    cognitoMock.on(AdminInitiateAuthCommand).rejects(
+    cognitoMock.on(InitiateAuthCommand).rejects(
       new UserNotFoundException({ message: 'User does not exist.', $metadata: {} })
     );
 
@@ -173,7 +173,7 @@ describe('login handler', () => {
   });
 
   it('returns 403 for UserNotConfirmedException (EMAIL_NOT_VERIFIED)', async () => {
-    cognitoMock.on(AdminInitiateAuthCommand).rejects(
+    cognitoMock.on(InitiateAuthCommand).rejects(
       new UserNotConfirmedException({ message: 'User is not confirmed.', $metadata: {} })
     );
 
@@ -188,7 +188,7 @@ describe('login handler', () => {
   });
 
   it('returns 403 for PasswordResetRequiredException', async () => {
-    cognitoMock.on(AdminInitiateAuthCommand).rejects(
+    cognitoMock.on(InitiateAuthCommand).rejects(
       new PasswordResetRequiredException({ message: 'Password reset required.', $metadata: {} })
     );
 
@@ -217,7 +217,7 @@ describe('login handler', () => {
   });
 
   it('emits auth.session.created event on success', async () => {
-    cognitoMock.on(AdminInitiateAuthCommand).resolves({
+    cognitoMock.on(InitiateAuthCommand).resolves({
       AuthenticationResult: {
         AccessToken: 'access-token-123',
         IdToken: 'id-token-456',
