@@ -11,7 +11,7 @@
  */
 
 import middy from '@middy/core';
-import { logger } from './powertools';
+import { logger } from './logger';
 
 // ---------------------------------------------------------------------------
 // Types

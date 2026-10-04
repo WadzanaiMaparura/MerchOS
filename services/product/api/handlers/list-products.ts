@@ -5,15 +5,20 @@
  */
 
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
-import { ProductService } from '../../service';
-import { extractTenantContext } from '../../../shared/middleware/tenant-context-types';
+import { ProductService, getProductService } from '../../service';
+import { extractTenantContext } from '../../../shared/middleware/tenant-context';
 import { mapErrorToResponse } from '../error-mapper';
 
-let productService: ProductService;
+let productService: ProductService | undefined;
 
-/** Inject the ProductService instance (called during Lambda init or test setup). */
+/** Inject the ProductService instance (test seam; overrides the production factory). */
 export function setProductService(service: ProductService): void {
   productService = service;
+}
+
+/** Resolve the ProductService: test-injected instance if present, else the production factory. */
+function resolveProductService(): ProductService {
+  return productService ?? getProductService();
 }
 
 export async function handler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
@@ -40,7 +45,7 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
 
   // 3. Delegate to service
   try {
-    const result = await productService.listProducts(tenantContext.tenantId, { limit, nextToken });
+    const result = await resolveProductService().listProducts(tenantContext.tenantId, { limit, nextToken });
     return {
       statusCode: 200,
       body: JSON.stringify({ products: result.items, nextToken: result.nextToken }),
