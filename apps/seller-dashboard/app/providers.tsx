@@ -2,8 +2,18 @@
 
 import React, { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { AuthProvider } from '@merch-os/auth';
+import { AuthProvider, configureCognitoAuth } from '@merch-os/auth';
 import { ErrorHandlingProvider } from './components/ErrorHandlingProvider';
+
+/**
+ * Configure Amplify Auth against the Seller (tenant) Cognito Pool.
+ * Called once at module evaluation time (client-side only via 'use client'),
+ * BEFORE any AuthProvider authentication operation (login/register/session) can
+ * run. Uses the shared defaultCognitoConfig, which reads the seller
+ * NEXT_PUBLIC_COGNITO_* environment variables ΓÇö no Cognito identifiers are
+ * hardcoded here. Mirrors the admin-dashboard pattern.
+ */
+configureCognitoAuth();
 
 interface ProvidersProps {
   children: React.ReactNode;

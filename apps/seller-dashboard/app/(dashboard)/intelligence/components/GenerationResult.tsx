@@ -283,8 +283,9 @@ export function GenerationResult({ results, onApprove }: GenerationResultProps) 
   }
 
   // Single result: render a single card
-  if (results.length === 1) {
-    return <SingleResultCard result={results[0]} onApprove={onApprove} />;
+  const [first] = results;
+  if (results.length === 1 && first) {
+    return <SingleResultCard result={first} onApprove={onApprove} />;
   }
 
   // Multiple results: render side-by-side comparison view
