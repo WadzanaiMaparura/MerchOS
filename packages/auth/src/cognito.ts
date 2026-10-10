@@ -61,15 +61,21 @@ export interface SignUpParams {
  * Register a new seller account via Cognito.
  * Creates the account and triggers email verification.
  */
-export async function cognitoSignUp({ email, password, organisationName, contactEmail }: SignUpParams): Promise<{ isSignUpComplete: boolean; userId?: string }> {
+export async function cognitoSignUp({ email, password }: SignUpParams): Promise<{ isSignUpComplete: boolean; userId?: string }> {
+  // NOTE: organisationName and contactEmail are intentionally NOT sent to
+  // Cognito. The user pool schema only defines custom:tenantId and custom:role
+  // (set by the PreSignUp trigger); custom:organisationName and
+  // custom:contactEmail are not declared, so sending them makes Cognito reject
+  // the sign-up ("Type for attribute {custom:contactEmail} could not be
+  // determined"). The standard `email` attribute covers the contact email, and
+  // the tenant record name is derived in the PostConfirmation trigger. The
+  // SignUpParams signature is kept intact so the registration form is unchanged.
   const result = await amplifySignUp({
     username: email,
     password,
     options: {
       userAttributes: {
         email,
-        'custom:organisationName': organisationName,
-        'custom:contactEmail': contactEmail,
       },
     },
   });
