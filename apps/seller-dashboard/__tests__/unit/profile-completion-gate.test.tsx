@@ -73,12 +73,16 @@ describe('ProfileCompletionGate', () => {
     expect(replace).not.toHaveBeenCalled();
   });
 
-  it('does NOT redirect not_verified or conflict states (renders children)', async () => {
-    getProfileStatus.mockResolvedValue('conflict');
-    renderGate();
-    await waitFor(() => expect(screen.getByText('app content')).toBeTruthy());
-    expect(replace).not.toHaveBeenCalled();
-  });
+  it.each(['not_verified', 'conflict'] as const)(
+    'does NOT redirect the %s state (renders children)',
+    async (status) => {
+      getProfileStatus.mockResolvedValue(status);
+      renderGate();
+      await waitFor(() => expect(screen.getByText('app content')).toBeTruthy());
+      expect(getProfileStatus).toHaveBeenCalled();
+      expect(replace).not.toHaveBeenCalled();
+    },
+  );
 
   it('on initial API failure shows the warning + retry and still renders children (fail-open)', async () => {
     getProfileStatus.mockRejectedValue(new Error('503'));
