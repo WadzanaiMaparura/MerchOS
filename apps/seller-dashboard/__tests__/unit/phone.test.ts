@@ -3,44 +3,54 @@ import { isValidInternationalPhone, normalizeToE164 } from '@/app/(dashboard)/li
 
 /**
  * Finding 3 regression coverage: international phone validation + E.164
- * normalisation. Covers a South African number, at least one non-SA number,
- * and invalid input. No country code is ever invented; invalid input is
- * rejected (returns false / null) and never silently rewritten.
+ * normalisation, now backed by libphonenumber-js metadata.
+ *
+ * Covers a South African number, numbers from several other countries, E.164
+ * normalisation, formatted input (spaces/parentheses/hyphens), and a range of
+ * invalid cases that the library's metadata actually rejects. No country code
+ * is ever inferred; invalid input is rejected (false / null), never repaired.
  */
-describe('international phone handling', () => {
+describe('international phone handling (libphonenumber-js)', () => {
   describe('valid South African numbers', () => {
-    it('accepts and normalises a formatted SA number to E.164', () => {
-      expect(isValidInternationalPhone('+27 71 234 5678')).toBe(true);
-      expect(normalizeToE164('+27 71 234 5678')).toBe('+27712345678');
+    it('accepts and normalises a formatted SA mobile number to E.164', () => {
+      expect(isValidInternationalPhone('+27 82 123 4567')).toBe(true);
+      expect(normalizeToE164('+27 82 123 4567')).toBe('+27821234567');
     });
 
     it('accepts an SA number with parentheses/hyphens', () => {
-      expect(isValidInternationalPhone('+27 (71) 234-5678')).toBe(true);
-      expect(normalizeToE164('+27 (71) 234-5678')).toBe('+27712345678');
+      expect(isValidInternationalPhone('+27 (82) 123-4567')).toBe(true);
+      expect(normalizeToE164('+27 (82) 123-4567')).toBe('+27821234567');
     });
   });
 
-  describe('valid non-South-African numbers', () => {
-    it('accepts and normalises a UK number', () => {
-      expect(isValidInternationalPhone('+44 20 7946 0958')).toBe(true);
-      expect(normalizeToE164('+44 20 7946 0958')).toBe('+442079460958');
+  describe('valid numbers from other countries', () => {
+    it('accepts and normalises a UK mobile number', () => {
+      expect(isValidInternationalPhone('+44 7400 123456')).toBe(true);
+      expect(normalizeToE164('+44 7400 123456')).toBe('+447400123456');
     });
 
-    it('accepts a US number', () => {
-      expect(isValidInternationalPhone('+1 (415) 555-0132')).toBe(true);
-      expect(normalizeToE164('+1 (415) 555-0132')).toBe('+14155550132');
+    it('accepts and normalises a US number', () => {
+      expect(isValidInternationalPhone('+1 202 555 0191')).toBe(true);
+      expect(normalizeToE164('+1 (202) 555-0191')).toBe('+12025550191');
+    });
+
+    it('accepts an Australian mobile number', () => {
+      expect(isValidInternationalPhone('+61 412 345 678')).toBe(true);
+      expect(normalizeToE164('+61 412 345 678')).toBe('+61412345678');
     });
 
     it('accepts an already-compact E.164 number', () => {
-      expect(isValidInternationalPhone('+919812345678')).toBe(true);
-      expect(normalizeToE164('+919812345678')).toBe('+919812345678');
+      expect(isValidInternationalPhone('+27821234567')).toBe(true);
+      expect(normalizeToE164('+27821234567')).toBe('+27821234567');
     });
   });
 
-  describe('invalid input is rejected (never rewritten, no country code invented)', () => {
+  describe('invalid input is rejected (never repaired, no country code invented)', () => {
     it('rejects a number without a country code (no leading +)', () => {
-      expect(isValidInternationalPhone('0712345678')).toBe(false);
-      expect(normalizeToE164('0712345678')).toBeNull();
+      expect(isValidInternationalPhone('0821234567')).toBe(false);
+      expect(normalizeToE164('0821234567')).toBeNull();
+      // A bare national number must NOT be promoted to any country.
+      expect(normalizeToE164('82 123 4567')).toBeNull();
     });
 
     it('rejects empty / whitespace input', () => {
@@ -49,33 +59,36 @@ describe('international phone handling', () => {
       expect(normalizeToE164('')).toBeNull();
     });
 
-    it('rejects input with letters or illegal characters', () => {
-      expect(isValidInternationalPhone('+27 71 CALL ME')).toBe(false);
-      expect(isValidInternationalPhone('+27-71-234-5678 ext 9')).toBe(false);
+    it('rejects input containing letters, extensions or malformed text', () => {
+      expect(isValidInternationalPhone('+27 82 CALL ME')).toBe(false);
+      expect(isValidInternationalPhone('+1 202 555 0191 ext 99')).toBe(false);
       expect(normalizeToE164('+27abc')).toBeNull();
     });
 
-    it('rejects too few digits', () => {
-      expect(isValidInternationalPhone('+271234')).toBe(false);
-      expect(normalizeToE164('+271234')).toBeNull();
+    it('rejects numbers that are too short for their country', () => {
+      expect(isValidInternationalPhone('+2712')).toBe(false);
+      expect(normalizeToE164('+2712')).toBeNull();
     });
 
-    it('rejects too many digits (> 15)', () => {
-      expect(isValidInternationalPhone('+2712345678901234')).toBe(false);
-      expect(normalizeToE164('+2712345678901234')).toBeNull();
+    it('rejects numbers that are too long', () => {
+      expect(isValidInternationalPhone('+27821234567890123')).toBe(false);
+      expect(normalizeToE164('+27821234567890123')).toBeNull();
     });
 
-    it('rejects a country code starting with 0', () => {
-      expect(isValidInternationalPhone('+0712345678')).toBe(false);
+    it('rejects an unassigned / invalid country calling code', () => {
+      // +999 is not an assigned country calling code.
+      expect(isValidInternationalPhone('+999 1234 5678')).toBe(false);
+      expect(normalizeToE164('+999 1234 5678')).toBeNull();
     });
 
-    it('rejects a misplaced or duplicated +', () => {
-      expect(isValidInternationalPhone('27+712345678')).toBe(false);
-      expect(isValidInternationalPhone('++27712345678')).toBe(false);
+    it('rejects a number whose national part is invalid for a real country code', () => {
+      // Valid US calling code (+1) but an impossible national number.
+      expect(isValidInternationalPhone('+1 000 000 0000')).toBe(false);
+      expect(normalizeToE164('+1 000 000 0000')).toBeNull();
     });
 
     it('normalised output satisfies the backend phone contract (chars + length)', () => {
-      const normalised = normalizeToE164('+27 71 234 5678');
+      const normalised = normalizeToE164('+27 82 123 4567');
       expect(normalised).not.toBeNull();
       // Backend completeProfileSchema: /^[+()\-\s0-9]+$/, min 5, max 20.
       expect(normalised!).toMatch(/^[+()\-\s0-9]+$/);

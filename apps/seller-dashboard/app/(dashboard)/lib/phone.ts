@@ -1,75 +1,65 @@
 /**
  * International phone-number helpers for the profile-completion recovery form.
  *
- * SCOPE AND INTENT
- * ----------------
- * These helpers validate and normalise phone numbers to compact E.164 form
- * (e.g. "+27712345678") WITHOUT assuming a default country and WITHOUT a
- * third-party library. They deliberately validate only the E.164 SHAPE:
+ * Backed by `libphonenumber-js` (Google's libphonenumber metadata) for real
+ * per-country validation and E.164 normalisation — no hand-rolled parsing.
  *
- *   - a required leading '+' (the user must supply the country code);
- *   - 8 to 15 digits in total (E.164 permits at most 15 digits including the
- *     country code; the lower bound rejects obviously-too-short input);
- *   - only '+', digits, spaces, hyphens, parentheses and dots as input
- *     formatting characters.
- *
- * They do NOT verify that the country code or national-number length is valid
- * for a specific country — that requires a maintained metadata library such as
- * libphonenumber-js. Full per-country validation is intentionally out of scope
- * here (the deployed backend contract does not require it), and a hand-rolled
- * per-country parser would be fragile. See the PR notes for the follow-up to
- * adopt libphonenumber-js if stricter validation is later required.
- *
- * Normalisation only ever strips visual formatting from an already-valid
- * international number. It never invents, defaults, or rewrites a country code,
- * and it returns null for input it cannot safely normalise.
+ * Rules enforced here:
+ *   - The caller MUST supply an explicit country calling code via a leading
+ *     '+'. We never infer or default a country, so an ambiguous national number
+ *     can never be silently promoted to a specific country.
+ *   - Validity is decided by the library's `isValid()` (full metadata check),
+ *     not merely digit counts or `isPossible()`.
+ *   - Valid numbers are normalised to compact E.164 via the library formatter.
+ *   - Invalid / incomplete / malformed / unparseable input is rejected; it is
+ *     never repaired or rewritten into a valid-looking number.
  */
 
-/** Characters allowed as visual formatting in raw phone input. */
-const ALLOWED_INPUT = /^[+()\-.\s0-9]+$/;
-
-/** Minimum / maximum number of digits in a valid E.164 number. */
-const MIN_DIGITS = 8;
-const MAX_DIGITS = 15;
+import { parsePhoneNumberFromString } from 'libphonenumber-js';
 
 /**
- * Strip visual formatting (spaces, hyphens, parentheses, dots) while keeping a
- * single leading '+'. Returns the compact candidate (e.g. "+27712345678") or
- * null if the input contains disallowed characters or a misplaced '+'.
+ * Parse a raw user string into a validated libphonenumber-js number, or null.
+ *
+ * Requires an explicit leading '+'. We pass NO default country, so a number
+ * without a country calling code is treated as unparseable/invalid rather than
+ * being assigned a country.
  */
-function toCompact(raw: string): string | null {
+/**
+ * Only '+', digits and visual grouping characters are permitted in raw input.
+ * This rejects letters and extension syntax (e.g. "ext 99") up front, so a
+ * valid base number with trailing junk can never be silently normalised into a
+ * number that drops the user's extra input.
+ */
+const ALLOWED_INPUT = /^[+()\-.\s0-9]+$/;
+
+function parseValid(raw: string) {
   const trimmed = raw.trim();
-  if (trimmed.length === 0) return null;
+  // Mandatory explicit international prefix. Without it we refuse to guess.
+  if (!trimmed.startsWith('+')) return null;
+  // Reject letters / extensions / other junk before parsing so nothing is
+  // silently stripped during normalisation.
   if (!ALLOWED_INPUT.test(trimmed)) return null;
 
-  const hasLeadingPlus = trimmed.startsWith('+');
-  // A '+' may only appear as the very first character. Any other '+' is invalid.
-  const plusCount = (trimmed.match(/\+/g) ?? []).length;
-  if (plusCount > 1) return null;
-  if (plusCount === 1 && !hasLeadingPlus) return null;
+  let parsed;
+  try {
+    parsed = parsePhoneNumberFromString(trimmed);
+  } catch {
+    // Defensive: parsePhoneNumberFromString returns undefined rather than
+    // throwing for bad input, but guard anyway so callers always get null.
+    return null;
+  }
 
-  const digits = trimmed.replace(/[^0-9]/g, '');
-  if (digits.length === 0) return null;
-
-  return hasLeadingPlus ? `+${digits}` : digits;
+  if (!parsed) return null;
+  if (!parsed.isValid()) return null;
+  return parsed;
 }
 
 /**
- * True when `raw` is a valid international phone number by E.164 shape:
- * an explicit '+' country code followed by 8–15 total digits.
- *
- * Rejects: empty input, numbers without a leading '+', numbers with too few or
- * too many digits, and anything containing disallowed characters.
+ * True when `raw` is a valid international phone number (explicit '+' country
+ * code + a number the libphonenumber metadata accepts for that country).
  */
 export function isValidInternationalPhone(raw: string): boolean {
-  const compact = toCompact(raw);
-  if (!compact) return false;
-  if (!compact.startsWith('+')) return false; // country code is mandatory
-  const digits = compact.slice(1);
-  if (digits.length < MIN_DIGITS || digits.length > MAX_DIGITS) return false;
-  // A country code cannot start with 0.
-  if (digits.startsWith('0')) return false;
-  return true;
+  return parseValid(raw) !== null;
 }
 
 /**
@@ -78,6 +68,7 @@ export function isValidInternationalPhone(raw: string): boolean {
  * must treat null as "reject", never as "assume a country code".
  */
 export function normalizeToE164(raw: string): string | null {
-  if (!isValidInternationalPhone(raw)) return null;
-  return toCompact(raw);
+  const parsed = parseValid(raw);
+  if (!parsed) return null;
+  return parsed.number; // E.164 form, e.g. "+27712345678"
 }
