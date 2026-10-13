@@ -13,6 +13,7 @@ import { NotificationProvider, NotificationHistoryDropdown, ConnectionStatusIndi
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { ErrorBoundaryWrapper } from './components/ErrorBoundaryWrapper';
 import { DashboardRouteGuard } from './components/DashboardRouteGuard';
+import { ProfileCompletionGate } from './components/ProfileCompletionGate';
 
 // --- Permission Registry (singleton) ---
 const registry = new PermissionRegistry(defaultPermissionConfig);
@@ -359,11 +360,13 @@ export default function DashboardLayout({
               role="main"
             >
               <ContentLoadingIndicator />
+              <ProfileCompletionGate>
               <ErrorBoundaryWrapper>
                 <DashboardRouteGuard>
                   {children}
                 </DashboardRouteGuard>
               </ErrorBoundaryWrapper>
+              </ProfileCompletionGate>
             </main>
           </div>
         </div>
