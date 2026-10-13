@@ -41,9 +41,9 @@ const schema = z.object({
     .string()
     .trim()
     .min(1, 'Phone number is required')
-    // International number with an explicit country code. We validate the
-    // E.164 SHAPE (leading '+', 8–15 digits) after stripping visual
-    // formatting; we never assume a country or invent a dialling code.
+    // International number with an explicit country code. Validation is delegated
+    // to libphonenumber-js using its per-country metadata and isValid(); a leading
+    // '+' country code is required and no default country is assumed.
     .refine((v) => isValidInternationalPhone(v), {
       message:
         'Enter a valid international phone number including country code, e.g. +27 71 234 5678',
