@@ -5,10 +5,20 @@
  *
  * Shown to a genuine self-registration owner whose MerchOS tenant/owner profile
  * was not persisted (e.g. a pending record expired or confirmation-time
- * persistence did not complete). Collects full name, phone, organisation name,
- * and an OPTIONAL, unchecked-by-default marketing-consent choice. Identity,
- * tenant and email are derived server-side from the authenticated session —
- * they are never sent from here.
+ * persistence did not complete). Collects full name, an international phone
+ * number, and organisation name. Identity, tenant and email are derived
+ * server-side from the authenticated session — they are never sent from here.
+ *
+ * MARKETING CONSENT: intentionally NOT collected on this screen. The consent
+ * copy/version is an outstanding legal/compliance release blocker, so the
+ * recovery request always sends `consentGranted: false` and no channels. No
+ * marketing consent can be granted implicitly from recovery.
+ *
+ * PHONE: international numbers are supported (no South-Africa assumption). The
+ * user must supply an explicit country code via a leading '+'. Valid input is
+ * normalised to compact E.164 form (strip spaces/()/-) WITHOUT inventing or
+ * defaulting a country code; unparseable/invalid input is rejected with a clear
+ * message and never silently rewritten.
  */
 
 import React, { useCallback, useState } from 'react';
@@ -19,25 +29,30 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@merch-os/auth';
 import { Form, FormField, Input } from '@merch-os/ui';
 import { completeProfile, getProfileStatus } from '../lib/profile-api';
+import { normalizeToE164, isValidInternationalPhone } from '../lib/phone';
 
 const schema = z.object({
   fullName: z
     .string()
+    .trim()
     .min(1, 'Full name is required')
     .max(100, 'Full name must be at most 100 characters'),
   phone: z
     .string()
-    .min(5, 'Phone number is too short')
-    .max(20, 'Phone number is too long')
-    .regex(/^[+()\-\s0-9]+$/, 'Phone number contains invalid characters'),
+    .trim()
+    .min(1, 'Phone number is required')
+    // International number with an explicit country code. We validate the
+    // E.164 SHAPE (leading '+', 8–15 digits) after stripping visual
+    // formatting; we never assume a country or invent a dialling code.
+    .refine((v) => isValidInternationalPhone(v), {
+      message:
+        'Enter a valid international phone number including country code, e.g. +27 71 234 5678',
+    }),
   organisationName: z
     .string()
+    .trim()
     .min(2, 'Organisation name must be at least 2 characters')
     .max(100, 'Organisation name must be at most 100 characters'),
-  // Optional marketing consent — unchecked by default.
-  consentGranted: z.boolean().optional().default(false),
-  consentEmail: z.boolean().optional().default(false),
-  consentSms: z.boolean().optional().default(false),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -55,41 +70,70 @@ export default function CompleteProfilePage() {
       fullName: '',
       phone: '',
       organisationName: '',
-      consentGranted: false,
-      consentEmail: false,
-      consentSms: false,
     },
   });
 
-  const consentGranted = form.watch('consentGranted');
   const getAccessToken = useCallback(async () => refreshSession(), [refreshSession]);
 
   async function onSubmit(data: FormData) {
     setIsSubmitting(true);
     setError(null);
 
-    const channels: Array<'email' | 'sms'> = [];
-    if (data.consentGranted) {
-      if (data.consentEmail) channels.push('email');
-      if (data.consentSms) channels.push('sms');
+    // Normalise the validated phone to compact E.164 before persistence. This
+    // only strips visual formatting from an already-valid international number;
+    // it cannot run on invalid input (zod refine blocks submission first).
+    const normalisedPhone = normalizeToE164(data.phone);
+    if (!normalisedPhone) {
+      // Defensive: should be unreachable because validation gates submission.
+      setError('Please enter a valid international phone number including the country code.');
+      setIsSubmitting(false);
+      return;
     }
 
     try {
       await completeProfile(getAccessToken, {
         fullName: data.fullName,
-        phone: data.phone,
+        phone: normalisedPhone,
         organisationName: data.organisationName,
-        consentGranted: !!data.consentGranted,
-        consentChannels: channels,
+        // Marketing consent is never granted from the recovery screen.
+        consentGranted: false,
+        consentChannels: [],
       });
 
-      // Re-check status before continuing into the app.
+      // Confirm the server actually persisted the profile before proceeding.
+      // Only a 'complete' status may advance into the app; anything else is a
+      // recoverable error surfaced to the user (we never silently proceed, and
+      // we never create tenants or determine ownership in the browser).
+      let status: string;
       try {
-        await getProfileStatus(getAccessToken);
+        status = await getProfileStatus(getAccessToken);
       } catch {
-        // Non-fatal — proceed regardless; the gate will re-verify.
+        // Transient status-check failure: the write succeeded but we cannot
+        // confirm it right now. Keep the user on this screen with a clear,
+        // retryable message instead of advancing on an unconfirmed state.
+        setError(
+          'Your details were submitted but we could not confirm your account setup. Please try again in a moment.',
+        );
+        return;
       }
-      router.replace('/dashboard');
+
+      if (status === 'complete') {
+        router.replace('/dashboard');
+        return;
+      }
+
+      if (status === 'needs_profile_completion') {
+        setError(
+          'Your account setup is not complete yet. Please review your details and try again.',
+        );
+        return;
+      }
+
+      // invited / not_verified / conflict (or anything unexpected): do not
+      // advance into the owner flow. Surface a clear, non-silent message.
+      setError(
+        'Your account setup could not be completed. Please contact support if this continues.',
+      );
     } catch (err: unknown) {
       const code = err instanceof Error ? err.message : 'REQUEST_FAILED';
       const message =
@@ -139,14 +183,19 @@ export default function CompleteProfilePage() {
           )}
         </FormField>
 
-        <FormField<FormData> name="phone" label="Phone number" required>
+        <FormField<FormData>
+          name="phone"
+          label="Phone number"
+          required
+          hint="Include your country code, e.g. +27 71 234 5678 or +44 20 7946 0958"
+        >
           {({ field }) => (
             <Input
               {...field}
               value={typeof field.value === 'string' ? field.value : ''}
               type="text"
               inputMode="tel"
-              placeholder="+27 ..."
+              placeholder="+country code and number"
               disabled={isSubmitting}
               autoComplete="tel"
             />
@@ -165,27 +214,6 @@ export default function CompleteProfilePage() {
             />
           )}
         </FormField>
-
-        {/* Optional marketing consent — unchecked by default */}
-        <fieldset className="rounded-md border border-gray-200 p-3">
-          <legend className="px-1 text-sm font-medium text-gray-700">Marketing (optional)</legend>
-          <label className="flex items-center gap-2 text-sm text-gray-700">
-            <input type="checkbox" {...form.register('consentGranted')} disabled={isSubmitting} />
-            I agree to receive marketing communications
-          </label>
-          {consentGranted && (
-            <div className="mt-2 flex flex-col gap-1 pl-6">
-              <label className="flex items-center gap-2 text-sm text-gray-700">
-                <input type="checkbox" {...form.register('consentEmail')} disabled={isSubmitting} />
-                Email
-              </label>
-              <label className="flex items-center gap-2 text-sm text-gray-700">
-                <input type="checkbox" {...form.register('consentSms')} disabled={isSubmitting} />
-                SMS
-              </label>
-            </div>
-          )}
-        </fieldset>
 
         <button
           type="submit"

@@ -42,10 +42,21 @@ export function ProfileCompletionGate({ children }: ProfileCompletionGateProps) 
     // Don't gate the completion route itself (prevents redirect loops), and
     // only run once auth is resolved and a user exists.
     if (isLoading || !user) return;
-    if (pathname === COMPLETION_PATH) return;
+    if (pathname === COMPLETION_PATH) {
+      // The gate is not evaluating on the completion route. Clear any stale
+      // redirect flag so that, after the user returns from /complete-profile,
+      // the next evaluation can route correctly (e.g. re-redirect if the
+      // profile is still incomplete) rather than being blocked by a stale flag.
+      redirectingRef.current = false;
+      return;
+    }
 
     let cancelled = false;
     setCheckError(false);
+    // Re-evaluate from a clean slate on every run (pathname change, retry, or
+    // auth resolution). The flag only guards against a double-redirect within a
+    // single evaluation; it must never persist across evaluations.
+    redirectingRef.current = false;
 
     (async () => {
       try {
