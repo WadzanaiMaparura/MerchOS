@@ -67,23 +67,28 @@ export async function handler(
   }
 
   if (invitation) {
-    // Genuine, non-expired invitation. Request auto-confirm/verify — honoured
-    // only for PreSignUp_SignUp (invited self-registration); a harmless no-op
-    // for PreSignUp_AdminCreateUser.
+    // Genuine, non-expired invitation found for an invited SELF-registration
+    // (PreSignUp_SignUp).
     //
-    // We intentionally DO NOT write custom:tenantId / custom:role on
-    // event.request.userAttributes. That is not a supported persistence path
-    // and public clients cannot write these fields. PostConfirmation performs
-    // the authoritative assignment (invited tenant/role) for this user.
-    logger.info('Genuine invitation found; requesting auto-confirm', {
+    // IMPORTANT: we DO NOT auto-confirm or auto-verify here. Two reasons:
+    //   1. Mailbox control — possessing an invitation record for an email does
+    //      NOT prove the registrant controls that mailbox. The registrant must
+    //      still complete the normal email-code confirmation (ConfirmSignUp).
+    //   2. Trigger ordering — if PreSignUp auto-confirms, Cognito does NOT run
+    //      PostConfirmation for that SignUp, so the authoritative invited
+    //      identity + Seller group assignment (which live in PostConfirmation)
+    //      would never execute. Leaving confirmation to the normal flow ensures
+    //      PostConfirmation runs on ConfirmSignUp.
+    //
+    // We also do not mutate request.userAttributes (unsupported persistence,
+    // and public clients cannot write these fields). PostConfirmation performs
+    // the authoritative assignment after verified email confirmation.
+    logger.info('Genuine invitation found; deferring confirmation to normal email flow + PostConfirmation', {
       email,
       tenantId: invitation.tenantId,
       role: invitation.role,
       triggerSource: event.triggerSource,
     });
-
-    event.response.autoConfirmUser = true;
-    event.response.autoVerifyEmail = true;
     return event;
   }
 

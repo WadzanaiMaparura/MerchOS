@@ -162,6 +162,81 @@ describe('post-confirmation trigger — trusted identity assignment', () => {
     });
   });
 
+  it('is retry-safe: after a prior group-add failure, a re-run repairs group membership without rewriting identity', async () => {
+    // Genuine invitation for the verified email.
+    ddbMock.on(QueryCommand).resolves({
+      Items: [
+        {
+          PK: 'TENANT#invited-tenant',
+          SK: 'INVITE#seller@example.com',
+          email: 'seller@example.com',
+          tenantId: 'invited-tenant',
+          role: 'editor',
+          status: 'pending',
+          expiresAt: NOW_SECONDS + 3600,
+        },
+      ],
+    });
+    __setPendingRegistrationRepositoryForTesting(fakeRepo({}));
+
+    // Simulate the state AFTER a prior invocation that wrote the attributes
+    // but FAILED at AdminAddUserToGroup: the user already has the assigned
+    // identity on the event.
+    const event = buildEvent('reg-1');
+    event.request.userAttributes['custom:tenantIdAssigned'] = 'invited-tenant';
+    event.request.userAttributes['custom:role'] = 'editor';
+
+    await handler(event);
+
+    // Attributes already correct → NOT rewritten.
+    expect(cognitoMock.commandCalls(AdminUpdateUserAttributesCommand)).toHaveLength(0);
+    // But group membership IS (re)applied — the repair.
+    const groupCalls = cognitoMock.commandCalls(AdminAddUserToGroupCommand);
+    expect(groupCalls).toHaveLength(1);
+    expect(groupCalls[0].args[0].input).toMatchObject({ GroupName: 'Seller' });
+  });
+
+  it('fails closed when an existing assigned identity CONFLICTS with the invitation', async () => {
+    ddbMock.on(QueryCommand).resolves({
+      Items: [
+        {
+          PK: 'TENANT#invited-tenant',
+          SK: 'INVITE#seller@example.com',
+          email: 'seller@example.com',
+          tenantId: 'invited-tenant',
+          role: 'editor',
+          status: 'pending',
+          expiresAt: NOW_SECONDS + 3600,
+        },
+      ],
+    });
+    __setPendingRegistrationRepositoryForTesting(fakeRepo({}));
+
+    const event = buildEvent('reg-1');
+    // A conflicting previously-assigned tenant.
+    event.request.userAttributes['custom:tenantIdAssigned'] = 'some-other-tenant';
+    event.request.userAttributes['custom:role'] = 'editor';
+
+    await expect(handler(event)).rejects.toThrow();
+    // Never overwrites and never emits success.
+    expect(cognitoMock.commandCalls(AdminUpdateUserAttributesCommand)).toHaveLength(0);
+    expect(mockEmitAuthEvent).not.toHaveBeenCalled();
+  });
+
+  it('fast-path: admin-created invitee (immutable custom:tenantId) is preserved and not re-processed', async () => {
+    __setPendingRegistrationRepositoryForTesting(fakeRepo({}));
+    const event = buildEvent('reg-1');
+    event.request.userAttributes['custom:tenantId'] = 'admin-tenant';
+    event.request.userAttributes['custom:role'] = 'editor';
+
+    await handler(event);
+
+    // No attribute write, no group add, no invitation lookup needed.
+    expect(cognitoMock.commandCalls(AdminUpdateUserAttributesCommand)).toHaveLength(0);
+    expect(cognitoMock.commandCalls(AdminAddUserToGroupCommand)).toHaveLength(0);
+    expect(ddbMock.commandCalls(QueryCommand)).toHaveLength(0);
+  });
+
   it('does NOT add a self-signup owner to the Seller group (invited-only group assignment)', async () => {
     // No invitation; self-signup path.
     __setPendingRegistrationRepositoryForTesting(fakeRepo({ 'reg-1': makePending() }));

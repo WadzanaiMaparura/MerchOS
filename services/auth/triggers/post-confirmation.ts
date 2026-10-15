@@ -80,59 +80,87 @@ export async function handler(
   event: PostConfirmationTriggerEvent,
 ): Promise<PostConfirmationTriggerEvent> {
   const email = (event.request.userAttributes['email'] ?? '').trim().toLowerCase();
-  // Effective existing tenant id = immutable invited id OR the server-managed
-  // mutable id (idempotent re-runs). Either means identity is already assigned.
   const existingImmutableTenantId = event.request.userAttributes['custom:tenantId'] ?? '';
   const existingAssignedTenantId = event.request.userAttributes['custom:tenantIdAssigned'] ?? '';
-  const existingTenantId = existingImmutableTenantId || existingAssignedTenantId;
   const existingRole = event.request.userAttributes['custom:role'] ?? '';
   const userId = event.userName;
   const userPoolId = event.userPoolId;
 
   logger.info('PostConfirmation trigger invoked', {
     userId,
-    hasExistingTenant: Boolean(existingTenantId),
     triggerSource: event.triggerSource,
   });
 
   // -------------------------------------------------------------------------
-  // Already-identified users: identity is already authoritative. This covers
-  // (a) invited users (immutable custom:tenantId set at creation) and
-  // (b) a prior successful self-signup assignment (custom:tenantIdAssigned),
-  // which makes repeated trigger invocations idempotent. Preserve it; never
-  // convert to a new owner. Nothing further to assign here.
+  // FAST PATH — admin-created invitee. The admin invite-user handler sets the
+  // IMMUTABLE custom:tenantId AND the role AT creation and already placed the
+  // user in the Seller group. This user is fully provisioned; nothing to do.
+  // (The immutable attribute is the reliable signal: self-registration never
+  // sets custom:tenantId, only the mutable custom:tenantIdAssigned.)
   // -------------------------------------------------------------------------
-  if (existingTenantId && existingRole) {
-    logger.info('Confirmed user already has authoritative identity; preserving', {
-      userId,
-    });
-
+  if (existingImmutableTenantId && existingRole) {
+    logger.info('Admin-created invitee already fully provisioned; preserving', { userId });
     // No auth.user.registered emission here — see file header.
     return event;
   }
 
   // -------------------------------------------------------------------------
-  // Invited self-registrant (PreSignUp_SignUp): no identity attributes were set
-  // during sign-up (PreSignUp no longer mutates request.userAttributes). The
-  // authoritative invited tenant/role must come from the invitation record,
-  // matched by the VERIFIED Cognito email. If a genuine, non-expired invitation
-  // exists, assign the INVITED tenant/role — never owner, never recovery.
+  // Invited self-registrant (PreSignUp_SignUp): the authoritative invited
+  // tenant/role must come from the invitation record, matched by the VERIFIED
+  // Cognito email (email confirmation proves mailbox control). If a genuine,
+  // non-expired invitation exists, assign the INVITED tenant/role — never
+  // owner, never recovery.
   //
-  // The lookup is fail-closed: a DynamoDB/KMS failure throws, so we never fall
-  // through to the owner-recovery path for a user who might be an invitee.
+  // The lookup is fail-closed: a DynamoDB/KMS failure (or ambiguity) throws, so
+  // we never fall through to the owner-recovery path for a possible invitee.
   // -------------------------------------------------------------------------
   let tenantId: string;
   let role: string;
   let isInvited = false;
+  // When true, the identity attributes already match what we would assign, so
+  // we skip the attribute write but STILL ensure group membership (retry-safe
+  // repair after a prior AdminAddUserToGroup failure).
+  let attributesAlreadyCorrect = false;
 
   const invitation = await findGenuineInvitationByEmail(email);
   if (invitation) {
-    logger.info('Confirmed user matches a genuine invitation; assigning invited identity', {
-      userId,
-    });
+    isInvited = true;
     tenantId = invitation.tenantId;
     role = invitation.role;
-    isInvited = true;
+
+    // Retry-safety: if a previous invocation already wrote the assigned
+    // identity, it MUST match the invitation. A conflict means inconsistent
+    // authoritative identity — fail closed rather than overwrite or proceed.
+    if (existingAssignedTenantId || existingRole) {
+      const tenantConflict =
+        existingAssignedTenantId && existingAssignedTenantId !== invitation.tenantId;
+      const roleConflict = existingRole && existingRole !== invitation.role;
+      if (tenantConflict || roleConflict) {
+        logger.error('Existing identity conflicts with invitation; failing closed', {
+          userId,
+          existingAssignedTenantId,
+          existingRole,
+          invitationTenantId: invitation.tenantId,
+          invitationRole: invitation.role,
+        });
+        throw new Error('Inconsistent authoritative identity for invited user');
+      }
+      attributesAlreadyCorrect = true;
+      logger.info('Invited identity already assigned; will ensure group membership only', { userId });
+    } else {
+      logger.info('Confirmed user matches a genuine invitation; assigning invited identity', {
+        userId,
+      });
+    }
+  } else if (existingAssignedTenantId && existingRole) {
+    // -----------------------------------------------------------------------
+    // No invitation, but identity was already assigned by a prior invocation
+    // (self-signup). Idempotent no-op: preserve it, never convert to a new
+    // owner, and do not run the recovery path again. Self-signups are not group
+    // assigned here, so there is nothing to repair.
+    // -----------------------------------------------------------------------
+    logger.info('Self-signup identity already assigned; preserving (idempotent)', { userId });
+    return event;
   } else {
     // -----------------------------------------------------------------------
     // Self-signup: resolve the server-trusted tenantId from the EXACT pending
@@ -176,33 +204,35 @@ export async function handler(
   }
 
   // -------------------------------------------------------------------------
-  // Persist the trusted identity via a supported server-side Cognito op.
+  // Persist the trusted identity via a supported server-side Cognito op, unless
+  // a prior invocation already wrote the exact same values (retry repair path).
   // AdminUpdateUserAttributes is idempotent — re-running with the same values
-  // is safe, so repeated trigger invocations converge to the same identity.
-  // We write the MUTABLE server-managed attribute: the immutable custom:tenantId
-  // cannot be set after creation. For both invited self-registrants and self-
-  // signups, the id lands in custom:tenantIdAssigned, and PreTokenGeneration
-  // maps it onto the custom:tenantId token claim for downstream consumers.
+  // is safe. We write the MUTABLE server-managed attribute: the immutable
+  // custom:tenantId cannot be set after creation. For both invited self-
+  // registrants and self-signups the id lands in custom:tenantIdAssigned, and
+  // PreTokenGeneration maps it onto the custom:tenantId token claim.
   // -------------------------------------------------------------------------
-  try {
-    await getCognitoClient().send(
-      new AdminUpdateUserAttributesCommand({
-        UserPoolId: userPoolId,
-        Username: userId,
-        UserAttributes: [
-          { Name: 'custom:tenantIdAssigned', Value: tenantId },
-          { Name: 'custom:role', Value: role },
-        ],
-      }),
-    );
-  } catch (error) {
-    // Fail loudly: do not emit a success event and do not leave the system
-    // reporting success when identity assignment failed.
-    logger.error('Failed to assign trusted identity attributes', {
-      userId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    throw error;
+  if (!attributesAlreadyCorrect) {
+    try {
+      await getCognitoClient().send(
+        new AdminUpdateUserAttributesCommand({
+          UserPoolId: userPoolId,
+          Username: userId,
+          UserAttributes: [
+            { Name: 'custom:tenantIdAssigned', Value: tenantId },
+            { Name: 'custom:role', Value: role },
+          ],
+        }),
+      );
+    } catch (error) {
+      // Fail loudly: do not emit a success event and do not leave the system
+      // reporting success when identity assignment failed.
+      logger.error('Failed to assign trusted identity attributes', {
+        userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
   }
 
   // -------------------------------------------------------------------------

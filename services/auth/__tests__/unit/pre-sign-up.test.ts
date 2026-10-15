@@ -56,7 +56,7 @@ describe('pre-sign-up trigger', () => {
     process.env['AWS_REGION'] = 'eu-west-1';
   });
 
-  it('auto-confirms an invited user WITHOUT mutating identity attributes (assignment deferred to PostConfirmation)', async () => {
+  it('does NOT auto-confirm/verify an invited self-registrant (email verification required; PostConfirmation assigns identity)', async () => {
     // Arrange: invitation exists for this email
     ddbDocMock.on(QueryCommand).resolves({
       Items: [
@@ -78,11 +78,12 @@ describe('pre-sign-up trigger', () => {
     // Act
     const result = await handler(event);
 
-    // Assert: auto-confirm requested, but NO identity attributes mutated here.
-    // request.userAttributes is not a supported persistence path; PostConfirmation
-    // assigns the invited tenant/role authoritatively.
-    expect(result.response.autoConfirmUser).toBe(true);
-    expect(result.response.autoVerifyEmail).toBe(true);
+    // Assert: invited SELF-registration must NOT bypass email verification.
+    // Auto-confirm/verify stay disabled so the normal ConfirmSignUp flow runs
+    // (which fires PostConfirmation, where identity + group are assigned). No
+    // identity attributes are mutated here either.
+    expect(result.response.autoConfirmUser).toBe(false);
+    expect(result.response.autoVerifyEmail).toBe(false);
     expect(result.request.userAttributes['custom:tenantId']).toBeUndefined();
     expect(result.request.userAttributes['custom:role']).toBeUndefined();
   });
@@ -150,9 +151,9 @@ describe('pre-sign-up trigger', () => {
 
     const result = await handler(event);
 
-    // Invitation recognised → auto-confirm requested. Identity attributes are
-    // NOT mutated here; PostConfirmation assigns the invited tenant/role.
-    expect(result.response.autoConfirmUser).toBe(true);
+    // Invitation recognised, but email verification is NOT bypassed and no
+    // attributes are mutated; PostConfirmation assigns the invited tenant/role.
+    expect(result.response.autoConfirmUser).toBe(false);
     expect(result.request.userAttributes['custom:tenantId']).toBeUndefined();
     expect(result.request.userAttributes['custom:role']).toBeUndefined();
   });
@@ -176,7 +177,10 @@ describe('pre-sign-up trigger', () => {
     const { handler } = await import('../../triggers/pre-sign-up');
     const result = await handler(buildPreSignUpEvent());
 
-    expect(result.response.autoConfirmUser).toBe(true);
+    // Recognised as a valid invitation → does not throw, does not auto-confirm,
+    // does not mutate identity attributes (PostConfirmation handles it).
+    expect(result.response.autoConfirmUser).toBe(false);
+    expect(result.request.userAttributes['custom:tenantId']).toBeUndefined();
   });
 
   it('accepts a valid legacy ISO-string expiry (backward compatibility)', async () => {
@@ -198,7 +202,8 @@ describe('pre-sign-up trigger', () => {
     const { handler } = await import('../../triggers/pre-sign-up');
     const result = await handler(buildPreSignUpEvent());
 
-    expect(result.response.autoConfirmUser).toBe(true);
+    // Recognised as a valid invitation → no error, no auto-confirm bypass.
+    expect(result.response.autoConfirmUser).toBe(false);
   });
 
   it('rejects an EXPIRED legacy ISO-string invitation', async () => {
