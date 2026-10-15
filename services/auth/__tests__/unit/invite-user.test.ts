@@ -100,7 +100,6 @@ describe('invite-user handler', () => {
   it('returns 201 with invitationId and expiresAt on success', async () => {
     cognitoMock.on(AdminCreateUserCommand).resolves({});
     cognitoMock.on(AdminAddUserToGroupCommand).resolves({});
-    cognitoMock.on(AdminUpdateUserAttributesCommand).resolves({});
     ddbMock.on(PutCommand).resolves({});
 
     const { handler } = await import('../../handlers/invite-user');
@@ -116,7 +115,6 @@ describe('invite-user handler', () => {
   it('creates Cognito user with AdminCreateUser (suppressed message)', async () => {
     cognitoMock.on(AdminCreateUserCommand).resolves({});
     cognitoMock.on(AdminAddUserToGroupCommand).resolves({});
-    cognitoMock.on(AdminUpdateUserAttributesCommand).resolves({});
     ddbMock.on(PutCommand).resolves({});
 
     const { handler } = await import('../../handlers/invite-user');
@@ -132,10 +130,66 @@ describe('invite-user handler', () => {
     });
   });
 
+  it('supplies the immutable custom:tenantId and custom:role AT user creation', async () => {
+    cognitoMock.on(AdminCreateUserCommand).resolves({});
+    cognitoMock.on(AdminAddUserToGroupCommand).resolves({});
+    ddbMock.on(PutCommand).resolves({});
+
+    const { handler } = await import('../../handlers/invite-user');
+    const event = buildEvent({ email: 'newuser@example.com', role: 'editor', tenantId: 'tenant-1' });
+    await handler(event as any, {} as any);
+
+    const input = cognitoMock.commandCalls(AdminCreateUserCommand)[0].args[0].input;
+    const attrs = Object.fromEntries(
+      (input.UserAttributes ?? []).map((a: { Name?: string; Value?: string }) => [a.Name, a.Value]),
+    );
+    expect(attrs['custom:tenantId']).toBe('tenant-1');
+    expect(attrs['custom:role']).toBe('editor');
+    expect(attrs['email']).toBe('newuser@example.com');
+    expect(attrs['email_verified']).toBe('true');
+  });
+
+  it('never calls AdminUpdateUserAttributes (immutable attr cannot be set post-creation)', async () => {
+    cognitoMock.on(AdminCreateUserCommand).resolves({});
+    cognitoMock.on(AdminAddUserToGroupCommand).resolves({});
+    ddbMock.on(PutCommand).resolves({});
+
+    const { handler } = await import('../../handlers/invite-user');
+    const event = buildEvent({ email: 'newuser@example.com', role: 'editor', tenantId: 'tenant-1' });
+    await handler(event as any, {} as any);
+
+    expect(cognitoMock.commandCalls(AdminUpdateUserAttributesCommand)).toHaveLength(0);
+  });
+
+  it('writes the invitation record BEFORE creating the Cognito user', async () => {
+    // Record call order across both clients using a shared counter.
+    let order = 0;
+    let putOrder = -1;
+    let createOrder = -1;
+    ddbMock.on(PutCommand).callsFake(() => {
+      putOrder = order++;
+      return {};
+    });
+    cognitoMock.on(AdminCreateUserCommand).callsFake(() => {
+      createOrder = order++;
+      return {};
+    });
+    cognitoMock.on(AdminAddUserToGroupCommand).resolves({});
+
+    const { handler } = await import('../../handlers/invite-user');
+    const event = buildEvent({ email: 'newuser@example.com', role: 'editor', tenantId: 'tenant-1' });
+    await handler(event as any, {} as any);
+
+    expect(putOrder).toBeGreaterThanOrEqual(0);
+    expect(createOrder).toBeGreaterThanOrEqual(0);
+    // Invitation record is persisted before the user is created, so PreSignUp
+    // (fired by AdminCreateUser) can read a consistent invitation state.
+    expect(putOrder).toBeLessThan(createOrder);
+  });
+
   it('adds user to Seller group', async () => {
     cognitoMock.on(AdminCreateUserCommand).resolves({});
     cognitoMock.on(AdminAddUserToGroupCommand).resolves({});
-    cognitoMock.on(AdminUpdateUserAttributesCommand).resolves({});
     ddbMock.on(PutCommand).resolves({});
 
     const { handler } = await import('../../handlers/invite-user');
@@ -154,7 +208,6 @@ describe('invite-user handler', () => {
   it('stores invitation record in DynamoDB', async () => {
     cognitoMock.on(AdminCreateUserCommand).resolves({});
     cognitoMock.on(AdminAddUserToGroupCommand).resolves({});
-    cognitoMock.on(AdminUpdateUserAttributesCommand).resolves({});
     ddbMock.on(PutCommand).resolves({});
 
     const { handler } = await import('../../handlers/invite-user');
@@ -179,7 +232,6 @@ describe('invite-user handler', () => {
   it('emits auth.user.invited event', async () => {
     cognitoMock.on(AdminCreateUserCommand).resolves({});
     cognitoMock.on(AdminAddUserToGroupCommand).resolves({});
-    cognitoMock.on(AdminUpdateUserAttributesCommand).resolves({});
     ddbMock.on(PutCommand).resolves({});
 
     const { handler } = await import('../../handlers/invite-user');

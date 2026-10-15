@@ -15,7 +15,6 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda
 import {
   AdminCreateUserCommand,
   AdminAddUserToGroupCommand,
-  AdminUpdateUserAttributesCommand,
   UsernameExistsException,
   NotAuthorizedException,
 } from '@aws-sdk/client-cognito-identity-provider';
@@ -103,43 +102,16 @@ async function baseHandler(event: InviteUserEvent): Promise<APIGatewayProxyResul
   const token = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(); // 7 days
 
+  const invitationId = crypto.randomUUID();
+
   try {
-    // Step 1: Create Cognito user (suppress default welcome email)
-    await cognitoClient.send(
-      new AdminCreateUserCommand({
-        UserPoolId: userPoolId,
-        Username: email,
-        MessageAction: 'SUPPRESS',
-        UserAttributes: [
-          { Name: 'email', Value: email },
-          { Name: 'email_verified', Value: 'true' },
-        ],
-      }),
-    );
-
-    // Step 2: Add user to 'Seller' group
-    await cognitoClient.send(
-      new AdminAddUserToGroupCommand({
-        UserPoolId: userPoolId,
-        Username: email,
-        GroupName: 'Seller',
-      }),
-    );
-
-    // Step 3: Set custom attributes (tenantId, role)
-    await cognitoClient.send(
-      new AdminUpdateUserAttributesCommand({
-        UserPoolId: userPoolId,
-        Username: email,
-        UserAttributes: [
-          { Name: 'custom:tenantId', Value: tenantId },
-          { Name: 'custom:role', Value: role },
-        ],
-      }),
-    );
-
-    // Step 4: Store invitation record in DynamoDB
-    const invitationId = crypto.randomUUID();
+    // Step 1: Store the invitation record FIRST, before the user exists.
+    //
+    // Ordering matters: AdminCreateUser fires the PreSignUp trigger
+    // (triggerSource PreSignUp_AdminCreateUser), whose invitation lookup reads
+    // this record by email. Writing it first guarantees the trigger and the
+    // handler agree on invitation state and never races into the self-signup
+    // branch for an invited user.
     const docClient = getDynamoDocClient();
 
     await docClient.send(
@@ -161,7 +133,36 @@ async function baseHandler(event: InviteUserEvent): Promise<APIGatewayProxyResul
       }),
     );
 
-    // Step 5: Emit auth.user.invited event (fire-and-forget)
+    // Step 2: Create the Cognito user with the authoritative identity set AT
+    // creation. The immutable custom:tenantId can ONLY be populated here (AWS
+    // forbids updating it afterwards), so tenantId and role are supplied as
+    // initial UserAttributes rather than via a later AdminUpdateUserAttributes.
+    // We do NOT rely on the PreSignUp trigger mutating request.userAttributes
+    // to persist these values.
+    await cognitoClient.send(
+      new AdminCreateUserCommand({
+        UserPoolId: userPoolId,
+        Username: email,
+        MessageAction: 'SUPPRESS',
+        UserAttributes: [
+          { Name: 'email', Value: email },
+          { Name: 'email_verified', Value: 'true' },
+          { Name: 'custom:tenantId', Value: tenantId },
+          { Name: 'custom:role', Value: role },
+        ],
+      }),
+    );
+
+    // Step 3: Add user to 'Seller' group
+    await cognitoClient.send(
+      new AdminAddUserToGroupCommand({
+        UserPoolId: userPoolId,
+        Username: email,
+        GroupName: 'Seller',
+      }),
+    );
+
+    // Step 4: Emit auth.user.invited event (fire-and-forget)
     emitAuthEvent({
       detailType: 'auth.user.invited',
       detail: {
