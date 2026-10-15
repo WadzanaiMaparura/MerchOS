@@ -2,6 +2,15 @@
 
 import React, { useId } from 'react';
 
+/**
+ * Internal marker prop injected by FormField onto the control it renders.
+ * When present, Input treats FormField as the owner of label/error rendering
+ * and suppresses its own error paragraph to avoid duplicate messages.
+ * Not part of the public API — consumers should not set this directly.
+ * @internal
+ */
+export const FORM_FIELD_MANAGED = 'data-form-field-managed' as const;
+
 export interface InputProps
   extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type'> {
   /** Input type */
@@ -43,6 +52,13 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
     const inputId = externalId || generatedId;
     const errorId = `${inputId}-error`;
 
+    // When rendered inside a FormField, that component owns the label/error
+    // display (and the aria-describedby/errorId wiring). Suppress Input's own
+    // error paragraph to prevent the same message rendering twice.
+    const isFormFieldManaged =
+      (props as Record<string, unknown>)[FORM_FIELD_MANAGED] !== undefined;
+    const showOwnError = Boolean(error) && !isFormFieldManaged;
+
     return (
       <div className="flex flex-col gap-1.5">
         {label && (
@@ -83,7 +99,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
             .join(' ')}
           {...props}
         />
-        {error && (
+        {showOwnError && (
           <p
             id={errorId}
             className="text-sm text-red-600"
