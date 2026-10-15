@@ -80,6 +80,27 @@ export class AuthApiStack extends cdk.Stack {
     });
 
     // -----------------------------------------------------------------------
+    // CORS allow-list (explicit origins only — never '*')
+    // -----------------------------------------------------------------------
+    //
+    // Each environment keeps its intended custom-domain origin, plus the exact
+    // frontend origins required to actually test that environment. The dev
+    // environment is currently served by the Amplify `main` branch, so its
+    // amplifyapp.com origin and localhost (for local development) are allowed.
+    // We never use '*' — allowCredentials:true forbids it and it would be
+    // insecure.
+    const customDomainOrigin = `https://${env === 'production' ? 'app' : env}.merchos.io`;
+    const corsAllowOrigins: string[] = [customDomainOrigin];
+    if (env === 'dev') {
+      corsAllowOrigins.push(
+        // Active Amplify branch hosting the dev frontend.
+        'https://main.d1jwaah0zt7pg5.amplifyapp.com',
+        // Local development.
+        'http://localhost:3000',
+      );
+    }
+
+    // -----------------------------------------------------------------------
     // HTTP API Gateway
     // -----------------------------------------------------------------------
 
@@ -89,7 +110,7 @@ export class AuthApiStack extends cdk.Stack {
       corsPreflight: {
         allowHeaders: ['Content-Type', 'Authorization', 'X-Amz-Date'],
         allowMethods: [CorsHttpMethod.GET, CorsHttpMethod.POST, CorsHttpMethod.PUT, CorsHttpMethod.DELETE, CorsHttpMethod.OPTIONS],
-        allowOrigins: [`https://${env === 'production' ? 'app' : env}.merchos.io`],
+        allowOrigins: corsAllowOrigins,
         allowCredentials: true,
         maxAge: cdk.Duration.hours(1),
       },

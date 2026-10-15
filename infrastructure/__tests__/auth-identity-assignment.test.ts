@@ -166,6 +166,24 @@ describe('Auth identity-assignment infrastructure', () => {
     });
   });
 
+  it('CORS allow-list includes the required explicit dev origins and never uses "*"', () => {
+    const { authApi } = synth();
+    const apis = authApi.findResources('AWS::ApiGatewayV2::Api');
+    const api = Object.values(apis)[0] as {
+      Properties: { CorsConfiguration?: { AllowOrigins?: string[] } };
+    };
+    const origins = api.Properties.CorsConfiguration?.AllowOrigins ?? [];
+
+    // Required explicit origins for dev testing.
+    expect(origins).toContain('https://dev.merchos.io');
+    expect(origins).toContain('https://main.d1jwaah0zt7pg5.amplifyapp.com');
+    expect(origins).toContain('http://localhost:3000');
+    // Never a wildcard.
+    expect(origins).not.toContain('*');
+    // allowCredentials must stay on (and is incompatible with '*').
+    expect(api.Properties.CorsConfiguration?.['AllowCredentials' as never]).toBe(true);
+  });
+
   it('defines a mutable custom:tenantIdAssigned attribute alongside the immutable custom:tenantId', () => {
     const { auth } = synth();
     const pools = auth.findResources('AWS::Cognito::UserPool');
