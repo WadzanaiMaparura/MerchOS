@@ -295,7 +295,10 @@ export class AuthApiStack extends cdk.Stack {
       }),
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: ['dynamodb:PutItem'],
+        // PutItem writes the invitation record. DeleteItem is required for
+        // conditional compensation when a write outcome is ambiguous (the
+        // record may have committed before the client errored).
+        actions: ['dynamodb:PutItem', 'dynamodb:DeleteItem'],
         resources: [invitationsTable.tableArn],
       }),
     ]);

@@ -215,6 +215,9 @@ describe('Auth identity-assignment infrastructure', () => {
     expect(inviteActions).toContain('cognito-idp:AdminAddUserToGroup');
     expect(inviteActions).toContain('cognito-idp:AdminRemoveUserFromGroup');
     expect(inviteActions).toContain('cognito-idp:AdminDeleteUser');
+    // Conditional invitation-record cleanup for ambiguous writes.
+    expect(inviteActions).toContain('dynamodb:PutItem');
+    expect(inviteActions).toContain('dynamodb:DeleteItem');
     // The impossible post-creation immutable-attribute update is gone.
     expect(inviteActions).not.toContain('cognito-idp:AdminUpdateUserAttributes');
   });

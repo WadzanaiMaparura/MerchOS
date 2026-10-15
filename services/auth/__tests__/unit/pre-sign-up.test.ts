@@ -67,6 +67,7 @@ describe('pre-sign-up trigger', () => {
           tenantId: 'tenant-123',
           role: 'editor',
           status: 'pending',
+          expiresAt: Math.floor(Date.now() / 1000) + 3600,
         },
       ],
     });
@@ -137,6 +138,7 @@ describe('pre-sign-up trigger', () => {
           tenantId: 'tenant-xyz',
           role: 'viewer',
           status: 'pending',
+          expiresAt: Math.floor(Date.now() / 1000) + 3600,
         },
       ],
     });
@@ -173,6 +175,97 @@ describe('pre-sign-up trigger', () => {
 
     expect(result.response.autoConfirmUser).toBe(true);
     expect(result.request.userAttributes['custom:tenantId']).toBe('tenant-future');
+  });
+
+  it('accepts a valid legacy ISO-string expiry (backward compatibility)', async () => {
+    const futureIso = new Date(Date.now() + 3600 * 1000).toISOString();
+    ddbDocMock.on(QueryCommand).resolves({
+      Items: [
+        {
+          PK: 'TENANT#tenant-legacy',
+          SK: 'INVITE#newuser@example.com',
+          email: 'newuser@example.com',
+          tenantId: 'tenant-legacy',
+          role: 'editor',
+          status: 'pending',
+          expiresAt: futureIso,
+        },
+      ],
+    });
+
+    const { handler } = await import('../../triggers/pre-sign-up');
+    const result = await handler(buildPreSignUpEvent());
+
+    expect(result.response.autoConfirmUser).toBe(true);
+    expect(result.request.userAttributes['custom:tenantId']).toBe('tenant-legacy');
+  });
+
+  it('rejects an EXPIRED legacy ISO-string invitation', async () => {
+    const pastIso = new Date(Date.now() - 3600 * 1000).toISOString();
+    ddbDocMock.on(QueryCommand).resolves({
+      Items: [
+        {
+          PK: 'TENANT#tenant-legacy-exp',
+          SK: 'INVITE#newuser@example.com',
+          email: 'newuser@example.com',
+          tenantId: 'tenant-legacy-exp',
+          role: 'editor',
+          status: 'pending',
+          expiresAt: pastIso,
+        },
+      ],
+    });
+
+    const { handler } = await import('../../triggers/pre-sign-up');
+    const result = await handler(buildPreSignUpEvent());
+
+    expect(result.response.autoConfirmUser).toBe(false);
+    expect(result.request.userAttributes['custom:tenantId']).toBeUndefined();
+  });
+
+  it('fails closed when expiry is MISSING (not treated as a valid invitation)', async () => {
+    ddbDocMock.on(QueryCommand).resolves({
+      Items: [
+        {
+          PK: 'TENANT#tenant-noexp',
+          SK: 'INVITE#newuser@example.com',
+          email: 'newuser@example.com',
+          tenantId: 'tenant-noexp',
+          role: 'editor',
+          status: 'pending',
+          // expiresAt intentionally absent
+        },
+      ],
+    });
+
+    const { handler } = await import('../../triggers/pre-sign-up');
+    const result = await handler(buildPreSignUpEvent());
+
+    expect(result.response.autoConfirmUser).toBe(false);
+    expect(result.request.userAttributes['custom:tenantId']).toBeUndefined();
+    expect(result.request.userAttributes['custom:role']).toBeUndefined();
+  });
+
+  it('fails closed when expiry is MALFORMED', async () => {
+    ddbDocMock.on(QueryCommand).resolves({
+      Items: [
+        {
+          PK: 'TENANT#tenant-badexp',
+          SK: 'INVITE#newuser@example.com',
+          email: 'newuser@example.com',
+          tenantId: 'tenant-badexp',
+          role: 'editor',
+          status: 'pending',
+          expiresAt: 'not-a-date',
+        },
+      ],
+    });
+
+    const { handler } = await import('../../triggers/pre-sign-up');
+    const result = await handler(buildPreSignUpEvent());
+
+    expect(result.response.autoConfirmUser).toBe(false);
+    expect(result.request.userAttributes['custom:tenantId']).toBeUndefined();
   });
 
   it('rejects an EXPIRED invitation and never auto-confirms (TTL deletion is async)', async () => {

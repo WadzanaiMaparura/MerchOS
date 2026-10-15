@@ -9,7 +9,7 @@ import {
   AdminUpdateUserAttributesCommand,
   UsernameExistsException,
 } from '@aws-sdk/client-cognito-identity-provider';
-import { DynamoDBDocumentClient, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { resetCognitoClient } from '../../utils/cognito-client';
 
 // ---------------------------------------------------------------------------
@@ -323,6 +323,55 @@ describe('invite-user handler', () => {
     // Compensation removes group membership and deletes the user, so a retry
     // is not blocked by UsernameExistsException and no orphan remains.
     expect(cognitoMock.commandCalls(AdminRemoveUserFromGroupCommand)).toHaveLength(1);
+    expect(cognitoMock.commandCalls(AdminDeleteUserCommand)).toHaveLength(1);
+  });
+
+  it('compensates an AMBIGUOUS invitation write by conditionally deleting the record and the user', async () => {
+    // Simulate a write that may have persisted but reported an error
+    // (timeout / connection reset). The handler must attempt a conditional
+    // delete of the record (by invitationId) plus full user rollback.
+    cognitoMock.on(AdminCreateUserCommand).resolves({});
+    cognitoMock.on(AdminAddUserToGroupCommand).resolves({});
+    cognitoMock.on(AdminRemoveUserFromGroupCommand).resolves({});
+    cognitoMock.on(AdminDeleteUserCommand).resolves({});
+    ddbMock.on(PutCommand).rejects(new Error('ETIMEDOUT (ambiguous)'));
+    ddbMock.on(DeleteCommand).resolves({});
+
+    const { handler } = await import('../../handlers/invite-user');
+    const event = buildEvent({ email: 'newuser@example.com', role: 'editor', tenantId: 'tenant-1' });
+    const result = await handler(event as any, {} as any) as any;
+
+    expect(result.statusCode).toBe(500);
+
+    // Conditional record cleanup: delete scoped to this invocation's record,
+    // guarded by invitationId so a different record is never removed.
+    const del = ddbMock.commandCalls(DeleteCommand);
+    expect(del).toHaveLength(1);
+    expect(del[0].args[0].input).toMatchObject({
+      Key: { PK: 'TENANT#tenant-1', SK: 'INVITE#newuser@example.com' },
+      ConditionExpression: 'invitationId = :iid',
+    });
+    // And the partially provisioned user is removed from group + deleted.
+    expect(cognitoMock.commandCalls(AdminRemoveUserFromGroupCommand)).toHaveLength(1);
+    expect(cognitoMock.commandCalls(AdminDeleteUserCommand)).toHaveLength(1);
+  });
+
+  it('treats a ConditionalCheckFailed during record cleanup as nothing-to-clean (no false failure)', async () => {
+    cognitoMock.on(AdminCreateUserCommand).resolves({});
+    cognitoMock.on(AdminAddUserToGroupCommand).resolves({});
+    cognitoMock.on(AdminRemoveUserFromGroupCommand).resolves({});
+    cognitoMock.on(AdminDeleteUserCommand).resolves({});
+    ddbMock.on(PutCommand).rejects(new Error('ambiguous'));
+    const condErr = new Error('conditional check failed');
+    (condErr as any).name = 'ConditionalCheckFailedException';
+    ddbMock.on(DeleteCommand).rejects(condErr);
+
+    const { handler } = await import('../../handlers/invite-user');
+    const event = buildEvent({ email: 'newuser@example.com', role: 'editor', tenantId: 'tenant-1' });
+    const result = await handler(event as any, {} as any) as any;
+
+    // Still a 500 (the invite failed), and the user is still cleaned up.
+    expect(result.statusCode).toBe(500);
     expect(cognitoMock.commandCalls(AdminDeleteUserCommand)).toHaveLength(1);
   });
 

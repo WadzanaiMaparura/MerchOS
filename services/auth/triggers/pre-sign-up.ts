@@ -47,8 +47,12 @@ interface InvitationRecord {
   tenantId: string;
   role: string;
   status: string;
-  /** Unix epoch seconds. Drives DynamoDB TTL and is checked explicitly here. */
-  expiresAt?: number;
+  /**
+   * Expiry. Current records store Unix epoch SECONDS (number); legacy records
+   * stored an ISO-8601 string. Both are supported during migration and parsed
+   * via parseExpiryToEpochSeconds. Missing/malformed values fail closed.
+   */
+  expiresAt?: number | string;
 }
 
 /**
@@ -143,15 +147,49 @@ async function findPendingInvitation(
   }
 
   // Explicit expiry check. DynamoDB TTL deletion is ASYNCHRONOUS, so an expired
-  // record may still be readable; we must never accept it as a valid invitation
-  // or let it drive auto-confirmation. expiresAt is Unix epoch seconds.
+  // record may still be readable; we must never accept it as valid or let it
+  // drive auto-confirmation.
+  //
+  // Expiry must be present and valid. A missing or malformed expiry FAILS
+  // CLOSED (treated as not-an-invitation) rather than granting invitation
+  // privileges. Both the current numeric epoch (seconds) and the legacy ISO
+  // string format are supported during migration.
+  const expiresAtSeconds = parseExpiryToEpochSeconds(candidate.expiresAt);
+  if (expiresAtSeconds === null) {
+    logger.warn('Invitation has missing/malformed expiry; failing closed (self-signup)', {
+      email,
+    });
+    return null;
+  }
+
   const nowSeconds = Math.floor(Date.now() / 1000);
-  if (typeof candidate.expiresAt === 'number' && candidate.expiresAt <= nowSeconds) {
+  if (expiresAtSeconds <= nowSeconds) {
     logger.warn('Invitation has expired; treating as self-signup', { email });
     return null;
   }
 
   return candidate as InvitationRecord;
+}
+
+/**
+ * Parses an invitation expiry into Unix epoch SECONDS.
+ *
+ * Accepts:
+ *   - number: Unix epoch seconds (current format);
+ *   - string: ISO-8601 date (legacy format), converted to epoch seconds.
+ *
+ * Returns null for missing, wrong-typed, or unparseable values so callers can
+ * fail closed. Non-finite / NaN inputs also return null.
+ */
+export function parseExpiryToEpochSeconds(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const ms = Date.parse(value);
+    return Number.isNaN(ms) ? null : Math.floor(ms / 1000);
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------

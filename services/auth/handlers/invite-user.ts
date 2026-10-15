@@ -21,7 +21,7 @@ import {
   NotAuthorizedException,
 } from '@aws-sdk/client-cognito-identity-provider';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 
 import { inviteUserSchema } from '../schemas';
 import { getCognitoClient } from '../utils/cognito-client';
@@ -128,10 +128,49 @@ async function baseHandler(event: InviteUserEvent): Promise<APIGatewayProxyResul
   // and the operation remains all-or-nothing / retry-safe.
   let userCreated = false;
   let addedToGroup = false;
+  // Set once the PutCommand has been DISPATCHED. The outcome may be ambiguous
+  // (e.g. timeout/connection error after the write reached DynamoDB), so if the
+  // write errors we must still attempt to remove any possibly-committed record.
+  let recordWriteAttempted = false;
 
-  const compensate = async (): Promise<void> => {
-    // Best-effort rollback of a partially provisioned user. Each step is
-    // guarded so one cleanup failure does not mask the original error.
+  const compensate = async (): Promise<{ ok: boolean }> => {
+    // Best-effort rollback of partial provisioning. Each step is guarded so one
+    // cleanup failure does not mask the original error; we track whether all
+    // cleanup succeeded so callers can avoid claiming all-or-nothing when it did
+    // not.
+    let ok = true;
+
+    // 1. Remove a possibly-committed invitation record. Conditional on this
+    //    invocation's invitationId so we never delete a different/legitimate
+    //    record (e.g. a concurrent successful invite for the same email).
+    if (recordWriteAttempted) {
+      try {
+        await getDynamoDocClient().send(
+          new DeleteCommand({
+            TableName: invitationsTable,
+            Key: { PK: `TENANT#${tenantId}`, SK: `INVITE#${email}` },
+            ConditionExpression: 'invitationId = :iid',
+            ExpressionAttributeValues: { ':iid': invitationId },
+          }),
+        );
+      } catch (err) {
+        // A ConditionalCheckFailedException means the record either was never
+        // committed or belongs to another invocation — both are acceptable
+        // (nothing of ours to remove). Any OTHER error is a real cleanup
+        // failure that leaves possible residue.
+        const name = (err as { name?: string })?.name;
+        if (name !== 'ConditionalCheckFailedException') {
+          ok = false;
+          logger.error('Compensation: failed to delete possibly-committed invitation record', {
+            email,
+            invitationId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+    }
+
+    // 2. Remove group membership.
     if (addedToGroup) {
       try {
         await cognitoClient.send(
@@ -142,24 +181,30 @@ async function baseHandler(event: InviteUserEvent): Promise<APIGatewayProxyResul
           }),
         );
       } catch (err) {
+        ok = false;
         logger.error('Compensation: failed to remove user from group', {
           email,
           error: err instanceof Error ? err.message : String(err),
         });
       }
     }
+
+    // 3. Delete the partially provisioned user.
     if (userCreated) {
       try {
         await cognitoClient.send(
           new AdminDeleteUserCommand({ UserPoolId: userPoolId, Username: email }),
         );
       } catch (err) {
+        ok = false;
         logger.error('Compensation: failed to delete partially provisioned user', {
           email,
           error: err instanceof Error ? err.message : String(err),
         });
       }
     }
+
+    return { ok };
   };
 
   try {
@@ -194,8 +239,13 @@ async function baseHandler(event: InviteUserEvent): Promise<APIGatewayProxyResul
     addedToGroup = true;
 
     // Step 3: Store the invitation record. On failure, roll back the user +
-    // group so a retry is not blocked by UsernameExistsException.
+    // group so a retry is not blocked by UsernameExistsException. Mark the
+    // write as attempted BEFORE dispatch: if the SDK call errors with an
+    // ambiguous outcome (timeout/connection reset after the write reached
+    // DynamoDB), compensation must still try to remove the possibly-committed
+    // record (conditionally, by this invocation's invitationId).
     const docClient = getDynamoDocClient();
+    recordWriteAttempted = true;
     await docClient.send(
       new PutCommand({
         TableName: invitationsTable,
@@ -262,7 +312,10 @@ async function baseHandler(event: InviteUserEvent): Promise<APIGatewayProxyResul
 
     if (error instanceof NotAuthorizedException) {
       // Roll back any partial provisioning before returning.
-      await compensate();
+      const { ok } = await compensate();
+      if (!ok) {
+        logger.error('Compensation incomplete after authorization failure — manual recovery may be required', { email, invitationId });
+      }
       logger.warn('Invite failed — not authorized', { email });
       return {
         statusCode: 403,
@@ -273,15 +326,29 @@ async function baseHandler(event: InviteUserEvent): Promise<APIGatewayProxyResul
       };
     }
 
-    // Any other failure (e.g. AddToGroup error, DynamoDB write failure): roll
-    // back the partially provisioned user so state stays consistent and a retry
-    // is not blocked by UsernameExistsException.
-    await compensate();
+    // Any other failure (e.g. AddToGroup error, or an ambiguous DynamoDB write
+    // outcome): roll back the partially provisioned user AND any possibly
+    // committed invitation record so state stays consistent and a retry is not
+    // blocked by UsernameExistsException.
+    const { ok: compensationOk } = await compensate();
 
     logger.error('Unexpected error during user invitation', {
       error: error instanceof Error ? error.message : String(error),
       email,
+      invitationId,
+      // Surface whether cleanup fully succeeded. When false, residual state may
+      // remain and the operation is NOT guaranteed all-or-nothing.
+      compensationComplete: compensationOk,
     });
+
+    if (!compensationOk) {
+      // Observable + recoverable: do not silently claim success/consistency.
+      logger.error('Compensation incomplete — invited user and/or invitation record may require manual cleanup', {
+        email,
+        invitationId,
+        tenantId,
+      });
+    }
 
     return {
       statusCode: 500,
