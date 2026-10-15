@@ -344,9 +344,13 @@ export class AuthStack extends cdk.Stack {
       },
       cdk.Stack.of(this),
     );
+    // AdminUpdateUserAttributes (identity) + AdminAddUserToGroup (invited
+    // self-registrants join 'Seller' so RBAC's cognito:groups claim authorizes
+    // them). Both scoped to the region/account userpool ARN pattern to avoid
+    // the intra-stack circular dependency described above.
     postConfirmationRole.addToPolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
-      actions: ['cognito-idp:AdminUpdateUserAttributes'],
+      actions: ['cognito-idp:AdminUpdateUserAttributes', 'cognito-idp:AdminAddUserToGroup'],
       resources: [userPoolArnPattern],
     }));
     // Read the EXACT pending-registration record by id (GetItem on PK) from the

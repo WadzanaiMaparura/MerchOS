@@ -73,10 +73,12 @@ describe('Auth identity-assignment infrastructure', () => {
     expect(allActions(auth)).toContain('kms:Decrypt');
   });
 
-  it('grants PostConfirmation cognito-idp:AdminUpdateUserAttributes and tenants-table GetItem', () => {
+  it('grants PostConfirmation AdminUpdateUserAttributes, AdminAddUserToGroup and tenants-table GetItem', () => {
     const { auth } = synth();
     const actions = allActions(auth);
     expect(actions).toContain('cognito-idp:AdminUpdateUserAttributes');
+    // Invited self-registrants are added to the Seller group here.
+    expect(actions).toContain('cognito-idp:AdminAddUserToGroup');
     expect(actions).toContain('dynamodb:GetItem');
   });
 

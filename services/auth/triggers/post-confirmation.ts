@@ -36,6 +36,7 @@ import type { PostConfirmationTriggerEvent } from 'aws-lambda';
 import {
   CognitoIdentityProviderClient,
   AdminUpdateUserAttributesCommand,
+  AdminAddUserToGroupCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
 import { Logger } from '@aws-lambda-powertools/logger';
 
@@ -122,6 +123,7 @@ export async function handler(
   // -------------------------------------------------------------------------
   let tenantId: string;
   let role: string;
+  let isInvited = false;
 
   const invitation = await findGenuineInvitationByEmail(email);
   if (invitation) {
@@ -130,6 +132,7 @@ export async function handler(
     });
     tenantId = invitation.tenantId;
     role = invitation.role;
+    isInvited = true;
   } else {
     // -----------------------------------------------------------------------
     // Self-signup: resolve the server-trusted tenantId from the EXACT pending
@@ -202,7 +205,36 @@ export async function handler(
     throw error;
   }
 
-  logger.info('Trusted identity assigned', { userId });
+  // -------------------------------------------------------------------------
+  // Invited self-registrants must also be placed in the 'Seller' Cognito group
+  // so the RBAC resolver (which authorizes on the cognito:groups claim) grants
+  // them access — matching the admin invite-user flow, which always adds the
+  // user to 'Seller'. AdminAddUserToGroup is idempotent (re-adding an existing
+  // member succeeds), so this is retry-safe. If it fails we throw: an invited
+  // user with identity attributes but no group would be unauthorized, so we do
+  // NOT report success.
+  //
+  // Self-signup owners are not group-assigned here; that remains part of the
+  // separately gated completion path and is out of scope for this change.
+  if (isInvited) {
+    try {
+      await getCognitoClient().send(
+        new AdminAddUserToGroupCommand({
+          UserPoolId: userPoolId,
+          Username: userId,
+          GroupName: 'Seller',
+        }),
+      );
+    } catch (error) {
+      logger.error('Failed to add invited user to Seller group', {
+        userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
+
+  logger.info('Trusted identity assigned', { userId, isInvited });
 
   // IMPORTANT: do NOT delete the pending registration here. This change only
   // assigns Cognito identity attributes; it does not yet persist the durable

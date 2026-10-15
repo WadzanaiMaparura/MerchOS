@@ -3,6 +3,7 @@ import { mockClient } from 'aws-sdk-client-mock';
 import {
   CognitoIdentityProviderClient,
   AdminUpdateUserAttributesCommand,
+  AdminAddUserToGroupCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
 import { DynamoDBDocumentClient, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import type { PostConfirmationTriggerEvent } from 'aws-lambda';
@@ -95,6 +96,7 @@ describe('post-confirmation trigger — trusted identity assignment', () => {
   beforeEach(() => {
     cognitoMock.reset();
     cognitoMock.on(AdminUpdateUserAttributesCommand).resolves({});
+    cognitoMock.on(AdminAddUserToGroupCommand).resolves({});
     ddbMock.reset();
     // Default: no invitation for this email (self-signup path). Individual
     // tests override to simulate an invited user.
@@ -149,6 +151,45 @@ describe('post-confirmation trigger — trusted identity assignment', () => {
     // Never converted into an owner, never used the self-signup tenant.
     expect(attrs['custom:role']).not.toBe('owner');
     expect(attrs['custom:tenantIdAssigned']).not.toBe('server-tenant-1');
+
+    // And the invited user is placed in the 'Seller' group so the RBAC
+    // resolver (cognito:groups) authorizes them.
+    const groupCalls = cognitoMock.commandCalls(AdminAddUserToGroupCommand);
+    expect(groupCalls).toHaveLength(1);
+    expect(groupCalls[0].args[0].input).toMatchObject({
+      Username: 'confirmed-user-id',
+      GroupName: 'Seller',
+    });
+  });
+
+  it('does NOT add a self-signup owner to the Seller group (invited-only group assignment)', async () => {
+    // No invitation; self-signup path.
+    __setPendingRegistrationRepositoryForTesting(fakeRepo({ 'reg-1': makePending() }));
+
+    await handler(buildEvent('reg-1'));
+
+    expect(cognitoMock.commandCalls(AdminAddUserToGroupCommand)).toHaveLength(0);
+  });
+
+  it('fails (throws) if the invited group assignment cannot complete — no false success', async () => {
+    ddbMock.on(QueryCommand).resolves({
+      Items: [
+        {
+          PK: 'TENANT#invited-tenant',
+          SK: 'INVITE#seller@example.com',
+          email: 'seller@example.com',
+          tenantId: 'invited-tenant',
+          role: 'editor',
+          status: 'pending',
+          expiresAt: NOW_SECONDS + 3600,
+        },
+      ],
+    });
+    cognitoMock.on(AdminAddUserToGroupCommand).rejects(new Error('group failure'));
+    __setPendingRegistrationRepositoryForTesting(fakeRepo({}));
+
+    await expect(handler(buildEvent('reg-1'))).rejects.toThrow();
+    expect(mockEmitAuthEvent).not.toHaveBeenCalled();
   });
 
   it('ignores an EXPIRED invitation and falls through to self-signup (never invited-as-owner confusion)', async () => {

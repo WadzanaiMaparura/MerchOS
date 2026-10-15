@@ -28,6 +28,18 @@ export class InvitationLookupError extends Error {
 }
 
 /**
+ * Raised when more than one VALID invitation exists for the same email but they
+ * point to DIFFERENT tenants. We fail closed rather than arbitrarily choosing a
+ * tenant, so a user is never silently placed in the wrong tenant.
+ */
+export class AmbiguousInvitationError extends Error {
+  constructor(message: string, public readonly tenantIds: string[]) {
+    super(message);
+    this.name = 'AmbiguousInvitationError';
+  }
+}
+
+/**
  * Parses an invitation expiry into Unix epoch SECONDS.
  * Accepts numeric epoch seconds (current) or an ISO-8601 string (legacy).
  * Returns null for missing / wrong-typed / unparseable values so callers can
@@ -87,8 +99,15 @@ export function __setInvitationDocClientForTesting(client: DynamoDBDocumentClien
  * Looks up a pending invitation for an email via the invitations table
  * email-index GSI.
  *
- * Returns the record only when it is a GENUINE, non-expired invitation.
- * Returns null on a successful lookup with no (valid) invitation.
+ * Deterministic + safe:
+ *   - Queries ALL matching records (follows pagination), not just the first.
+ *   - Validates key shape, status, email and expiry for EACH candidate, so an
+ *     expired/malformed record can never mask another valid invitation.
+ *   - 0 valid  → returns null (self-registration recovery path).
+ *   - ≥1 valid, all for the SAME tenant → returns one (deterministic).
+ *   - ≥1 valid for DIFFERENT tenants → throws AmbiguousInvitationError
+ *     (fail closed; never pick an arbitrary tenant).
+ *
  * Throws InvitationLookupError when the lookup FAILS (DynamoDB/KMS) or when the
  * table is not configured — callers must fail closed on this.
  */
@@ -100,23 +119,55 @@ export async function findGenuineInvitationByEmail(
     throw new InvitationLookupError('INVITATIONS_TABLE is not configured');
   }
 
-  let result;
+  const docClient = getDocClient();
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const valid: InvitationRecord[] = [];
+  let exclusiveStartKey: Record<string, unknown> | undefined;
+
   try {
-    result = await getDocClient().send(
-      new QueryCommand({
-        TableName: invitationsTable,
-        IndexName: 'email-index',
-        KeyConditionExpression: 'email = :email',
-        FilterExpression: '#status = :status',
-        ExpressionAttributeNames: { '#status': 'status' },
-        ExpressionAttributeValues: { ':email': email, ':status': 'pending' },
-        Limit: 1,
-      }),
-    );
+    do {
+      const result = await docClient.send(
+        new QueryCommand({
+          TableName: invitationsTable,
+          IndexName: 'email-index',
+          KeyConditionExpression: 'email = :email',
+          FilterExpression: '#status = :status',
+          ExpressionAttributeNames: { '#status': 'status' },
+          ExpressionAttributeValues: { ':email': email, ':status': 'pending' },
+          ExclusiveStartKey: exclusiveStartKey,
+        }),
+      );
+
+      for (const item of (result.Items ?? []) as Partial<InvitationRecord>[]) {
+        if (isValidInvitation(item, nowSeconds)) {
+          valid.push(item);
+        }
+      }
+
+      exclusiveStartKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+    } while (exclusiveStartKey);
   } catch (error) {
     throw new InvitationLookupError('Invitation lookup failed', error);
   }
 
-  const candidate = result.Items?.[0] as Partial<InvitationRecord> | undefined;
-  return isValidInvitation(candidate) ? candidate : null;
+  if (valid.length === 0) {
+    return null;
+  }
+
+  const distinctTenants = Array.from(new Set(valid.map((v) => v.tenantId)));
+  if (distinctTenants.length > 1) {
+    // Multiple valid invitations to different tenants — refuse to guess.
+    throw new AmbiguousInvitationError(
+      `Multiple valid invitations for ${email} point to different tenants`,
+      distinctTenants,
+    );
+  }
+
+  // One tenant (possibly multiple invite rows); deterministic. Prefer the
+  // latest-expiring row so behaviour is stable if the invited role differs.
+  return valid.reduce((latest, current) => {
+    const l = parseExpiryToEpochSeconds(latest.expiresAt) ?? 0;
+    const c = parseExpiryToEpochSeconds(current.expiresAt) ?? 0;
+    return c > l ? current : latest;
+  });
 }

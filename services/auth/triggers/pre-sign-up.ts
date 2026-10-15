@@ -28,6 +28,7 @@ import { Logger } from '@aws-lambda-powertools/logger';
 import {
   findGenuineInvitationByEmail,
   InvitationLookupError,
+  AmbiguousInvitationError,
   type InvitationRecord,
 } from '../registration/invitation-lookup';
 
@@ -58,9 +59,11 @@ export async function handler(
       error: error instanceof Error ? error.message : String(error),
       email,
     });
-    throw error instanceof InvitationLookupError
-      ? error
-      : new InvitationLookupError('Invitation lookup failed', error);
+    // Ambiguous invitations and lookup failures both fail the sign-up closed.
+    if (error instanceof InvitationLookupError || error instanceof AmbiguousInvitationError) {
+      throw error;
+    }
+    throw new InvitationLookupError('Invitation lookup failed', error);
   }
 
   if (invitation) {
