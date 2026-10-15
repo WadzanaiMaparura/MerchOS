@@ -89,6 +89,26 @@ describe('Auth identity-assignment infrastructure', () => {
     expect(actions).not.toContain('kms:GenerateDataKey');
   });
 
+  it('does NOT grant the PostConfirmation role events:PutEvents (no premature registration event)', () => {
+    const { auth } = synth();
+    // Find the PostConfirmation role's default policy and assert it carries no
+    // EventBridge PutEvents. The identity-assignment stage must not emit
+    // auth.user.registered; that belongs to the downstream completion path.
+    const policies = auth.findResources('AWS::IAM::Policy');
+    const postConfirmationPolicies = Object.entries(policies).filter(([logicalId]) =>
+      logicalId.startsWith('PostConfirmationRole'),
+    );
+    expect(postConfirmationPolicies.length).toBeGreaterThan(0);
+    for (const [, policy] of postConfirmationPolicies) {
+      const statements = (policy as { Properties: { PolicyDocument: { Statement: Array<{ Action?: string | string[] }> } } })
+        .Properties.PolicyDocument.Statement;
+      const actions = statements.flatMap((s) =>
+        Array.isArray(s.Action) ? s.Action : s.Action ? [s.Action] : [],
+      );
+      expect(actions).not.toContain('events:PutEvents');
+    }
+  });
+
   it('does NOT grant the trigger roles any S3 or broad admin wildcard', () => {
     const { auth } = synth();
     const actions = allActions(auth);

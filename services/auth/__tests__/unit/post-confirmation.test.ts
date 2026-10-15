@@ -19,6 +19,8 @@ vi.mock('@aws-lambda-powertools/logger', () => ({
   },
 }));
 
+// The identity-assignment stage must NOT emit auth.user.registered. We mock
+// the emitter purely to prove it is never invoked here.
 const mockEmitAuthEvent = vi.fn().mockResolvedValue({});
 vi.mock('../../utils/event-emitter', () => ({
   emitAuthEvent: (...args: unknown[]) => mockEmitAuthEvent(...args),
@@ -169,7 +171,6 @@ describe('post-confirmation trigger — trusted identity assignment', () => {
 
     expect(cognitoMock.commandCalls(AdminUpdateUserAttributesCommand)).toHaveLength(0);
     expect(repo.getById).not.toHaveBeenCalled();
-    expect(mockEmitAuthEvent).toHaveBeenCalledTimes(1);
   });
 
   it('throws (does not report success) when AdminUpdateUserAttributes fails', async () => {
@@ -177,6 +178,30 @@ describe('post-confirmation trigger — trusted identity assignment', () => {
     __setPendingRegistrationRepositoryForTesting(fakeRepo({ 'reg-1': makePending() }));
 
     await expect(handler(buildEvent('reg-1'))).rejects.toThrow();
+    expect(mockEmitAuthEvent).not.toHaveBeenCalled();
+  });
+
+  it('does NOT emit auth.user.registered at the identity-assignment stage (self-signup)', async () => {
+    __setPendingRegistrationRepositoryForTesting(fakeRepo({ 'reg-1': makePending() }));
+
+    await handler(buildEvent('reg-1'));
+
+    // Identity attributes were assigned...
+    expect(cognitoMock.commandCalls(AdminUpdateUserAttributesCommand)).toHaveLength(1);
+    // ...but registration-completed event must be deferred to the downstream
+    // completion path once durable records are committed.
+    expect(mockEmitAuthEvent).not.toHaveBeenCalled();
+  });
+
+  it('does NOT emit auth.user.registered for the invited-user path', async () => {
+    __setPendingRegistrationRepositoryForTesting(fakeRepo({ 'reg-1': makePending() }));
+
+    const event = buildEvent('reg-1');
+    event.request.userAttributes['custom:tenantId'] = 'invited-tenant';
+    event.request.userAttributes['custom:role'] = 'editor';
+
+    await handler(event);
+
     expect(mockEmitAuthEvent).not.toHaveBeenCalled();
   });
 

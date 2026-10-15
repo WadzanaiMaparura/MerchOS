@@ -334,11 +334,9 @@ export class AuthStack extends cdk.Stack {
       actions: ['kms:Decrypt'],
       resources: [props.platformKey.keyArn],
     }));
-    postConfirmationRole.addToPolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: ['events:PutEvents'],
-      resources: [props.eventBus.eventBusArn],
-    }));
+    // NOTE: no events:PutEvents is granted. This stage no longer emits
+    // auth.user.registered — that event belongs to the downstream completion
+    // path once durable tenant/owner/consent records are committed.
 
     const postConfirmationFn = new lambdaNodejs.NodejsFunction(this, 'PostConfirmation', {
       ...triggerLambdaProps,

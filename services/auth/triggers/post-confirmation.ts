@@ -12,11 +12,17 @@
  *        on the auto-confirmed user); never convert them into a new owner.
  *      - Self-signups: use the server-generated tenantId from the matching,
  *        non-expired pending-registration record and assign the 'owner' role.
- * 2. Emit auth.user.registered on success.
+ *
+ * This stage does NOT emit auth.user.registered. That event signifies a
+ * completed registration (durable tenant metadata + owner profile + consent),
+ * which this stage does not commit. Per the approved architecture the event is
+ * emitted only by the downstream completion path after those records are
+ * persisted. Emitting it here would falsely signal completion.
  *
  * Deliberately OUT OF SCOPE (gated to other work): writing tenant metadata,
- * owner-profile or consent records, and any SQS/DLQ reconciliation. No
- * organisation name is derived from the email address.
+ * owner-profile or consent records, emitting auth.user.registered, and any
+ * SQS/DLQ reconciliation. No organisation name is derived from the email
+ * address.
  *
  * Failure handling: if required identity assignment cannot be completed, the
  * trigger throws so the operation is not silently reported as successful. It
@@ -31,7 +37,6 @@ import {
 } from '@aws-sdk/client-cognito-identity-provider';
 import { Logger } from '@aws-lambda-powertools/logger';
 
-import { emitAuthEvent } from '../utils/event-emitter';
 import { PendingRegistrationRepository } from '../registration/pending-registration-repository';
 
 const logger = new Logger({ serviceName: 'merch-os-post-confirmation' });
@@ -91,7 +96,7 @@ export async function handler(
       userId,
     });
 
-    await emitRegisteredEvent({ userId, email, tenantId: existingTenantId });
+    // No auth.user.registered emission here — see file header.
     return event;
   }
 
@@ -176,8 +181,10 @@ export async function handler(
   // retained (and will TTL-expire as a backstop) until the approved downstream
   // completion path commits the durable records and performs cleanup. That
   // path remains separately gated.
+  //
+  // No auth.user.registered emission here either — identity assignment is not
+  // registration completion. The downstream completion path owns that event.
 
-  await emitRegisteredEvent({ userId, email, tenantId });
   return event;
 }
 
@@ -199,29 +206,4 @@ function readRegistrationId(event: PostConfirmationTriggerEvent): string | undef
  */
 function reserveFallbackTenantId(): string {
   return crypto.randomUUID();
-}
-
-async function emitRegisteredEvent(args: {
-  userId: string;
-  email: string;
-  tenantId: string;
-}): Promise<void> {
-  try {
-    await emitAuthEvent({
-      detailType: 'auth.user.registered',
-      detail: {
-        userId: args.userId,
-        email: args.email,
-        tenantId: args.tenantId,
-        timestamp: new Date().toISOString(),
-      },
-    });
-    logger.info('auth.user.registered event emitted', { userId: args.userId });
-  } catch (error) {
-    // Event emission failure is non-fatal to identity assignment, but we log
-    // it so it is observable.
-    logger.warn('Failed to emit auth.user.registered event', {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
 }
