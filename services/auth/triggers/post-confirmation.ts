@@ -166,12 +166,16 @@ export async function handler(
   } else if (existingAssignedTenantId && existingRole) {
     // -----------------------------------------------------------------------
     // No invitation, but identity was already assigned by a prior invocation
-    // (self-signup). Idempotent no-op: preserve it, never convert to a new
-    // owner, and do not run the recovery path again. Self-signups are not group
-    // assigned here, so there is nothing to repair.
+    // (self-signup). Preserve it (never re-run recovery, never convert to a new
+    // owner) BUT do not short-circuit: fall through so Seller group membership
+    // is (re)ensured. This makes a prior group-add failure retryable — the
+    // attribute write is skipped (already correct) and only the idempotent
+    // group-add runs.
     // -----------------------------------------------------------------------
-    logger.info('Self-signup identity already assigned; preserving (idempotent)', { userId });
-    return event;
+    logger.info('Self-signup identity already assigned; preserving and ensuring group', { userId });
+    tenantId = existingAssignedTenantId;
+    role = existingRole;
+    attributesAlreadyCorrect = true;
   } else {
     // -----------------------------------------------------------------------
     // Self-signup: resolve the server-trusted tenantId from the EXACT pending
@@ -247,32 +251,38 @@ export async function handler(
   }
 
   // -------------------------------------------------------------------------
-  // Invited self-registrants must also be placed in the 'Seller' Cognito group
-  // so the RBAC resolver (which authorizes on the cognito:groups claim) grants
-  // them access — matching the admin invite-user flow, which always adds the
-  // user to 'Seller'. AdminAddUserToGroup is idempotent (re-adding an existing
-  // member succeeds), so this is retry-safe. If it fails we throw: an invited
-  // user with identity attributes but no group would be unauthorized, so we do
-  // NOT report success.
+  // Place the user in the 'Seller' Cognito group so the RBAC resolver (which
+  // authorizes on the cognito:groups claim) grants dashboard access. This
+  // applies to BOTH:
+  //   - invited self-registrants (matching the admin invite-user flow), and
+  //   - new self-signup OWNERS (who would otherwise have tenant/role attributes
+  //     but no recognised group claim and be denied access).
   //
-  // Self-signup owners are not group-assigned here; that remains part of the
-  // separately gated completion path and is out of scope for this change.
-  if (isInvited) {
-    try {
-      await getCognitoClient().send(
-        new AdminAddUserToGroupCommand({
-          UserPoolId: userPoolId,
-          Username: userId,
-          GroupName: 'Seller',
-        }),
-      );
-    } catch (error) {
-      logger.error('Failed to add invited user to Seller group', {
-        userId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      throw error;
-    }
+  // AdminAddUserToGroup is idempotent (re-adding an existing member succeeds),
+  // so this is retry-safe: if the attribute write succeeded on a prior run but
+  // the group-add failed, a retry repairs group membership without changing the
+  // tenant/role. If it fails we throw — a user with identity but no group would
+  // be unauthorized, so we must NOT report success. Tenant isolation and the
+  // owner role are unaffected (group membership is the platform-role claim; the
+  // tenant-scoped role/tenant live in the custom attributes).
+  //
+  // We never run the group-assignment on the admin-created-invitee fast path
+  // (that returned earlier) — the admin handler already added that user.
+  try {
+    await getCognitoClient().send(
+      new AdminAddUserToGroupCommand({
+        UserPoolId: userPoolId,
+        Username: userId,
+        GroupName: 'Seller',
+      }),
+    );
+  } catch (error) {
+    logger.error('Failed to add user to Seller group', {
+      userId,
+      isInvited,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
   }
 
   logger.info('Trusted identity assigned', { userId, isInvited });

@@ -354,13 +354,51 @@ describe('post-confirmation trigger — trusted identity assignment', () => {
     expect(ddbMock.commandCalls(QueryCommand)).toHaveLength(0);
   });
 
-  it('does NOT add a self-signup owner to the Seller group (invited-only group assignment)', async () => {
-    // No invitation; self-signup path.
+  it('assigns a new self-signup OWNER the server tenant, owner role AND the Seller group', async () => {
+    // No invitation; self-signup path with a valid pending registration.
+    ddbMock.on(QueryCommand).resolves({ Items: [] });
     __setPendingRegistrationRepositoryForTesting(fakeRepo({ 'reg-1': makePending() }));
 
     await handler(buildEvent('reg-1'));
 
-    expect(cognitoMock.commandCalls(AdminAddUserToGroupCommand)).toHaveLength(0);
+    const attrs = attrsFromCall();
+    expect(attrs['custom:tenantIdAssigned']).toBe('server-tenant-1');
+    expect(attrs['custom:role']).toBe('owner');
+
+    // Owner must receive the Seller group so the RBAC resolver authorizes them.
+    const groupCalls = cognitoMock.commandCalls(AdminAddUserToGroupCommand);
+    expect(groupCalls).toHaveLength(1);
+    expect(groupCalls[0].args[0].input).toMatchObject({
+      Username: 'confirmed-user-id',
+      GroupName: 'Seller',
+    });
+  });
+
+  it('owner group assignment is retryable: a prior group-add failure is repaired on re-run', async () => {
+    ddbMock.on(QueryCommand).resolves({ Items: [] });
+    __setPendingRegistrationRepositoryForTesting(fakeRepo({ 'reg-1': makePending() }));
+
+    // First run: identity write succeeds, group-add FAILS → handler throws.
+    cognitoMock.on(AdminAddUserToGroupCommand).rejects(new Error('group failure'));
+    await expect(handler(buildEvent('reg-1'))).rejects.toThrow();
+    expect(mockEmitAuthEvent).not.toHaveBeenCalled();
+
+    // Second run: simulate the attributes already written (idempotent), group
+    // now succeeds. Membership is repaired without changing tenant/role.
+    cognitoMock.reset();
+    cognitoMock.on(AdminUpdateUserAttributesCommand).resolves({});
+    cognitoMock.on(AdminAddUserToGroupCommand).resolves({});
+    __setPendingRegistrationRepositoryForTesting(fakeRepo({ 'reg-1': makePending() }));
+
+    const event = buildEvent('reg-1');
+    event.request.userAttributes['custom:tenantIdAssigned'] = 'server-tenant-1';
+    event.request.userAttributes['custom:role'] = 'owner';
+
+    await handler(event);
+
+    // No attribute rewrite (already correct), but group membership (re)applied.
+    expect(cognitoMock.commandCalls(AdminUpdateUserAttributesCommand)).toHaveLength(0);
+    expect(cognitoMock.commandCalls(AdminAddUserToGroupCommand)).toHaveLength(1);
   });
 
   it('fails (throws) if the invited group assignment cannot complete — no false success', async () => {

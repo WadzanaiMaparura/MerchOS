@@ -24,11 +24,16 @@ export interface PendingMarketingConsent {
 /**
  * The pending-registration record as persisted in DynamoDB.
  *
- * Single-table layout (reuses the invitations table):
+ * Storage: the existing tenants table (merch-os-tenants-<env>, resolved via the
+ * TENANTS_TABLE env var). NOT the invitations table.
  *   PK = `PENDINGREG#<registrationId>`
  *   SK = `METADATA`
- *   email (GSI `email-index` partition key) — enables lookup by verified email
  *   expiresAt — Unix epoch seconds, drives DynamoDB TTL expiry
+ *
+ * Records are resolved by the exact registrationId (GetItem on PK). The email
+ * is stored for correlation against the verified Cognito identity in
+ * PostConfirmation — it is NOT a lookup key (the tenants table has no
+ * email-index GSI), so a record can never be mis-selected by email.
  *
  * SECURITY: no password, passwordConfirmation or verification code is ever
  * stored on this record.
@@ -40,7 +45,10 @@ export interface PendingRegistrationRecord {
   registrationId: string;
   /** Server-generated tenant identifier reserved for this registration. */
   tenantId: string;
-  /** Business email, normalised (trimmed + lowercased). Also the GSI key. */
+  /**
+   * Business email, normalised (trimmed + lowercased). Stored for correlation
+   * against the verified Cognito identity, NOT used as a lookup key.
+   */
   email: string;
   /** Full name supplied on the registration form. */
   fullName: string;
