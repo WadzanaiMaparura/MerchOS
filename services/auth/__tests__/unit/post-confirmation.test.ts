@@ -196,6 +196,123 @@ describe('post-confirmation trigger — trusted identity assignment', () => {
     expect(groupCalls[0].args[0].input).toMatchObject({ GroupName: 'Seller' });
   });
 
+  it('repairs a PARTIAL invited identity: correct tenant present, role MISSING → writes both + ensures group', async () => {
+    ddbMock.on(QueryCommand).resolves({
+      Items: [
+        {
+          PK: 'TENANT#invited-tenant',
+          SK: 'INVITE#seller@example.com',
+          email: 'seller@example.com',
+          tenantId: 'invited-tenant',
+          role: 'editor',
+          status: 'pending',
+          expiresAt: NOW_SECONDS + 3600,
+        },
+      ],
+    });
+    __setPendingRegistrationRepositoryForTesting(fakeRepo({}));
+
+    const event = buildEvent('reg-1');
+    event.request.userAttributes['custom:tenantIdAssigned'] = 'invited-tenant'; // present + correct
+    // custom:role intentionally missing
+
+    await handler(event);
+
+    // BOTH authoritative attributes written (partial state repaired).
+    const update = cognitoMock.commandCalls(AdminUpdateUserAttributesCommand);
+    expect(update).toHaveLength(1);
+    const attrs = Object.fromEntries(
+      (update[0].args[0].input.UserAttributes ?? []).map((a) => [a.Name, a.Value]),
+    );
+    expect(attrs['custom:tenantIdAssigned']).toBe('invited-tenant');
+    expect(attrs['custom:role']).toBe('editor');
+    // Group membership ensured.
+    expect(cognitoMock.commandCalls(AdminAddUserToGroupCommand)).toHaveLength(1);
+  });
+
+  it('repairs a PARTIAL invited identity: correct role present, tenant MISSING → writes both + ensures group', async () => {
+    ddbMock.on(QueryCommand).resolves({
+      Items: [
+        {
+          PK: 'TENANT#invited-tenant',
+          SK: 'INVITE#seller@example.com',
+          email: 'seller@example.com',
+          tenantId: 'invited-tenant',
+          role: 'editor',
+          status: 'pending',
+          expiresAt: NOW_SECONDS + 3600,
+        },
+      ],
+    });
+    __setPendingRegistrationRepositoryForTesting(fakeRepo({}));
+
+    const event = buildEvent('reg-1');
+    event.request.userAttributes['custom:role'] = 'editor'; // present + correct
+    // custom:tenantIdAssigned intentionally missing
+
+    await handler(event);
+
+    const update = cognitoMock.commandCalls(AdminUpdateUserAttributesCommand);
+    expect(update).toHaveLength(1);
+    const attrs = Object.fromEntries(
+      (update[0].args[0].input.UserAttributes ?? []).map((a) => [a.Name, a.Value]),
+    );
+    expect(attrs['custom:tenantIdAssigned']).toBe('invited-tenant');
+    expect(attrs['custom:role']).toBe('editor');
+    expect(cognitoMock.commandCalls(AdminAddUserToGroupCommand)).toHaveLength(1);
+  });
+
+  it('fails closed on PARTIAL state when the present attribute CONFLICTS (tenant present+wrong, role missing)', async () => {
+    ddbMock.on(QueryCommand).resolves({
+      Items: [
+        {
+          PK: 'TENANT#invited-tenant',
+          SK: 'INVITE#seller@example.com',
+          email: 'seller@example.com',
+          tenantId: 'invited-tenant',
+          role: 'editor',
+          status: 'pending',
+          expiresAt: NOW_SECONDS + 3600,
+        },
+      ],
+    });
+    __setPendingRegistrationRepositoryForTesting(fakeRepo({}));
+
+    const event = buildEvent('reg-1');
+    event.request.userAttributes['custom:tenantIdAssigned'] = 'WRONG-tenant'; // present + conflicting
+    // role missing
+
+    await expect(handler(event)).rejects.toThrow();
+    expect(cognitoMock.commandCalls(AdminUpdateUserAttributesCommand)).toHaveLength(0);
+    expect(cognitoMock.commandCalls(AdminAddUserToGroupCommand)).toHaveLength(0);
+    expect(mockEmitAuthEvent).not.toHaveBeenCalled();
+  });
+
+  it('fails closed on PARTIAL state when the present attribute CONFLICTS (role present+wrong, tenant missing)', async () => {
+    ddbMock.on(QueryCommand).resolves({
+      Items: [
+        {
+          PK: 'TENANT#invited-tenant',
+          SK: 'INVITE#seller@example.com',
+          email: 'seller@example.com',
+          tenantId: 'invited-tenant',
+          role: 'editor',
+          status: 'pending',
+          expiresAt: NOW_SECONDS + 3600,
+        },
+      ],
+    });
+    __setPendingRegistrationRepositoryForTesting(fakeRepo({}));
+
+    const event = buildEvent('reg-1');
+    event.request.userAttributes['custom:role'] = 'admin'; // present + conflicting
+    // tenant missing
+
+    await expect(handler(event)).rejects.toThrow();
+    expect(cognitoMock.commandCalls(AdminUpdateUserAttributesCommand)).toHaveLength(0);
+    expect(mockEmitAuthEvent).not.toHaveBeenCalled();
+  });
+
   it('fails closed when an existing assigned identity CONFLICTS with the invitation', async () => {
     ddbMock.on(QueryCommand).resolves({
       Items: [

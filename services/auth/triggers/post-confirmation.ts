@@ -128,28 +128,39 @@ export async function handler(
     tenantId = invitation.tenantId;
     role = invitation.role;
 
-    // Retry-safety: if a previous invocation already wrote the assigned
-    // identity, it MUST match the invitation. A conflict means inconsistent
-    // authoritative identity — fail closed rather than overwrite or proceed.
-    if (existingAssignedTenantId || existingRole) {
-      const tenantConflict =
-        existingAssignedTenantId && existingAssignedTenantId !== invitation.tenantId;
-      const roleConflict = existingRole && existingRole !== invitation.role;
-      if (tenantConflict || roleConflict) {
-        logger.error('Existing identity conflicts with invitation; failing closed', {
-          userId,
-          existingAssignedTenantId,
-          existingRole,
-          invitationTenantId: invitation.tenantId,
-          invitationRole: invitation.role,
-        });
-        throw new Error('Inconsistent authoritative identity for invited user');
-      }
-      attributesAlreadyCorrect = true;
-      logger.info('Invited identity already assigned; will ensure group membership only', { userId });
-    } else {
-      logger.info('Confirmed user matches a genuine invitation; assigning invited identity', {
+    // Retry-safety. Any PRESENT attribute that conflicts with the authoritative
+    // invitation fails closed (never overwrite a conflicting identity). We only
+    // skip the attribute write when BOTH attributes are already present AND
+    // match the invitation — a partially-populated identity (one attribute
+    // missing) must still be fully written so the user is never left without a
+    // required tenant id or role.
+    const tenantConflict =
+      Boolean(existingAssignedTenantId) && existingAssignedTenantId !== invitation.tenantId;
+    const roleConflict = Boolean(existingRole) && existingRole !== invitation.role;
+    if (tenantConflict || roleConflict) {
+      logger.error('Existing identity conflicts with invitation; failing closed', {
         userId,
+        existingAssignedTenantId,
+        existingRole,
+        invitationTenantId: invitation.tenantId,
+        invitationRole: invitation.role,
+      });
+      throw new Error('Inconsistent authoritative identity for invited user');
+    }
+
+    const tenantAlreadyCorrect = existingAssignedTenantId === invitation.tenantId;
+    const roleAlreadyCorrect = existingRole === invitation.role;
+    attributesAlreadyCorrect = tenantAlreadyCorrect && roleAlreadyCorrect;
+
+    if (attributesAlreadyCorrect) {
+      logger.info('Invited identity fully assigned; will ensure group membership only', { userId });
+    } else {
+      // Includes both the first-time assignment and the partial-state repair
+      // (one attribute present+matching, the other missing). Write BOTH.
+      logger.info('Assigning/repairing invited identity attributes', {
+        userId,
+        tenantAlreadyCorrect,
+        roleAlreadyCorrect,
       });
     }
   } else if (existingAssignedTenantId && existingRole) {
