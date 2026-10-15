@@ -82,6 +82,10 @@ export function FormField<TFieldValues extends FieldValues = FieldValues>({
                 'aria-invalid': error ? true : undefined,
                 'aria-describedby': describedByIds,
                 'aria-required': required,
+                // Marks the control as managed by FormField so shared inputs
+                // (e.g. Input) suppress their own error rendering and let
+                // FormField own the single error message. @see FORM_FIELD_MANAGED
+                'data-form-field-managed': '',
               }) as unknown as ControllerRenderProps<TFieldValues, Path<TFieldValues>>,
               fieldState,
               formState,
