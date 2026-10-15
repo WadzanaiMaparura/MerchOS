@@ -15,6 +15,8 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda
 import {
   AdminCreateUserCommand,
   AdminAddUserToGroupCommand,
+  AdminRemoveUserFromGroupCommand,
+  AdminDeleteUserCommand,
   UsernameExistsException,
   NotAuthorizedException,
 } from '@aws-sdk/client-cognito-identity-provider';
@@ -64,12 +66,26 @@ function getDynamoDocClient(): DynamoDBDocumentClient {
 /**
  * Core invite-user handler logic.
  *
- * 1. Generate secure invitation token
- * 2. Create Cognito user with suppressed default email
- * 3. Add user to 'Seller' Cognito group
- * 4. Set custom attributes (tenantId, role)
- * 5. Store invitation record in DynamoDB
- * 6. Emit auth.user.invited event
+ * Provisioning order and failure safety:
+ *   1. AdminCreateUser (suppressed email) with the authoritative identity set
+ *      AT creation: email, email_verified, immutable custom:tenantId, custom:role.
+ *      The immutable custom:tenantId can only be populated at creation.
+ *   2. AdminAddUserToGroup ('Seller'). If this fails, we COMPENSATE by deleting
+ *      the just-created user so a retry is not blocked by UsernameExistsException.
+ *   3. Store the invitation record in DynamoDB. If this fails, we COMPENSATE by
+ *      removing the user from the group and deleting the user.
+ *   4. Emit auth.user.invited and return 201.
+ *
+ * We never return success unless the user is fully provisioned AND the
+ * invitation record is written. On any mid-flight failure we roll back the
+ * partial user so the operation is effectively all-or-nothing and retry-safe.
+ *
+ * Confirmation path (informational): AdminCreateUser creates the user in
+ * FORCE_CHANGE_PASSWORD status with a suppressed message. PreSignUp fires with
+ * triggerSource PreSignUp_AdminCreateUser, but AWS IGNORES its autoConfirmUser /
+ * autoVerifyEmail response flags for admin-created users. The user is activated
+ * when they set a permanent password (admin-set temporary password or the
+ * invitation/reset flow), not by trigger flags.
  */
 async function baseHandler(event: InviteUserEvent): Promise<APIGatewayProxyResultV2> {
   const { email, role, tenantId } = event.body;
@@ -100,45 +116,58 @@ async function baseHandler(event: InviteUserEvent): Promise<APIGatewayProxyResul
 
   const cognitoClient = getCognitoClient();
   const token = crypto.randomUUID();
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(); // 7 days
+  const INVITATION_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
+  // TTL field MUST be a numeric Unix epoch (seconds) for DynamoDB TTL.
+  const expiresAtEpoch = Math.floor(Date.now() / 1000) + INVITATION_TTL_SECONDS;
+  // Separate ISO value for the API response contract.
+  const expiresAtIso = new Date(expiresAtEpoch * 1000).toISOString();
 
   const invitationId = crypto.randomUUID();
 
-  try {
-    // Step 1: Store the invitation record FIRST, before the user exists.
-    //
-    // Ordering matters: AdminCreateUser fires the PreSignUp trigger
-    // (triggerSource PreSignUp_AdminCreateUser), whose invitation lookup reads
-    // this record by email. Writing it first guarantees the trigger and the
-    // handler agree on invitation state and never races into the self-signup
-    // branch for an invited user.
-    const docClient = getDynamoDocClient();
+  // Track how far provisioning got, so a mid-flight failure can be rolled back
+  // and the operation remains all-or-nothing / retry-safe.
+  let userCreated = false;
+  let addedToGroup = false;
 
-    await docClient.send(
-      new PutCommand({
-        TableName: invitationsTable,
-        Item: {
-          PK: `TENANT#${tenantId}`,
-          SK: `INVITE#${email}`,
-          invitationId,
+  const compensate = async (): Promise<void> => {
+    // Best-effort rollback of a partially provisioned user. Each step is
+    // guarded so one cleanup failure does not mask the original error.
+    if (addedToGroup) {
+      try {
+        await cognitoClient.send(
+          new AdminRemoveUserFromGroupCommand({
+            UserPoolId: userPoolId,
+            Username: email,
+            GroupName: 'Seller',
+          }),
+        );
+      } catch (err) {
+        logger.error('Compensation: failed to remove user from group', {
           email,
-          role,
-          tenantId,
-          status: 'pending',
-          token,
-          invitedBy,
-          expiresAt,
-          createdAt: new Date().toISOString(),
-        },
-      }),
-    );
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    if (userCreated) {
+      try {
+        await cognitoClient.send(
+          new AdminDeleteUserCommand({ UserPoolId: userPoolId, Username: email }),
+        );
+      } catch (err) {
+        logger.error('Compensation: failed to delete partially provisioned user', {
+          email,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  };
 
-    // Step 2: Create the Cognito user with the authoritative identity set AT
+  try {
+    // Step 1: Create the Cognito user with the authoritative identity set AT
     // creation. The immutable custom:tenantId can ONLY be populated here (AWS
     // forbids updating it afterwards), so tenantId and role are supplied as
     // initial UserAttributes rather than via a later AdminUpdateUserAttributes.
-    // We do NOT rely on the PreSignUp trigger mutating request.userAttributes
-    // to persist these values.
+    // We do NOT rely on the PreSignUp trigger mutating request.userAttributes.
     await cognitoClient.send(
       new AdminCreateUserCommand({
         UserPoolId: userPoolId,
@@ -152,13 +181,40 @@ async function baseHandler(event: InviteUserEvent): Promise<APIGatewayProxyResul
         ],
       }),
     );
+    userCreated = true;
 
-    // Step 3: Add user to 'Seller' group
+    // Step 2: Add user to 'Seller' group. On failure, roll back the user.
     await cognitoClient.send(
       new AdminAddUserToGroupCommand({
         UserPoolId: userPoolId,
         Username: email,
         GroupName: 'Seller',
+      }),
+    );
+    addedToGroup = true;
+
+    // Step 3: Store the invitation record. On failure, roll back the user +
+    // group so a retry is not blocked by UsernameExistsException.
+    const docClient = getDynamoDocClient();
+    await docClient.send(
+      new PutCommand({
+        TableName: invitationsTable,
+        Item: {
+          PK: `TENANT#${tenantId}`,
+          SK: `INVITE#${email}`,
+          invitationId,
+          email,
+          role,
+          tenantId,
+          status: 'pending',
+          token,
+          invitedBy,
+          // Numeric epoch seconds — drives DynamoDB TTL. (The handler and
+          // PreSignUp both treat this as the authoritative expiry; expiry is
+          // also checked in code because TTL deletion is asynchronous.)
+          expiresAt: expiresAtEpoch,
+          createdAt: new Date().toISOString(),
+        },
       }),
     );
 
@@ -186,11 +242,14 @@ async function baseHandler(event: InviteUserEvent): Promise<APIGatewayProxyResul
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         invitationId,
-        expiresAt,
+        expiresAt: expiresAtIso,
       }),
     };
   } catch (error) {
     if (error instanceof UsernameExistsException) {
+      // The user already exists. We did NOT create it in this invocation, so
+      // there is nothing to roll back and we must not delete a pre-existing
+      // user. Return 409 without compensation.
       logger.warn('Invite failed — user already exists', { email });
       return {
         statusCode: 409,
@@ -202,6 +261,8 @@ async function baseHandler(event: InviteUserEvent): Promise<APIGatewayProxyResul
     }
 
     if (error instanceof NotAuthorizedException) {
+      // Roll back any partial provisioning before returning.
+      await compensate();
       logger.warn('Invite failed — not authorized', { email });
       return {
         statusCode: 403,
@@ -211,6 +272,11 @@ async function baseHandler(event: InviteUserEvent): Promise<APIGatewayProxyResul
         }),
       };
     }
+
+    // Any other failure (e.g. AddToGroup error, DynamoDB write failure): roll
+    // back the partially provisioned user so state stays consistent and a retry
+    // is not blocked by UsernameExistsException.
+    await compensate();
 
     logger.error('Unexpected error during user invitation', {
       error: error instanceof Error ? error.message : String(error),

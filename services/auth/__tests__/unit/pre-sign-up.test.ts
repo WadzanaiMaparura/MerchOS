@@ -152,6 +152,56 @@ describe('pre-sign-up trigger', () => {
     expect(result.request.userAttributes['custom:role']).not.toBe('owner');
   });
 
+  it('accepts a genuine invitation whose numeric expiresAt is in the future', async () => {
+    const future = Math.floor(Date.now() / 1000) + 3600;
+    ddbDocMock.on(QueryCommand).resolves({
+      Items: [
+        {
+          PK: 'TENANT#tenant-future',
+          SK: 'INVITE#newuser@example.com',
+          email: 'newuser@example.com',
+          tenantId: 'tenant-future',
+          role: 'editor',
+          status: 'pending',
+          expiresAt: future,
+        },
+      ],
+    });
+
+    const { handler } = await import('../../triggers/pre-sign-up');
+    const result = await handler(buildPreSignUpEvent());
+
+    expect(result.response.autoConfirmUser).toBe(true);
+    expect(result.request.userAttributes['custom:tenantId']).toBe('tenant-future');
+  });
+
+  it('rejects an EXPIRED invitation and never auto-confirms (TTL deletion is async)', async () => {
+    const past = Math.floor(Date.now() / 1000) - 10;
+    ddbDocMock.on(QueryCommand).resolves({
+      Items: [
+        {
+          PK: 'TENANT#tenant-expired',
+          SK: 'INVITE#newuser@example.com',
+          email: 'newuser@example.com',
+          tenantId: 'tenant-expired',
+          role: 'editor',
+          status: 'pending',
+          expiresAt: past,
+        },
+      ],
+    });
+
+    const { handler } = await import('../../triggers/pre-sign-up');
+    const result = await handler(buildPreSignUpEvent());
+
+    // Expired invitation must NOT be honoured: no auto-confirm, no invited
+    // tenant/role, and no self-signup owner attrs set here either.
+    expect(result.response.autoConfirmUser).toBe(false);
+    expect(result.response.autoVerifyEmail).toBe(false);
+    expect(result.request.userAttributes['custom:tenantId']).toBeUndefined();
+    expect(result.request.userAttributes['custom:role']).toBeUndefined();
+  });
+
   it('never auto-confirms for a non-invitation row (e.g. a pending-registration-shaped record)', async () => {
     // A record that is NOT a genuine invitation (wrong key shape, no role).
     // Even if such a row shared the email index, it must be ignored and the

@@ -285,7 +285,11 @@ export class AuthApiStack extends cdk.Stack {
         actions: [
           'cognito-idp:AdminCreateUser',
           'cognito-idp:AdminAddUserToGroup',
-          'cognito-idp:AdminUpdateUserAttributes',
+          // Compensation / rollback for a partially provisioned invited user
+          // (AddToGroup or invitation-record write failed). Enables retry-safe,
+          // all-or-nothing invitation creation.
+          'cognito-idp:AdminRemoveUserFromGroup',
+          'cognito-idp:AdminDeleteUser',
         ],
         resources: [props.userPool.userPoolArn],
       }),

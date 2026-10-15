@@ -198,6 +198,27 @@ describe('Auth identity-assignment infrastructure', () => {
     }
   });
 
+  it('grants the invite-user handler compensation permissions (AdminRemoveUserFromGroup, AdminDeleteUser)', () => {
+    const { authApi } = synth();
+    const policies = authApi.findResources('AWS::IAM::Policy');
+    const inviteActions: string[] = [];
+    for (const [logicalId, policy] of Object.entries(policies)) {
+      if (!logicalId.startsWith('InviteUserRole')) continue;
+      for (const stmt of (policy as { Properties: { PolicyDocument: { Statement: Array<{ Action?: string | string[] }> } } })
+        .Properties.PolicyDocument.Statement) {
+        const a = stmt.Action;
+        if (Array.isArray(a)) inviteActions.push(...a);
+        else if (typeof a === 'string') inviteActions.push(a);
+      }
+    }
+    expect(inviteActions).toContain('cognito-idp:AdminCreateUser');
+    expect(inviteActions).toContain('cognito-idp:AdminAddUserToGroup');
+    expect(inviteActions).toContain('cognito-idp:AdminRemoveUserFromGroup');
+    expect(inviteActions).toContain('cognito-idp:AdminDeleteUser');
+    // The impossible post-creation immutable-attribute update is gone.
+    expect(inviteActions).not.toContain('cognito-idp:AdminUpdateUserAttributes');
+  });
+
   it('allows app clients to read the tenant/role attributes (SPA context display)', () => {
     const { auth } = synth();
     const clients = auth.findResources('AWS::Cognito::UserPoolClient');

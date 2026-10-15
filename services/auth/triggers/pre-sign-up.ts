@@ -47,6 +47,8 @@ interface InvitationRecord {
   tenantId: string;
   role: string;
   status: string;
+  /** Unix epoch seconds. Drives DynamoDB TTL and is checked explicitly here. */
+  expiresAt?: number;
 }
 
 /**
@@ -140,6 +142,15 @@ async function findPendingInvitation(
     return null;
   }
 
+  // Explicit expiry check. DynamoDB TTL deletion is ASYNCHRONOUS, so an expired
+  // record may still be readable; we must never accept it as a valid invitation
+  // or let it drive auto-confirmation. expiresAt is Unix epoch seconds.
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  if (typeof candidate.expiresAt === 'number' && candidate.expiresAt <= nowSeconds) {
+    logger.warn('Invitation has expired; treating as self-signup', { email });
+    return null;
+  }
+
   return candidate as InvitationRecord;
 }
 
@@ -150,18 +161,27 @@ async function findPendingInvitation(
 /**
  * Cognito PreSignUp trigger handler.
  *
- * For invited users:
- *   - Auto-confirms the user (skips email verification)
- *   - Auto-verifies the email
- *   - Assigns the invited role and tenantId via request.userAttributes
+ * IMPORTANT — trigger sources differ:
+ *   - PreSignUp_SignUp: a person self-registers through an app client. Here the
+ *     autoConfirmUser / autoVerifyEmail response flags ARE honoured by Cognito,
+ *     so an invited self-registrant can be auto-confirmed.
+ *   - PreSignUp_AdminCreateUser: fired when the invite-user handler calls
+ *     AdminCreateUser. AWS IGNORES autoConfirmUser / autoVerifyEmail for this
+ *     source; the admin-created user is created in FORCE_CHANGE_PASSWORD status
+ *     and is activated when a permanent password is set — NOT by these flags.
+ *     For that path the invite-user handler sets the authoritative identity
+ *     attributes AT creation; this trigger does not need to.
  *
- * For self sign-ups:
- *   - Generates a new tenantId (UUID)
- *   - Assigns the 'owner' role
- *
- * Note: Custom attributes are set on event.request.userAttributes which Cognito
- * persists after the trigger returns. The response object only supports
- * autoConfirmUser, autoVerifyEmail, and autoVerifyPhone flags.
+ * Behaviour:
+ *   - Invited (genuine, non-expired invitation found): set the invited
+ *     tenantId/role on request.userAttributes and request auto-confirm/verify.
+ *     Those flags only actually take effect for PreSignUp_SignUp; for
+ *     AdminCreateUser they are a harmless no-op (identity is set at creation).
+ *   - Self sign-up (successful lookup, no invitation): defer identity
+ *     assignment to PostConfirmation (custom:tenantIdAssigned). Nothing mutated
+ *     here, because for self sign-up these request.userAttributes mutations are
+ *     not a reliable way to persist custom attributes.
+ *   - Lookup FAILURE: fail closed (throw).
  */
 export async function handler(
   event: PreSignUpTriggerEvent,
@@ -195,14 +215,19 @@ export async function handler(
   }
 
   if (invitation) {
-    // Invited user: auto-confirm and preserve the authoritative invited
-    // tenant and role. Invited users are auto-confirmed, so PostConfirmation
-    // runs with these attributes already present; the invitation identity is
-    // never converted into a new owner.
-    logger.info('User was invited, auto-confirming', {
+    // Genuine, non-expired invitation. Preserve the authoritative invited
+    // tenant and role; the invitation identity is never converted into a new
+    // owner.
+    //
+    // Request auto-confirm/verify: these flags take effect ONLY for
+    // PreSignUp_SignUp (invited self-registration). For PreSignUp_AdminCreateUser
+    // AWS ignores them — that is expected and harmless, since the admin flow
+    // activates the user via the password-set path, not via these flags.
+    logger.info('Genuine invitation found', {
       email,
       tenantId: invitation.tenantId,
       role: invitation.role,
+      triggerSource: event.triggerSource,
     });
 
     event.response.autoConfirmUser = true;
