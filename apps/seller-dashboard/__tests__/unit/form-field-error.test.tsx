@@ -62,6 +62,15 @@ describe('FormField + Input error rendering (Issue 2 regression)', () => {
     expect(alerts).toHaveLength(1);
   });
 
+  it('does not forward the internal FormField marker onto the rendered input', () => {
+    const { container } = render(<FieldWithForcedError />);
+
+    const input = container.querySelector('input');
+    expect(input).not.toBeNull();
+    // The internal signal must be consumed by Input, never leaked to the DOM.
+    expect(input!.hasAttribute('data-form-field-managed')).toBe(false);
+  });
+
   it('still renders its own error when Input is used standalone (no FormField)', () => {
     render(<Input type="text" aria-label="Standalone" error={ERROR_MESSAGE} />);
 

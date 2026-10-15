@@ -55,8 +55,13 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
     // When rendered inside a FormField, that component owns the label/error
     // display (and the aria-describedby/errorId wiring). Suppress Input's own
     // error paragraph to prevent the same message rendering twice.
-    const isFormFieldManaged =
-      (props as Record<string, unknown>)[FORM_FIELD_MANAGED] !== undefined;
+    //
+    // The marker is consumed here and removed from `inputProps` so it is NOT
+    // forwarded to the underlying <input> element (it is an internal signal,
+    // not a valid DOM attribute to leak into the rendered HTML).
+    const { [FORM_FIELD_MANAGED]: formFieldManagedMarker, ...inputProps } =
+      props as Record<string, unknown>;
+    const isFormFieldManaged = formFieldManagedMarker !== undefined;
     const showOwnError = Boolean(error) && !isFormFieldManaged;
 
     return (
@@ -97,7 +102,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
           ]
             .filter(Boolean)
             .join(' ')}
-          {...props}
+          {...(inputProps as React.InputHTMLAttributes<HTMLInputElement>)}
         />
         {showOwnError && (
           <p
