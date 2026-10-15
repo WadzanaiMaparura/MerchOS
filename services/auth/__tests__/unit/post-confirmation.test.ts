@@ -108,7 +108,10 @@ describe('post-confirmation trigger — trusted identity assignment', () => {
 
     expect(repo.getById).toHaveBeenCalledWith('reg-1');
     const attrs = attrsFromCall();
-    expect(attrs['custom:tenantId']).toBe('server-tenant-1');
+    // Self-signup writes the MUTABLE attribute (immutable custom:tenantId
+    // cannot be set after creation), and never writes custom:tenantId.
+    expect(attrs['custom:tenantIdAssigned']).toBe('server-tenant-1');
+    expect(attrs['custom:tenantId']).toBeUndefined();
     expect(attrs['custom:role']).toBe('owner');
   });
 
@@ -121,9 +124,9 @@ describe('post-confirmation trigger — trusted identity assignment', () => {
     // Never looked anything up by id, and did not touch the stored record.
     expect(repo.getById).not.toHaveBeenCalled();
     const attrs = attrsFromCall();
-    // Fallback tenant (a fresh UUID), not the stored one.
-    expect(attrs['custom:tenantId']).not.toBe('server-tenant-1');
-    expect(attrs['custom:tenantId']).toMatch(
+    // Fallback tenant (a fresh UUID), written to the mutable attribute.
+    expect(attrs['custom:tenantIdAssigned']).not.toBe('server-tenant-1');
+    expect(attrs['custom:tenantIdAssigned']).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
     expect(attrs['custom:role']).toBe('owner');
@@ -135,7 +138,7 @@ describe('post-confirmation trigger — trusted identity assignment', () => {
 
     await handler(buildEvent('reg-1'));
 
-    expect(attrsFromCall()['custom:tenantId']).not.toBe('wrong-tenant');
+    expect(attrsFromCall()['custom:tenantIdAssigned']).not.toBe('wrong-tenant');
   });
 
   it('falls back (not the stale tenantId) when the pending registration is expired', async () => {
@@ -144,7 +147,7 @@ describe('post-confirmation trigger — trusted identity assignment', () => {
 
     await handler(buildEvent('reg-1'));
 
-    expect(attrsFromCall()['custom:tenantId']).not.toBe('stale-tenant');
+    expect(attrsFromCall()['custom:tenantIdAssigned']).not.toBe('stale-tenant');
   });
 
   it('uses a server-generated fallback tenantId when the id resolves to nothing', async () => {
@@ -153,10 +156,26 @@ describe('post-confirmation trigger — trusted identity assignment', () => {
     await handler(buildEvent('missing-id'));
 
     const attrs = attrsFromCall();
-    expect(attrs['custom:tenantId']).toMatch(
+    expect(attrs['custom:tenantIdAssigned']).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
     expect(attrs['custom:role']).toBe('owner');
+  });
+
+  it('treats a prior self-signup assignment (custom:tenantIdAssigned) as already-identified (idempotent)', async () => {
+    const repo = fakeRepo({ 'reg-1': makePending() });
+    __setPendingRegistrationRepositoryForTesting(repo);
+
+    const event = buildEvent('reg-1');
+    // Simulate a re-run after a previous successful assignment.
+    event.request.userAttributes['custom:tenantIdAssigned'] = 'already-assigned';
+    event.request.userAttributes['custom:role'] = 'owner';
+
+    await handler(event);
+
+    // No re-assignment, no pending lookup — the user is already identified.
+    expect(cognitoMock.commandCalls(AdminUpdateUserAttributesCommand)).toHaveLength(0);
+    expect(repo.getById).not.toHaveBeenCalled();
   });
 
   it('preserves invited tenant/role and does NOT call AdminUpdateUserAttributes', async () => {

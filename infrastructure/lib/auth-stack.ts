@@ -73,7 +73,19 @@ export class AuthStack extends cdk.Stack {
         familyName: { required: false, mutable: true },
       },
       customAttributes: {
+        // Immutable tenant id. Can only be populated AT user creation, which is
+        // how invited users receive their authoritative tenant (set by the
+        // PreSignUp trigger during the invited sign-up). AWS forbids updating
+        // an immutable custom attribute after creation.
         tenantId: new cognito.StringAttribute({ mutable: false }),
+        // Server-managed MUTABLE tenant id used for the self-signup path, where
+        // the tenant id is only known after email verification (PostConfirmation
+        // via AdminUpdateUserAttributes). Public app clients are explicitly
+        // denied write access to this attribute (see writeAttributes below), so
+        // only server-side admin calls can set it. PreTokenGeneration treats
+        // custom:tenantId (immutable, invited) OR custom:tenantIdAssigned
+        // (mutable, self-signup) as the effective tenant id.
+        tenantIdAssigned: new cognito.StringAttribute({ mutable: true }),
         role: new cognito.StringAttribute({ mutable: true }),
       },
       passwordPolicy: {
@@ -123,6 +135,27 @@ export class AuthStack extends cdk.Stack {
     // App Clients
     // -----------------------------------------------------------------------
 
+    // Attribute permissions for app clients.
+    //
+    // READ: clients may read standard profile attributes plus the server-set
+    // tenant/role attributes (needed for the SPA to display context). Reading
+    // is safe; it does not permit modification.
+    //
+    // WRITE: clients may ONLY write the standard profile attributes a user may
+    // legitimately self-edit. The tenant/role custom attributes
+    // (custom:tenantId, custom:tenantIdAssigned, custom:role) are deliberately
+    // OMITTED from the write set, so no public app client can set or alter a
+    // user's tenant or role. Only server-side admin operations
+    // (AdminUpdateUserAttributes / AdminCreateUser) can write them.
+    const clientReadAttributes = new cognito.ClientAttributes()
+      .withStandardAttributes({ email: true, emailVerified: true, givenName: true, familyName: true })
+      .withCustomAttributes('tenantId', 'tenantIdAssigned', 'role');
+
+    const clientWriteAttributes = new cognito.ClientAttributes()
+      .withStandardAttributes({ email: true, givenName: true, familyName: true });
+    // NOTE: no .withCustomAttributes(...) on the write set — tenant/role are
+    // server-managed and must not be client-writable.
+
     // Seller Dashboard app client (SPA, PKCE, no secret)
     this.sellerDashboardClient = this.userPool.addClient('SellerDashboardClient', {
       userPoolClientName: `seller-dashboard-${env}`,
@@ -137,6 +170,8 @@ export class AuthStack extends cdk.Stack {
       },
       generateSecret: false,
       preventUserExistenceErrors: true,
+      readAttributes: clientReadAttributes,
+      writeAttributes: clientWriteAttributes,
       accessTokenValidity: cdk.Duration.minutes(60),
       refreshTokenValidity: cdk.Duration.days(30),
       idTokenValidity: cdk.Duration.minutes(60),
@@ -150,6 +185,8 @@ export class AuthStack extends cdk.Stack {
       },
       generateSecret: true,
       preventUserExistenceErrors: true,
+      readAttributes: clientReadAttributes,
+      writeAttributes: clientWriteAttributes,
       accessTokenValidity: cdk.Duration.minutes(60),
       refreshTokenValidity: cdk.Duration.days(30),
     });
@@ -168,6 +205,8 @@ export class AuthStack extends cdk.Stack {
       },
       generateSecret: false,
       preventUserExistenceErrors: true,
+      readAttributes: clientReadAttributes,
+      writeAttributes: clientWriteAttributes,
       accessTokenValidity: cdk.Duration.minutes(60),
       refreshTokenValidity: cdk.Duration.days(30),
     });

@@ -35,7 +35,14 @@ const logger = new Logger({ serviceName: 'merch-os-pre-token-generation' });
 export async function handler(
   event: PreTokenGenerationTriggerEvent,
 ): Promise<PreTokenGenerationTriggerEvent> {
-  const tenantId = event.request.userAttributes['custom:tenantId'] ?? '';
+  // The effective tenant id is the immutable custom:tenantId (invited users,
+  // set at creation) OR the server-managed mutable custom:tenantIdAssigned
+  // (self-signup users, set by PostConfirmation). We always surface it under
+  // the single custom:tenantId CLAIM so downstream RBAC and tenant-isolation
+  // middleware remain unchanged regardless of which attribute holds the value.
+  const immutableTenantId = event.request.userAttributes['custom:tenantId'] ?? '';
+  const assignedTenantId = event.request.userAttributes['custom:tenantIdAssigned'] ?? '';
+  const tenantId = immutableTenantId || assignedTenantId;
   const role = event.request.userAttributes['custom:role'] ?? '';
   const userId = event.userName;
 

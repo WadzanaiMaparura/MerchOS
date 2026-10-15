@@ -163,4 +163,50 @@ describe('Auth identity-assignment infrastructure', () => {
       FunctionName: Match.stringLikeRegexp('merch-os-auth-registerpending-dev'),
     });
   });
+
+  it('defines a mutable custom:tenantIdAssigned attribute alongside the immutable custom:tenantId', () => {
+    const { auth } = synth();
+    const pools = auth.findResources('AWS::Cognito::UserPool');
+    const schema = (Object.values(pools)[0] as {
+      Properties: { Schema: Array<{ Name: string; Mutable?: boolean }> };
+    }).Properties.Schema;
+
+    const immutable = schema.find((s) => s.Name === 'tenantId');
+    const assigned = schema.find((s) => s.Name === 'tenantIdAssigned');
+
+    expect(immutable).toBeDefined();
+    expect(immutable!.Mutable).toBe(false);
+    expect(assigned).toBeDefined();
+    expect(assigned!.Mutable).toBe(true);
+  });
+
+  it('forbids every app client from writing the server-managed tenant/role attributes', () => {
+    const { auth } = synth();
+    const clients = auth.findResources('AWS::Cognito::UserPoolClient');
+    const clientList = Object.values(clients) as Array<{
+      Properties: { WriteAttributes?: string[]; ClientName?: string };
+    }>;
+
+    // All three app clients are present and each has an explicit write list.
+    expect(clientList.length).toBeGreaterThanOrEqual(3);
+    for (const client of clientList) {
+      const writeAttrs = client.Properties.WriteAttributes ?? [];
+      expect(writeAttrs.length).toBeGreaterThan(0); // explicit restriction set
+      expect(writeAttrs).not.toContain('custom:tenantId');
+      expect(writeAttrs).not.toContain('custom:tenantIdAssigned');
+      expect(writeAttrs).not.toContain('custom:role');
+    }
+  });
+
+  it('allows app clients to read the tenant/role attributes (SPA context display)', () => {
+    const { auth } = synth();
+    const clients = auth.findResources('AWS::Cognito::UserPoolClient');
+    const anyClient = Object.values(clients)[0] as {
+      Properties: { ReadAttributes?: string[] };
+    };
+    const readAttrs = anyClient.Properties.ReadAttributes ?? [];
+    expect(readAttrs).toContain('custom:tenantId');
+    expect(readAttrs).toContain('custom:tenantIdAssigned');
+    expect(readAttrs).toContain('custom:role');
+  });
 });

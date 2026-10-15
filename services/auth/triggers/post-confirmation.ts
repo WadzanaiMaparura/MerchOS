@@ -12,6 +12,8 @@
  *        on the auto-confirmed user); never convert them into a new owner.
  *      - Self-signups: use the server-generated tenantId from the matching,
  *        non-expired pending-registration record and assign the 'owner' role.
+ *        The id is written to the MUTABLE custom:tenantIdAssigned attribute
+ *        (the immutable custom:tenantId cannot be set after creation).
  *
  * This stage does NOT emit auth.user.registered. That event signifies a
  * completed registration (durable tenant metadata + owner profile + consent),
@@ -76,7 +78,11 @@ export async function handler(
   event: PostConfirmationTriggerEvent,
 ): Promise<PostConfirmationTriggerEvent> {
   const email = (event.request.userAttributes['email'] ?? '').trim().toLowerCase();
-  const existingTenantId = event.request.userAttributes['custom:tenantId'] ?? '';
+  // Effective existing tenant id = immutable invited id OR the server-managed
+  // mutable id (idempotent re-runs). Either means identity is already assigned.
+  const existingImmutableTenantId = event.request.userAttributes['custom:tenantId'] ?? '';
+  const existingAssignedTenantId = event.request.userAttributes['custom:tenantIdAssigned'] ?? '';
+  const existingTenantId = existingImmutableTenantId || existingAssignedTenantId;
   const existingRole = event.request.userAttributes['custom:role'] ?? '';
   const userId = event.userName;
   const userPoolId = event.userPoolId;
@@ -88,7 +94,10 @@ export async function handler(
   });
 
   // -------------------------------------------------------------------------
-  // Invited users: identity is already authoritative. Preserve it; never
+  // Already-identified users: identity is already authoritative. This covers
+  // (a) invited users (immutable custom:tenantId set at creation) and
+  // (b) a prior successful self-signup assignment (custom:tenantIdAssigned),
+  // which makes repeated trigger invocations idempotent. Preserve it; never
   // convert to a new owner. Nothing further to assign here.
   // -------------------------------------------------------------------------
   if (existingTenantId && existingRole) {
@@ -157,7 +166,11 @@ export async function handler(
         UserPoolId: userPoolId,
         Username: userId,
         UserAttributes: [
-          { Name: 'custom:tenantId', Value: tenantId },
+          // Write the MUTABLE server-managed attribute. The immutable
+          // custom:tenantId cannot be set after creation, so self-signup uses
+          // custom:tenantIdAssigned. PreTokenGeneration maps whichever is set
+          // onto the custom:tenantId token claim for downstream consumers.
+          { Name: 'custom:tenantIdAssigned', Value: tenantId },
           { Name: 'custom:role', Value: role },
         ],
       }),
