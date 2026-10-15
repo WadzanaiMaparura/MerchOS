@@ -256,6 +256,15 @@ export class AuthStack extends cdk.Stack {
         `${this.invitationsTable.tableArn}/index/email-index`,
       ],
     }));
+    // The invitations table is encrypted with the platform CMK, so reading it
+    // requires kms:Decrypt on that key. This is a read-only lookup: we grant
+    // Decrypt only, NOT GenerateDataKey (which is for writes), keeping the
+    // trigger least-privilege.
+    preSignUpRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['kms:Decrypt'],
+      resources: [props.platformKey.keyArn],
+    }));
 
     const preSignUpFn = new lambdaNodejs.NodejsFunction(this, 'PreSignUp', {
       ...triggerLambdaProps,
@@ -272,10 +281,47 @@ export class AuthStack extends cdk.Stack {
         iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
       ],
     });
+    // Trusted identity assignment: persist custom:tenantId / custom:role via a
+    // server-side Cognito operation. The Lambda reads the pool id from the
+    // trigger event payload (event.userPoolId) at runtime.
+    //
+    // IMPORTANT: we must NOT reference this.userPool.userPoolArn here. Because
+    // this Lambda is attached to the pool via addTrigger(), referencing the
+    // pool's ARN attribute in the role policy creates a CloudFormation cycle:
+    //   UserPool -> PostConfirmation (trigger) -> Role policy -> UserPool.
+    // Instead we scope to a region/account-bound userpool ARN pattern built
+    // from stable stack tokens (region/account), which carries no dependency
+    // edge back to the UserPool resource. This stays least-privilege (this
+    // account's Cognito user pools in this region) without the wildcard '*'.
+    const userPoolArnPattern = cdk.Arn.format(
+      {
+        service: 'cognito-idp',
+        resource: 'userpool',
+        resourceName: '*',
+      },
+      cdk.Stack.of(this),
+    );
     postConfirmationRole.addToPolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
-      actions: ['dynamodb:PutItem'],
-      resources: [this.sessionsTable.tableArn],
+      actions: ['cognito-idp:AdminUpdateUserAttributes'],
+      resources: [userPoolArnPattern],
+    }));
+    // Read/consume pending-registration records (stored in the invitations
+    // table under PENDINGREG#<id>) matched by verified email via the GSI.
+    postConfirmationRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:DeleteItem'],
+      resources: [
+        this.invitationsTable.tableArn,
+        `${this.invitationsTable.tableArn}/index/email-index`,
+      ],
+    }));
+    // The invitations table is CMK-encrypted. Reading requires kms:Decrypt;
+    // the conditional delete path requires GenerateDataKey.
+    postConfirmationRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['kms:Decrypt', 'kms:GenerateDataKey'],
+      resources: [props.platformKey.keyArn],
     }));
     postConfirmationRole.addToPolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,

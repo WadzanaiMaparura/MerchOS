@@ -249,6 +249,22 @@ export class AuthApiStack extends cdk.Stack {
     // 9. Session (no Cognito permissions — reads JWT claims only)
     const sessionFn = createLambda('Session', path.join(handlersPath, 'session.ts'), []);
 
+    // 9b. Register Pending (unauthenticated — pre-signup profile capture)
+    const registerPendingFn = createLambda('RegisterPending', path.join(handlersPath, 'register-pending.ts'), [
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['dynamodb:PutItem'],
+        resources: [invitationsTable.tableArn],
+      }),
+      // The invitations table is CMK-encrypted; writing a pending record needs
+      // GenerateDataKey (and Decrypt for the SDK's envelope handling).
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['kms:GenerateDataKey', 'kms:Decrypt'],
+        resources: [props.platformKey.keyArn],
+      }),
+    ]);
+
     // 10. Invite User
     const inviteUserFn = createLambda('InviteUser', path.join(handlersPath, 'invite-user.ts'), [
       new iam.PolicyStatement({
@@ -353,6 +369,12 @@ export class AuthApiStack extends cdk.Stack {
       path: '/auth/verify-email',
       methods: [HttpMethod.POST],
       integration: new HttpLambdaIntegration('VerifyEmailIntegration', verifyEmailFn),
+    });
+
+    this.httpApi.addRoutes({
+      path: '/auth/register-pending',
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration('RegisterPendingIntegration', registerPendingFn),
     });
 
     // Authenticated routes (JWT authorizer)

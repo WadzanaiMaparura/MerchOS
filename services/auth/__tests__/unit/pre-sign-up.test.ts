@@ -84,8 +84,8 @@ describe('pre-sign-up trigger', () => {
     expect(result.request.userAttributes['custom:role']).toBe('editor');
   });
 
-  it('should generate new tenantId and assign owner role for self sign-ups', async () => {
-    // Arrange: no invitation found
+  it('defers self-signup identity assignment to PostConfirmation (no owner attrs set here)', async () => {
+    // Arrange: successful lookup with no invitation = legitimate self-signup
     ddbDocMock.on(QueryCommand).resolves({ Items: [] });
 
     const { handler } = await import('../../triggers/pre-sign-up');
@@ -94,57 +94,61 @@ describe('pre-sign-up trigger', () => {
     // Act
     const result = await handler(event);
 
-    // Assert
+    // Assert: not auto-confirmed, and NO custom attributes are mutated here.
+    // Identity is assigned later (server-trusted) in PostConfirmation.
     expect(result.response.autoConfirmUser).toBe(false);
     expect(result.response.autoVerifyEmail).toBe(false);
-    expect(result.request.userAttributes['custom:tenantId']).toBeDefined();
-    expect(result.request.userAttributes['custom:tenantId']).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
-    );
-    expect(result.request.userAttributes['custom:role']).toBe('owner');
+    expect(result.request.userAttributes['custom:tenantId']).toBeUndefined();
+    expect(result.request.userAttributes['custom:role']).toBeUndefined();
   });
 
-  it('should handle missing INVITATIONS_TABLE gracefully', async () => {
+  it('fails closed (throws) when INVITATIONS_TABLE is not configured', async () => {
     delete process.env['INVITATIONS_TABLE'];
 
     const { handler } = await import('../../triggers/pre-sign-up');
     const event = buildPreSignUpEvent();
 
-    // Act
-    const result = await handler(event);
-
-    // Assert: still assigns owner role for self sign-up
-    expect(result.request.userAttributes['custom:tenantId']).toBeDefined();
-    expect(result.request.userAttributes['custom:role']).toBe('owner');
+    // Act + Assert: lookup cannot be performed, so sign-up must be rejected
+    // rather than silently creating a new owner.
+    await expect(handler(event)).rejects.toThrow();
+    expect(event.request.userAttributes['custom:role']).toBeUndefined();
   });
 
-  it('should handle DynamoDB query errors gracefully', async () => {
-    // Arrange: DynamoDB throws
-    ddbDocMock.on(QueryCommand).rejects(new Error('Connection refused'));
+  it('fails closed (throws) on a DynamoDB/KMS lookup error — never grants owner', async () => {
+    // Arrange: lookup fails (e.g. KMS decrypt / DynamoDB error)
+    ddbDocMock.on(QueryCommand).rejects(new Error('AccessDeniedException: kms:Decrypt'));
 
     const { handler } = await import('../../triggers/pre-sign-up');
     const event = buildPreSignUpEvent();
 
-    // Act: should not throw
-    const result = await handler(event);
-
-    // Assert: event returned as-is (no custom attributes set due to error caught)
-    expect(result).toBeDefined();
+    // Act + Assert: must throw, and must not assign owner identity
+    await expect(handler(event)).rejects.toThrow();
+    expect(event.request.userAttributes['custom:tenantId']).toBeUndefined();
+    expect(event.request.userAttributes['custom:role']).toBeUndefined();
   });
 
-  it('should use email from userAttributes over userName', async () => {
-    ddbDocMock.on(QueryCommand).resolves({ Items: [] });
+  it('preserves invited tenant and role and never converts invitee to owner', async () => {
+    ddbDocMock.on(QueryCommand).resolves({
+      Items: [
+        {
+          PK: 'TENANT#tenant-xyz',
+          SK: 'INVITE#newuser@example.com',
+          email: 'newuser@example.com',
+          tenantId: 'tenant-xyz',
+          role: 'viewer',
+          status: 'pending',
+        },
+      ],
+    });
 
     const { handler } = await import('../../triggers/pre-sign-up');
-    const event = buildPreSignUpEvent({
-      userName: 'user-uuid',
-    });
-    event.request.userAttributes['email'] = 'specific@example.com';
+    const event = buildPreSignUpEvent();
 
-    // Act
     const result = await handler(event);
 
-    // Assert: tenantId is assigned using email lookup
-    expect(result.request.userAttributes['custom:role']).toBe('owner');
+    expect(result.response.autoConfirmUser).toBe(true);
+    expect(result.request.userAttributes['custom:tenantId']).toBe('tenant-xyz');
+    expect(result.request.userAttributes['custom:role']).toBe('viewer');
+    expect(result.request.userAttributes['custom:role']).not.toBe('owner');
   });
 });
