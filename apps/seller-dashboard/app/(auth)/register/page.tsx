@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { useRouter } from 'next/navigation';
 import { cognitoSignUp } from '@merch-os/auth';
 import { Form, FormField, Input } from '@merch-os/ui';
+import { createPendingRegistration } from './register-pending-client';
 
 /**
  * International phone number validation.
@@ -93,29 +94,61 @@ export default function RegisterPage() {
     setIsSubmitting(true);
     setError(null);
 
+    // Step 1: create the server-side pending-registration record FIRST. It
+    // holds the business-profile fields (name, phone, organisation, consent).
+    // The password is never sent to this API. If this fails, we must NOT create
+    // the Cognito account.
+    let registrationId: string;
     try {
-      // BACKEND-BLOCKED: the approved pending-registration lifecycle (which
-      // persists fullName, phoneNumber, organisationName and marketingConsent)
-      // is a separate backend task and is not yet implemented. Today, only the
-      // Cognito account (email + password) can be created. We intentionally do
-      // NOT route the remaining fields through cognitoSignUp, because the
-      // Cognito user-pool schema cannot store them and doing so would either be
-      // rejected or silently dropped. These values are validated and collected
-      // here; persisting them is tracked as follow-up work.
+      const result = await createPendingRegistration({
+        fullName: data.fullName,
+        email: data.email,
+        phoneNumber: data.phoneNumber,
+        organisationName: data.organisationName,
+        marketingConsent: data.marketingConsent ?? false,
+      });
+      registrationId = result.registrationId;
+    } catch (err: unknown) {
+      // Recoverable: the Cognito account was NOT created, so the user can retry.
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Registration could not be started. Please try again.';
+      setError(message);
+      setIsSubmitting(false);
+      return;
+    }
+
+    // Step 2: only now create the Cognito account, threading the opaque
+    // registrationId through clientMetadata so PostConfirmation can correlate
+    // the verified identity with the pending record.
+    try {
       await cognitoSignUp({
         email: data.email,
         password: data.password,
+        registrationId,
       });
-
-      // Redirect to verification page with email in query params
-      router.push(`/verify?email=${encodeURIComponent(data.email)}`);
     } catch (err: unknown) {
+      // The pending record exists but the Cognito account was not created.
+      // The pending record has a ~1 hour TTL; surface a clear, honest error and
+      // do NOT claim success. Retrying creates a fresh pending record.
       const message =
-        err instanceof Error ? err.message : 'Registration failed. Please try again.';
-      setError(message);
-    } finally {
+        err instanceof Error ? err.message : 'Account creation failed. Please try again.';
+      setError(
+        `${message} Your details are held for about an hour — please retry shortly to finish creating your account.`,
+      );
       setIsSubmitting(false);
+      return;
     }
+
+    // Step 3: carry email + registrationId to the verification page (never the
+    // password or verification code).
+    const params = new URLSearchParams({
+      email: data.email,
+      registrationId,
+    });
+    router.push(`/verify?${params.toString()}`);
+    setIsSubmitting(false);
   }
 
   return (

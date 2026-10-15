@@ -22,6 +22,14 @@ vi.mock('@merch-os/auth', () => ({
   cognitoSignUp: (...args: unknown[]) => cognitoSignUpMock(...args),
 }));
 
+// Mock the pending-registration client so we can assert ordering and payload
+// without a real network call.
+const createPendingRegistrationMock = vi.fn();
+vi.mock('@/app/(auth)/register/register-pending-client', () => ({
+  createPendingRegistration: (...args: unknown[]) => createPendingRegistrationMock(...args),
+  PendingRegistrationError: class extends Error {},
+}));
+
 import RegisterPage from '@/app/(auth)/register/page';
 
 const VALID = {
@@ -44,6 +52,7 @@ async function fillValidForm(user: ReturnType<typeof userEvent.setup>) {
 describe('Registration form — approved field set', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    createPendingRegistrationMock.mockResolvedValue({ registrationId: 'reg-123' });
     cognitoSignUpMock.mockResolvedValue({ isSignUpComplete: false, userId: 'u1' });
   });
 
@@ -83,6 +92,7 @@ describe('Registration form — approved field set', () => {
 describe('Registration form — validation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    createPendingRegistrationMock.mockResolvedValue({ registrationId: 'reg-123' });
     cognitoSignUpMock.mockResolvedValue({ isSignUpComplete: false, userId: 'u1' });
   });
 
@@ -127,19 +137,118 @@ describe('Registration form — validation', () => {
     expect(matches).toHaveLength(1);
   });
 
-  it('submits only email and password to cognitoSignUp (backend-blocked fields excluded)', async () => {
+  it('does not call the pending API or Cognito when validation fails', async () => {
+    const user = userEvent.setup();
+    render(<RegisterPage />);
+    await user.click(screen.getByRole('button', { name: /create account/i }));
+
+    expect(createPendingRegistrationMock).not.toHaveBeenCalled();
+    expect(cognitoSignUpMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('Registration form — pending-registration wiring', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    createPendingRegistrationMock.mockResolvedValue({ registrationId: 'reg-123' });
+    cognitoSignUpMock.mockResolvedValue({ isSignUpComplete: false, userId: 'u1' });
+  });
+
+  it('calls the pending-registration API BEFORE Cognito signup', async () => {
+    const order: string[] = [];
+    createPendingRegistrationMock.mockImplementation(async () => {
+      order.push('pending');
+      return { registrationId: 'reg-123' };
+    });
+    cognitoSignUpMock.mockImplementation(async () => {
+      order.push('signup');
+      return { isSignUpComplete: false };
+    });
+
     const user = userEvent.setup();
     render(<RegisterPage />);
     await fillValidForm(user);
-    // Opt into marketing to prove it is NOT forwarded.
-    await user.click(screen.getByRole('checkbox', { name: /marketing emails/i }));
+    await user.click(screen.getByRole('button', { name: /create account/i }));
 
+    await waitFor(() => expect(cognitoSignUpMock).toHaveBeenCalledTimes(1));
+    expect(order).toEqual(['pending', 'signup']);
+  });
+
+  it('sends all five profile fields to the API and NEVER the password', async () => {
+    const user = userEvent.setup();
+    render(<RegisterPage />);
+    await fillValidForm(user);
+    await user.click(screen.getByRole('checkbox', { name: /marketing emails/i }));
+    await user.click(screen.getByRole('button', { name: /create account/i }));
+
+    await waitFor(() => expect(createPendingRegistrationMock).toHaveBeenCalledTimes(1));
+    const payload = createPendingRegistrationMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(Object.keys(payload).sort()).toEqual(
+      ['email', 'fullName', 'marketingConsent', 'organisationName', 'phoneNumber'].sort(),
+    );
+    expect(payload.fullName).toBe(VALID.fullName);
+    expect(payload.email).toBe(VALID.email);
+    expect(payload.phoneNumber).toBe(VALID.phone);
+    expect(payload.organisationName).toBe(VALID.org);
+    expect(payload.marketingConsent).toBe(true);
+    expect(payload).not.toHaveProperty('password');
+    expect(payload).not.toHaveProperty('confirmPassword');
+  });
+
+  it('threads the backend registrationId into cognitoSignUp via clientMetadata', async () => {
+    createPendingRegistrationMock.mockResolvedValue({ registrationId: 'reg-xyz' });
+
+    const user = userEvent.setup();
+    render(<RegisterPage />);
+    await fillValidForm(user);
     await user.click(screen.getByRole('button', { name: /create account/i }));
 
     await waitFor(() => expect(cognitoSignUpMock).toHaveBeenCalledTimes(1));
     const arg = cognitoSignUpMock.mock.calls[0][0] as Record<string, unknown>;
-    expect(Object.keys(arg).sort()).toEqual(['email', 'password']);
     expect(arg.email).toBe(VALID.email);
     expect(arg.password).toBe(VALID.password);
+    expect(arg.registrationId).toBe('reg-xyz');
+  });
+
+  it('navigates to /verify with the email and the SAME registrationId', async () => {
+    createPendingRegistrationMock.mockResolvedValue({ registrationId: 'reg-xyz' });
+
+    const user = userEvent.setup();
+    render(<RegisterPage />);
+    await fillValidForm(user);
+    await user.click(screen.getByRole('button', { name: /create account/i }));
+
+    await waitFor(() => expect(pushMock).toHaveBeenCalledTimes(1));
+    const dest = pushMock.mock.calls[0][0] as string;
+    expect(dest).toContain('/verify?');
+    expect(dest).toContain(`email=${encodeURIComponent(VALID.email)}`);
+    expect(dest).toContain('registrationId=reg-xyz');
+  });
+
+  it('does NOT create the Cognito account when the pending API fails', async () => {
+    createPendingRegistrationMock.mockRejectedValue(new Error('API down'));
+
+    const user = userEvent.setup();
+    render(<RegisterPage />);
+    await fillValidForm(user);
+    await user.click(screen.getByRole('button', { name: /create account/i }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
+    expect(cognitoSignUpMock).not.toHaveBeenCalled();
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it('shows a recoverable error and does not navigate when Cognito signup fails after the pending record', async () => {
+    cognitoSignUpMock.mockRejectedValue(new Error('UsernameExistsException'));
+
+    const user = userEvent.setup();
+    render(<RegisterPage />);
+    await fillValidForm(user);
+    await user.click(screen.getByRole('button', { name: /create account/i }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
+    // Pending record was created, Cognito failed → mentions the hold window.
+    expect(screen.getByRole('alert').textContent).toMatch(/hour/i);
+    expect(pushMock).not.toHaveBeenCalled();
   });
 });
