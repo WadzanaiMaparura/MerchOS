@@ -26,8 +26,6 @@ describe('cognitoSignUp', () => {
     await cognitoSignUp({
       email: 'seller@example.com',
       password: 'Sup3rSecret!pw12',
-      organisationName: 'Acme Trading Co',
-      contactEmail: 'contact@example.com',
     });
 
     expect(signUpMock).toHaveBeenCalledTimes(1);
@@ -59,8 +57,6 @@ describe('cognitoSignUp', () => {
     const result = await cognitoSignUp({
       email: 'seller2@example.com',
       password: 'An0ther!pass_word',
-      organisationName: 'Org',
-      contactEmail: 'c@example.com',
     });
 
     expect(result).toEqual({ isSignUpComplete: true, userId: 'user-456' });
