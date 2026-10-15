@@ -228,6 +228,10 @@ export class AuthStack extends cdk.Stack {
       environment: {
         INVITATIONS_TABLE: this.invitationsTable.tableName,
         SESSIONS_TABLE: this.sessionsTable.tableName,
+        // Pending-registration records live in the existing tenants table under
+        // PENDINGREG#<id>. The table is not defined in this stack; reference it
+        // by its conventional name so PostConfirmation can resolve records by id.
+        TENANTS_TABLE: `merch-os-tenants-${env}`,
         EVENT_BUS_NAME: props.eventBus.eventBusName,
         ENVIRONMENT: env,
       },
@@ -306,21 +310,28 @@ export class AuthStack extends cdk.Stack {
       actions: ['cognito-idp:AdminUpdateUserAttributes'],
       resources: [userPoolArnPattern],
     }));
-    // Read/consume pending-registration records (stored in the invitations
-    // table under PENDINGREG#<id>) matched by verified email via the GSI.
+    // Read the EXACT pending-registration record by id (GetItem on PK) from the
+    // existing tenants table under PENDINGREG#<id>. This change only READS the
+    // pending record; it must NOT delete it (durable profile/consent writes are
+    // gated to the downstream completion path), so no DeleteItem is granted.
+    const tenantsTableArn = cdk.Arn.format(
+      {
+        service: 'dynamodb',
+        resource: 'table',
+        resourceName: `merch-os-tenants-${env}`,
+      },
+      cdk.Stack.of(this),
+    );
     postConfirmationRole.addToPolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
-      actions: ['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:DeleteItem'],
-      resources: [
-        this.invitationsTable.tableArn,
-        `${this.invitationsTable.tableArn}/index/email-index`,
-      ],
+      actions: ['dynamodb:GetItem'],
+      resources: [tenantsTableArn],
     }));
-    // The invitations table is CMK-encrypted. Reading requires kms:Decrypt;
-    // the conditional delete path requires GenerateDataKey.
+    // The tenants table is CMK-encrypted; reading an item requires kms:Decrypt.
+    // This is a read-only path, so GenerateDataKey (write) is NOT granted.
     postConfirmationRole.addToPolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
-      actions: ['kms:Decrypt', 'kms:GenerateDataKey'],
+      actions: ['kms:Decrypt'],
       resources: [props.platformKey.keyArn],
     }));
     postConfirmationRole.addToPolicy(new iam.PolicyStatement({

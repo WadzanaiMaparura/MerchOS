@@ -116,10 +116,31 @@ async function findPendingInvitation(
   }
 
   // Successful query. Absence of items is a legitimate "no invitation".
-  if (result.Items && result.Items.length > 0) {
-    return result.Items[0] as InvitationRecord;
+  const candidate = result.Items?.[0] as Partial<InvitationRecord> | undefined;
+  if (!candidate) {
+    return null;
   }
-  return null;
+
+  // Defence-in-depth against misclassification: only treat the row as an
+  // invitation when it is unambiguously a genuine invitation record. A record
+  // must have the invitation key shape (PK TENANT#..., SK INVITE#...) and carry
+  // a tenantId and role. Anything else (e.g. a non-invitation row that happens
+  // to share the email index) is ignored and treated as self-registration.
+  const isGenuineInvitation =
+    typeof candidate.PK === 'string' && candidate.PK.startsWith('TENANT#') &&
+    typeof candidate.SK === 'string' && candidate.SK.startsWith('INVITE#') &&
+    typeof candidate.tenantId === 'string' && candidate.tenantId.length > 0 &&
+    typeof candidate.role === 'string' && candidate.role.length > 0 &&
+    candidate.status === 'pending';
+
+  if (!isGenuineInvitation) {
+    logger.warn('Email-index row did not match a genuine invitation; treating as self-signup', {
+      email,
+    });
+    return null;
+  }
+
+  return candidate as InvitationRecord;
 }
 
 // ---------------------------------------------------------------------------

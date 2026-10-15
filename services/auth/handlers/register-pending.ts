@@ -35,9 +35,9 @@ interface RegisterPendingEvent extends APIGatewayProxyEventV2 {
 async function baseHandler(
   event: RegisterPendingEvent
 ): Promise<APIGatewayProxyResultV2> {
-  const invitationsTable = process.env['INVITATIONS_TABLE'];
-  if (!invitationsTable) {
-    logger.error('Missing INVITATIONS_TABLE environment variable');
+  const tenantsTable = process.env['TENANTS_TABLE'];
+  if (!tenantsTable) {
+    logger.error('Missing TENANTS_TABLE environment variable');
     return {
       statusCode: 500,
       headers: { 'Content-Type': 'application/json' },
@@ -52,7 +52,7 @@ async function baseHandler(
 
   try {
     const repository = new PendingRegistrationRepository({
-      tableName: invitationsTable,
+      tableName: tenantsTable,
     });
 
     const { registrationId } = await repository.create({

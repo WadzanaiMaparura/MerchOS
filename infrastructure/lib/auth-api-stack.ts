@@ -116,6 +116,9 @@ export class AuthApiStack extends cdk.Stack {
       COGNITO_ISSUER: `https://cognito-idp.${region}.amazonaws.com/${props.userPool.userPoolId}`,
       INVITATIONS_TABLE: invitationsTable.tableName,
       SESSIONS_TABLE: sessionsTable.tableName,
+      // Pending registrations are stored in the existing tenants table under
+      // PENDINGREG#<id>. Referenced by conventional name (table not in-stack).
+      TENANTS_TABLE: `merch-os-tenants-${env}`,
       RATE_LIMITS_TABLE: this.rateLimitsTable.tableName,
       EVENT_BUS_NAME: props.eventBus.eventBusName,
       ENVIRONMENT: env,
@@ -250,13 +253,23 @@ export class AuthApiStack extends cdk.Stack {
     const sessionFn = createLambda('Session', path.join(handlersPath, 'session.ts'), []);
 
     // 9b. Register Pending (unauthenticated — pre-signup profile capture)
+    // Writes a PENDINGREG#<id> record to the existing tenants table. The table
+    // is not defined in-stack; reference its ARN by conventional name.
+    const tenantsTableArn = cdk.Arn.format(
+      {
+        service: 'dynamodb',
+        resource: 'table',
+        resourceName: `merch-os-tenants-${env}`,
+      },
+      cdk.Stack.of(this),
+    );
     const registerPendingFn = createLambda('RegisterPending', path.join(handlersPath, 'register-pending.ts'), [
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['dynamodb:PutItem'],
-        resources: [invitationsTable.tableArn],
+        resources: [tenantsTableArn],
       }),
-      // The invitations table is CMK-encrypted; writing a pending record needs
+      // The tenants table is CMK-encrypted; writing a pending record needs
       // GenerateDataKey (and Decrypt for the SDK's envelope handling).
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,

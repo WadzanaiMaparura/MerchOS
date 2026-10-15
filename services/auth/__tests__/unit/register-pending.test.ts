@@ -69,7 +69,7 @@ describe('registerPendingSchema', () => {
 describe('register-pending handler', () => {
   beforeEach(() => {
     createMock.mockReset();
-    process.env['INVITATIONS_TABLE'] = 'merch-os-invitations-test';
+    process.env['TENANTS_TABLE'] = 'merch-os-tenants-test';
   });
 
   it('returns 201 with only the registrationId (no tenantId leaked)', async () => {
@@ -116,7 +116,7 @@ describe('register-pending handler', () => {
   });
 
   it('returns 500 when the table is misconfigured', async () => {
-    delete process.env['INVITATIONS_TABLE'];
+    delete process.env['TENANTS_TABLE'];
 
     const result = (await handler(buildEvent(VALID_BODY), {} as never, () => {})) as {
       statusCode: number;

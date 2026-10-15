@@ -68,26 +68,53 @@ describe('Auth identity-assignment infrastructure', () => {
     expect(() => synth()).not.toThrow();
   });
 
-  it('grants PreSignUp/PostConfirmation kms:Decrypt but not write-only perms it does not need', () => {
+  it('grants kms:Decrypt for CMK-encrypted table reads', () => {
+    const { auth } = synth();
+    expect(allActions(auth)).toContain('kms:Decrypt');
+  });
+
+  it('grants PostConfirmation cognito-idp:AdminUpdateUserAttributes and tenants-table GetItem', () => {
     const { auth } = synth();
     const actions = allActions(auth);
-    expect(actions).toContain('kms:Decrypt');
-    // PreSignUp is read-only; it must not request GenerateDataKey.
-    // (PostConfirmation legitimately needs GenerateDataKey for the delete path,
-    // so we assert Decrypt presence here and scope the no-write check in the
-    // dedicated PreSignUp statement below.)
+    expect(actions).toContain('cognito-idp:AdminUpdateUserAttributes');
+    expect(actions).toContain('dynamodb:GetItem');
   });
 
-  it('grants PostConfirmation cognito-idp:AdminUpdateUserAttributes', () => {
+  it('does NOT grant the triggers DeleteItem (no premature pending deletion) or write-only KMS', () => {
     const { auth } = synth();
-    expect(allActions(auth)).toContain('cognito-idp:AdminUpdateUserAttributes');
+    const actions = allActions(auth);
+    // PostConfirmation only reads the pending record; it must not delete it,
+    // and the read-only trigger paths must not request GenerateDataKey.
+    expect(actions).not.toContain('dynamodb:DeleteItem');
+    expect(actions).not.toContain('kms:GenerateDataKey');
   });
 
-  it('does NOT grant the PreSignUp role any S3 or broad admin wildcard', () => {
+  it('does NOT grant the trigger roles any S3 or broad admin wildcard', () => {
     const { auth } = synth();
     const actions = allActions(auth);
     expect(actions).not.toContain('*');
     expect(actions.some((a) => a.startsWith('s3:'))).toBe(false);
+  });
+
+  it('scopes RegisterPending and PostConfirmation DynamoDB access to the tenants table', () => {
+    const { auth, authApi } = synth();
+    // The register-pending handler (AuthApi stack) writes to the tenants table.
+    const apiActions = (() => {
+      const policies = authApi.findResources('AWS::IAM::Policy');
+      const resources: string[] = [];
+      for (const p of Object.values(policies)) {
+        for (const s of (p as { Properties: { PolicyDocument: { Statement: Array<{ Resource?: unknown }> } } })
+          .Properties.PolicyDocument.Statement) {
+          const r = JSON.stringify(s.Resource ?? '');
+          if (r.includes('merch-os-tenants-dev')) resources.push(r);
+        }
+      }
+      return resources;
+    })();
+    expect(apiActions.length).toBeGreaterThan(0);
+    // And the AuthStack (PostConfirmation) references the tenants table too.
+    const authJson = JSON.stringify(auth.toJSON());
+    expect(authJson).toContain('merch-os-tenants-dev');
   });
 
   it('exposes an unauthenticated POST /auth/register-pending route', () => {

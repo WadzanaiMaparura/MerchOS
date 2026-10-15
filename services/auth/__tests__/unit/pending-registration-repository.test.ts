@@ -4,7 +4,6 @@ import {
   DynamoDBDocumentClient,
   PutCommand,
   GetCommand,
-  QueryCommand,
   DeleteCommand,
 } from '@aws-sdk/lib-dynamodb';
 
@@ -20,7 +19,7 @@ function makeRepo() {
   // Let the repository build its own doc client; aws-sdk-client-mock patches
   // DynamoDBDocumentClient globally so all sends are intercepted.
   return new PendingRegistrationRepository({
-    tableName: 'merch-os-invitations-test',
+    tableName: 'merch-os-tenants-test',
     ttlSeconds: PENDING_REGISTRATION_TTL_SECONDS,
   });
 }
@@ -28,6 +27,10 @@ function makeRepo() {
 describe('PendingRegistrationRepository', () => {
   beforeEach(() => {
     ddbMock.reset();
+  });
+
+  it('uses the approved ~1 hour TTL by default', () => {
+    expect(PENDING_REGISTRATION_TTL_SECONDS).toBe(60 * 60);
   });
 
   it('creates a record with server-generated registrationId and tenantId', async () => {
@@ -51,7 +54,7 @@ describe('PendingRegistrationRepository', () => {
     expect(result.registrationId).not.toBe(result.tenantId);
   });
 
-  it('writes under the PENDINGREG# key with a METADATA sort key and TTL', async () => {
+  it('writes to the tenants table under PENDINGREG#/METADATA with a TTL', async () => {
     ddbMock.on(PutCommand).resolves({});
     const repo = makeRepo();
 
@@ -64,12 +67,16 @@ describe('PendingRegistrationRepository', () => {
     });
 
     const put = ddbMock.commandCalls(PutCommand)[0].args[0].input;
+    expect(put.TableName).toBe('merch-os-tenants-test');
     const item = put.Item as Record<string, unknown>;
     expect(String(item.PK)).toMatch(/^PENDINGREG#/);
     expect(item.SK).toBe('METADATA');
     expect(item.expiresAt).toBeTypeOf('number');
     expect(item.expiresAt as number).toBeGreaterThan(Math.floor(Date.now() / 1000));
-    // Guards against id collision.
+    // ~1 hour TTL (allow a little slack for execution time).
+    const delta = (item.expiresAt as number) - Math.floor(Date.now() / 1000);
+    expect(delta).toBeLessThanOrEqual(3600);
+    expect(delta).toBeGreaterThan(3600 - 60);
     expect(put.ConditionExpression).toContain('attribute_not_exists(PK)');
   });
 
@@ -92,58 +99,32 @@ describe('PendingRegistrationRepository', () => {
     expect(keys.some((k) => k.includes('confirm'))).toBe(false);
   });
 
-  it('findActiveByEmail returns null when all matches are expired', async () => {
-    const nowSeconds = Math.floor(Date.now() / 1000);
-    ddbMock.on(QueryCommand).resolves({
-      Items: [
-        {
-          PK: pendingRegistrationPK('old'),
-          SK: 'METADATA',
-          registrationId: 'old',
-          email: 'seller@example.com',
-          tenantId: 't',
-          status: 'pending',
-          createdAt: '2020-01-01T00:00:00.000Z',
-          expiresAt: nowSeconds - 100,
-        },
-      ],
+  it('getById resolves the exact record by registrationId', async () => {
+    ddbMock.on(GetCommand).resolves({
+      Item: {
+        PK: pendingRegistrationPK('reg-1'),
+        SK: 'METADATA',
+        registrationId: 'reg-1',
+        email: 'seller@example.com',
+        tenantId: 't-1',
+        status: 'pending',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        expiresAt: Math.floor(Date.now() / 1000) + 1000,
+      },
     });
     const repo = makeRepo();
 
-    const result = await repo.findActiveByEmail('seller@example.com');
-    expect(result).toBeNull();
+    const result = await repo.getById('reg-1');
+    expect(result?.registrationId).toBe('reg-1');
+
+    const get = ddbMock.commandCalls(GetCommand)[0].args[0].input;
+    expect(get.Key).toEqual({ PK: pendingRegistrationPK('reg-1'), SK: 'METADATA' });
   });
 
-  it('findActiveByEmail returns the most recent active record', async () => {
-    const nowSeconds = Math.floor(Date.now() / 1000);
-    ddbMock.on(QueryCommand).resolves({
-      Items: [
-        {
-          PK: pendingRegistrationPK('older'),
-          SK: 'METADATA',
-          registrationId: 'older',
-          email: 'seller@example.com',
-          tenantId: 't-older',
-          status: 'pending',
-          createdAt: '2026-01-01T00:00:00.000Z',
-          expiresAt: nowSeconds + 1000,
-        },
-        {
-          PK: pendingRegistrationPK('newer'),
-          SK: 'METADATA',
-          registrationId: 'newer',
-          email: 'seller@example.com',
-          tenantId: 't-newer',
-          status: 'pending',
-          createdAt: '2026-02-01T00:00:00.000Z',
-          expiresAt: nowSeconds + 1000,
-        },
-      ],
-    });
+  it('getById returns null when the record does not exist', async () => {
+    ddbMock.on(GetCommand).resolves({});
     const repo = makeRepo();
-
-    const result = await repo.findActiveByEmail('seller@example.com');
-    expect(result?.registrationId).toBe('newer');
+    expect(await repo.getById('missing')).toBeNull();
   });
 
   it('deleteById issues a delete for the correct key', async () => {

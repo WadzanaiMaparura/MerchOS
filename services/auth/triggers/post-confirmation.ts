@@ -96,40 +96,49 @@ export async function handler(
   }
 
   // -------------------------------------------------------------------------
-  // Self-signup: resolve the server-trusted tenantId from the matching,
-  // non-expired pending-registration record (matched by verified email).
+  // Self-signup: resolve the server-trusted tenantId from the EXACT pending
+  // registration identified by the registrationId passed through Cognito
+  // clientMetadata. We never select a record by email alone.
   // -------------------------------------------------------------------------
   let tenantId: string;
-  let role: string;
+  const role = 'owner';
 
+  const registrationId = readRegistrationId(event);
   const repository = getRepository();
-  const pending = await repository.findActiveByEmail(email);
+
+  let pending = null;
+  if (registrationId) {
+    pending = await repository.getById(registrationId);
+  } else {
+    logger.warn('No registrationId in clientMetadata; using recovery fallback', { userId });
+  }
 
   if (pending) {
-    // Validate the pending record's email against the verified Cognito
-    // identity and confirm it has not expired.
-    if (pending.email.trim().toLowerCase() !== email) {
-      // Should not happen (looked up by email), but guard defensively.
-      throw new Error('Pending registration email mismatch for confirmed user');
-    }
-    if (PendingRegistrationRepository.isExpired(pending)) {
-      // Treat as missing — fall through to profile-recovery fallback below.
+    // Correlate the pending record against the confirmed, verified Cognito
+    // email, and confirm it has not expired. Any mismatch/expiry falls back to
+    // recovery rather than trusting a stale or wrong record.
+    const emailMatches = pending.email.trim().toLowerCase() === email;
+    const expired = PendingRegistrationRepository.isExpired(pending);
+
+    if (!emailMatches) {
+      logger.warn('Pending registration email does not match verified identity; using recovery fallback', {
+        userId,
+      });
+      tenantId = reserveFallbackTenantId();
+    } else if (expired) {
       logger.warn('Pending registration expired; using recovery fallback', { userId });
       tenantId = reserveFallbackTenantId();
-      role = 'owner';
     } else {
       tenantId = pending.tenantId;
-      role = 'owner';
     }
   } else {
-    // Missing/expired pending registration. Consistent with the approved
-    // profile-recovery fallback: still provision a usable owner identity with
-    // a server-generated tenantId so the account is not stranded. We do NOT
-    // fabricate business profile data (no org name derived from email); that
+    // Missing/expired pending registration. Approved profile-recovery
+    // fallback: provision a usable owner identity with a server-generated
+    // tenantId so the account is not stranded. We do NOT fabricate business
+    // profile data (no org name derived from email); durable profile capture
     // remains the responsibility of the existing profile-completion path.
-    logger.warn('No active pending registration found; using recovery fallback', { userId });
+    logger.warn('No pending registration resolved; using recovery fallback', { userId });
     tenantId = reserveFallbackTenantId();
-    role = 'owner';
   }
 
   // -------------------------------------------------------------------------
@@ -160,20 +169,27 @@ export async function handler(
 
   logger.info('Trusted identity assigned', { userId });
 
-  // Clean up the consumed pending registration (idempotent).
-  if (pending) {
-    try {
-      await repository.deleteById(pending.registrationId);
-    } catch (error) {
-      // Non-fatal: TTL will reap it. Log and continue.
-      logger.warn('Failed to delete consumed pending registration', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
+  // IMPORTANT: do NOT delete the pending registration here. This change only
+  // assigns Cognito identity attributes; it does not yet persist the durable
+  // tenant metadata, owner profile and consent records. Deleting now would
+  // lose the only copy of that profile/consent data. The pending record is
+  // retained (and will TTL-expire as a backstop) until the approved downstream
+  // completion path commits the durable records and performs cleanup. That
+  // path remains separately gated.
 
   await emitRegisteredEvent({ userId, email, tenantId });
   return event;
+}
+
+/**
+ * Reads the registrationId from the supported Cognito clientMetadata path.
+ * Returns undefined when absent.
+ */
+function readRegistrationId(event: PostConfirmationTriggerEvent): string | undefined {
+  const metadata = (event.request as { clientMetadata?: Record<string, string> })
+    .clientMetadata;
+  const value = metadata?.['registrationId'];
+  return value && value.trim().length > 0 ? value.trim() : undefined;
 }
 
 /**

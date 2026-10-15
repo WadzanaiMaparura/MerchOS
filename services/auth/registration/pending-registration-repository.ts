@@ -8,9 +8,13 @@
  * TenantDynamoClient enforces do not apply. TenantDynamoClient is left
  * unchanged.
  *
- * Storage reuses the invitations table (CMK-encrypted, TTL-enabled, with an
- * `email-index` GSI) under a distinct key prefix:
+ * Storage: the existing tenants table (merch-os-tenants-<env>), under the
+ * approved key:
  *   PK = `PENDINGREG#<registrationId>`, SK = `METADATA`.
+ *
+ * Records are resolved by registrationId only (no email GSI). Email is stored
+ * for correlation against the verified Cognito identity, not for lookup, so a
+ * pending record can never be mis-selected by email.
  */
 
 import crypto from 'node:crypto';
@@ -20,7 +24,6 @@ import {
   PutCommand,
   GetCommand,
   DeleteCommand,
-  QueryCommand,
 } from '@aws-sdk/lib-dynamodb';
 
 import type {
@@ -29,12 +32,23 @@ import type {
   CreatePendingRegistrationResult,
 } from './types';
 
-/** Default pending-registration TTL: 24 hours (seconds). */
-export const PENDING_REGISTRATION_TTL_SECONDS = 24 * 60 * 60;
+/** Approved pending-registration TTL: ~1 hour (seconds). */
+export const PENDING_REGISTRATION_TTL_SECONDS = 60 * 60;
 
 /** Builds the partition key for a pending-registration record. */
 export function pendingRegistrationPK(registrationId: string): string {
   return `PENDINGREG#${registrationId}`;
+}
+
+/** Resolves the tenants table name from configuration. */
+function resolveTableName(explicit?: string): string {
+  const tableName = explicit ?? process.env['TENANTS_TABLE'];
+  if (!tableName) {
+    throw new Error(
+      'PendingRegistrationRepository requires a table name (TENANTS_TABLE).'
+    );
+  }
+  return tableName;
 }
 
 export class PendingRegistrationRepository {
@@ -47,13 +61,7 @@ export class PendingRegistrationRepository {
     docClient?: DynamoDBDocumentClient;
     ttlSeconds?: number;
   }) {
-    const tableName = options?.tableName ?? process.env['INVITATIONS_TABLE'];
-    if (!tableName) {
-      throw new Error(
-        'PendingRegistrationRepository requires a table name (INVITATIONS_TABLE).'
-      );
-    }
-    this.tableName = tableName;
+    this.tableName = resolveTableName(options?.tableName);
     this.ttlSeconds = options?.ttlSeconds ?? PENDING_REGISTRATION_TTL_SECONDS;
 
     this.docClient =
@@ -106,7 +114,10 @@ export class PendingRegistrationRepository {
     return { registrationId, tenantId };
   }
 
-  /** Fetches a pending registration by its registrationId. */
+  /**
+   * Fetches a pending registration by its exact registrationId.
+   * Returns null when no record exists for that id.
+   */
   async getById(registrationId: string): Promise<PendingRegistrationRecord | null> {
     const result = await this.docClient.send(
       new GetCommand({
@@ -118,45 +129,12 @@ export class PendingRegistrationRepository {
   }
 
   /**
-   * Finds the most recent, non-expired pending registration for a verified
-   * email. Returns null when none match or all have expired.
+   * Deletes a pending registration (idempotent — missing item is a no-op).
    *
-   * Expiry is enforced in code as well as by DynamoDB TTL, because TTL deletion
-   * is not instantaneous and an expired item may still be readable.
+   * NOTE: callers must only invoke this AFTER the durable downstream completion
+   * path (tenant metadata + owner profile + consent) has committed. It must not
+   * be called merely after assigning Cognito attributes.
    */
-  async findActiveByEmail(email: string): Promise<PendingRegistrationRecord | null> {
-    const result = await this.docClient.send(
-      new QueryCommand({
-        TableName: this.tableName,
-        IndexName: 'email-index',
-        KeyConditionExpression: 'email = :email',
-        FilterExpression: 'SK = :sk AND #status = :status',
-        ExpressionAttributeNames: { '#status': 'status' },
-        ExpressionAttributeValues: {
-          ':email': email,
-          ':sk': 'METADATA',
-          ':status': 'pending',
-        },
-      })
-    );
-
-    const items = (result.Items as PendingRegistrationRecord[] | undefined) ?? [];
-    const pendingRegistrations = items.filter(
-      (item) => typeof item.PK === 'string' && item.PK.startsWith('PENDINGREG#')
-    );
-    if (pendingRegistrations.length === 0) {
-      return null;
-    }
-
-    const nowSeconds = Math.floor(Date.now() / 1000);
-    const active = pendingRegistrations
-      .filter((item) => item.expiresAt > nowSeconds)
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-
-    return active[0] ?? null;
-  }
-
-  /** Deletes a pending registration (idempotent — missing item is a no-op). */
   async deleteById(registrationId: string): Promise<void> {
     await this.docClient.send(
       new DeleteCommand({

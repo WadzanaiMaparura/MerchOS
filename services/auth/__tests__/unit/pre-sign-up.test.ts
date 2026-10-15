@@ -151,4 +151,31 @@ describe('pre-sign-up trigger', () => {
     expect(result.request.userAttributes['custom:role']).toBe('viewer');
     expect(result.request.userAttributes['custom:role']).not.toBe('owner');
   });
+
+  it('never auto-confirms for a non-invitation row (e.g. a pending-registration-shaped record)', async () => {
+    // A record that is NOT a genuine invitation (wrong key shape, no role).
+    // Even if such a row shared the email index, it must be ignored and the
+    // flow must proceed as self-registration (no auto-confirm/verify).
+    ddbDocMock.on(QueryCommand).resolves({
+      Items: [
+        {
+          PK: 'PENDINGREG#reg-1',
+          SK: 'METADATA',
+          email: 'newuser@example.com',
+          tenantId: 'server-tenant-1',
+          status: 'pending',
+        },
+      ],
+    });
+
+    const { handler } = await import('../../triggers/pre-sign-up');
+    const event = buildPreSignUpEvent();
+
+    const result = await handler(event);
+
+    expect(result.response.autoConfirmUser).toBe(false);
+    expect(result.response.autoVerifyEmail).toBe(false);
+    expect(result.request.userAttributes['custom:tenantId']).toBeUndefined();
+    expect(result.request.userAttributes['custom:role']).toBeUndefined();
+  });
 });
