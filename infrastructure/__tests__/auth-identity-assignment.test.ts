@@ -218,8 +218,41 @@ describe('Auth identity-assignment infrastructure', () => {
     // Conditional invitation-record cleanup for ambiguous writes.
     expect(inviteActions).toContain('dynamodb:PutItem');
     expect(inviteActions).toContain('dynamodb:DeleteItem');
+    // CMK access for the encrypted invitations table.
+    expect(inviteActions).toContain('kms:GenerateDataKey');
+    expect(inviteActions).toContain('kms:Decrypt');
     // The impossible post-creation immutable-attribute update is gone.
     expect(inviteActions).not.toContain('cognito-idp:AdminUpdateUserAttributes');
+  });
+
+  it('injects COGNITO_USER_POOL_ID (the variable the InviteUser handler reads) into the InviteUser Lambda', () => {
+    const { authApi } = synth();
+    const fns = authApi.findResources('AWS::Lambda::Function');
+    const invite = Object.values(fns).find((f) =>
+      ((f as { Properties: { FunctionName?: string } }).Properties.FunctionName ?? '')
+        .includes('inviteuser'),
+    ) as { Properties: { Environment?: { Variables?: Record<string, unknown> } } } | undefined;
+    expect(invite).toBeDefined();
+    const vars = invite!.Properties.Environment?.Variables ?? {};
+    expect(Object.keys(vars)).toContain('COGNITO_USER_POOL_ID');
+    // The old (never-supplied) name must not be what we rely on.
+    expect(Object.keys(vars)).not.toContain('COGNITO_TENANT_POOL_ID');
+  });
+
+  it('grants PostConfirmation read access to the invitations table + email-index (invited identity resolution)', () => {
+    const { auth } = synth();
+    const policies = auth.findResources('AWS::IAM::Policy');
+    let hasQuery = false;
+    for (const [logicalId, policy] of Object.entries(policies)) {
+      if (!logicalId.startsWith('PostConfirmationRole')) continue;
+      for (const stmt of (policy as { Properties: { PolicyDocument: { Statement: Array<{ Action?: string | string[] }> } } })
+        .Properties.PolicyDocument.Statement) {
+        const a = stmt.Action;
+        const actions = Array.isArray(a) ? a : a ? [a] : [];
+        if (actions.includes('dynamodb:Query')) hasQuery = true;
+      }
+    }
+    expect(hasQuery).toBe(true);
   });
 
   it('allows app clients to read the tenant/role attributes (SPA context display)', () => {

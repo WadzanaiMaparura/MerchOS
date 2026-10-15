@@ -40,6 +40,7 @@ import {
 import { Logger } from '@aws-lambda-powertools/logger';
 
 import { PendingRegistrationRepository } from '../registration/pending-registration-repository';
+import { findGenuineInvitationByEmail } from '../registration/invitation-lookup';
 
 const logger = new Logger({ serviceName: 'merch-os-post-confirmation' });
 
@@ -110,55 +111,75 @@ export async function handler(
   }
 
   // -------------------------------------------------------------------------
-  // Self-signup: resolve the server-trusted tenantId from the EXACT pending
-  // registration identified by the registrationId passed through Cognito
-  // clientMetadata. We never select a record by email alone.
+  // Invited self-registrant (PreSignUp_SignUp): no identity attributes were set
+  // during sign-up (PreSignUp no longer mutates request.userAttributes). The
+  // authoritative invited tenant/role must come from the invitation record,
+  // matched by the VERIFIED Cognito email. If a genuine, non-expired invitation
+  // exists, assign the INVITED tenant/role — never owner, never recovery.
+  //
+  // The lookup is fail-closed: a DynamoDB/KMS failure throws, so we never fall
+  // through to the owner-recovery path for a user who might be an invitee.
   // -------------------------------------------------------------------------
   let tenantId: string;
-  const role = 'owner';
+  let role: string;
 
-  const registrationId = readRegistrationId(event);
-  const repository = getRepository();
-
-  let pending = null;
-  if (registrationId) {
-    pending = await repository.getById(registrationId);
+  const invitation = await findGenuineInvitationByEmail(email);
+  if (invitation) {
+    logger.info('Confirmed user matches a genuine invitation; assigning invited identity', {
+      userId,
+    });
+    tenantId = invitation.tenantId;
+    role = invitation.role;
   } else {
-    logger.warn('No registrationId in clientMetadata; using recovery fallback', { userId });
-  }
+    // -----------------------------------------------------------------------
+    // Self-signup: resolve the server-trusted tenantId from the EXACT pending
+    // registration identified by the registrationId passed through Cognito
+    // clientMetadata. We never select a record by email alone.
+    // -----------------------------------------------------------------------
+    role = 'owner';
+    const registrationId = readRegistrationId(event);
+    const repository = getRepository();
 
-  if (pending) {
-    // Correlate the pending record against the confirmed, verified Cognito
-    // email, and confirm it has not expired. Any mismatch/expiry falls back to
-    // recovery rather than trusting a stale or wrong record.
-    const emailMatches = pending.email.trim().toLowerCase() === email;
-    const expired = PendingRegistrationRepository.isExpired(pending);
-
-    if (!emailMatches) {
-      logger.warn('Pending registration email does not match verified identity; using recovery fallback', {
-        userId,
-      });
-      tenantId = reserveFallbackTenantId();
-    } else if (expired) {
-      logger.warn('Pending registration expired; using recovery fallback', { userId });
-      tenantId = reserveFallbackTenantId();
+    let pending = null;
+    if (registrationId) {
+      pending = await repository.getById(registrationId);
     } else {
-      tenantId = pending.tenantId;
+      logger.warn('No registrationId in clientMetadata; using recovery fallback', { userId });
     }
-  } else {
-    // Missing/expired pending registration. Approved profile-recovery
-    // fallback: provision a usable owner identity with a server-generated
-    // tenantId so the account is not stranded. We do NOT fabricate business
-    // profile data (no org name derived from email); durable profile capture
-    // remains the responsibility of the existing profile-completion path.
-    logger.warn('No pending registration resolved; using recovery fallback', { userId });
-    tenantId = reserveFallbackTenantId();
+
+    if (pending) {
+      const emailMatches = pending.email.trim().toLowerCase() === email;
+      const expired = PendingRegistrationRepository.isExpired(pending);
+      if (!emailMatches) {
+        logger.warn('Pending registration email does not match verified identity; using recovery fallback', {
+          userId,
+        });
+        tenantId = reserveFallbackTenantId();
+      } else if (expired) {
+        logger.warn('Pending registration expired; using recovery fallback', { userId });
+        tenantId = reserveFallbackTenantId();
+      } else {
+        tenantId = pending.tenantId;
+      }
+    } else {
+      // Missing/expired pending registration. Approved profile-recovery
+      // fallback: provision a usable owner identity with a server-generated
+      // tenantId so the account is not stranded. We do NOT fabricate business
+      // profile data (no org name derived from email); durable profile capture
+      // remains the responsibility of the existing profile-completion path.
+      logger.warn('No pending registration resolved; using recovery fallback', { userId });
+      tenantId = reserveFallbackTenantId();
+    }
   }
 
   // -------------------------------------------------------------------------
   // Persist the trusted identity via a supported server-side Cognito op.
   // AdminUpdateUserAttributes is idempotent — re-running with the same values
   // is safe, so repeated trigger invocations converge to the same identity.
+  // We write the MUTABLE server-managed attribute: the immutable custom:tenantId
+  // cannot be set after creation. For both invited self-registrants and self-
+  // signups, the id lands in custom:tenantIdAssigned, and PreTokenGeneration
+  // maps it onto the custom:tenantId token claim for downstream consumers.
   // -------------------------------------------------------------------------
   try {
     await getCognitoClient().send(
@@ -166,10 +187,6 @@ export async function handler(
         UserPoolId: userPoolId,
         Username: userId,
         UserAttributes: [
-          // Write the MUTABLE server-managed attribute. The immutable
-          // custom:tenantId cannot be set after creation, so self-signup uses
-          // custom:tenantIdAssigned. PreTokenGeneration maps whichever is set
-          // onto the custom:tenantId token claim for downstream consumers.
           { Name: 'custom:tenantIdAssigned', Value: tenantId },
           { Name: 'custom:role', Value: role },
         ],

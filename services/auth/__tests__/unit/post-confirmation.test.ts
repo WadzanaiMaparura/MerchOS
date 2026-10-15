@@ -4,6 +4,7 @@ import {
   CognitoIdentityProviderClient,
   AdminUpdateUserAttributesCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
+import { DynamoDBDocumentClient, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import type { PostConfirmationTriggerEvent } from 'aws-lambda';
 
 // ---------------------------------------------------------------------------
@@ -27,6 +28,8 @@ vi.mock('../../utils/event-emitter', () => ({
 }));
 
 const cognitoMock = mockClient(CognitoIdentityProviderClient);
+// The invitation lookup (shared module) queries DynamoDB. Patched globally.
+const ddbMock = mockClient(DynamoDBDocumentClient);
 
 import { PendingRegistrationRepository } from '../../registration/pending-registration-repository';
 import {
@@ -92,8 +95,13 @@ describe('post-confirmation trigger — trusted identity assignment', () => {
   beforeEach(() => {
     cognitoMock.reset();
     cognitoMock.on(AdminUpdateUserAttributesCommand).resolves({});
+    ddbMock.reset();
+    // Default: no invitation for this email (self-signup path). Individual
+    // tests override to simulate an invited user.
+    ddbMock.on(QueryCommand).resolves({ Items: [] });
     mockEmitAuthEvent.mockClear();
     process.env['AWS_REGION'] = 'eu-west-1';
+    process.env['INVITATIONS_TABLE'] = 'merch-os-invitations-dev';
   });
 
   afterEach(() => {
@@ -113,6 +121,67 @@ describe('post-confirmation trigger — trusted identity assignment', () => {
     expect(attrs['custom:tenantIdAssigned']).toBe('server-tenant-1');
     expect(attrs['custom:tenantId']).toBeUndefined();
     expect(attrs['custom:role']).toBe('owner');
+  });
+
+  it('assigns the INVITED tenant/role (not owner) when a genuine invitation matches the verified email', async () => {
+    // A genuine, non-expired invitation exists for this verified email.
+    ddbMock.on(QueryCommand).resolves({
+      Items: [
+        {
+          PK: 'TENANT#invited-tenant',
+          SK: 'INVITE#seller@example.com',
+          email: 'seller@example.com',
+          tenantId: 'invited-tenant',
+          role: 'editor',
+          status: 'pending',
+          expiresAt: NOW_SECONDS + 3600,
+        },
+      ],
+    });
+    // Even if a self-signup pending record exists, the invitation wins.
+    __setPendingRegistrationRepositoryForTesting(fakeRepo({ 'reg-1': makePending() }));
+
+    await handler(buildEvent('reg-1'));
+
+    const attrs = attrsFromCall();
+    expect(attrs['custom:tenantIdAssigned']).toBe('invited-tenant');
+    expect(attrs['custom:role']).toBe('editor');
+    // Never converted into an owner, never used the self-signup tenant.
+    expect(attrs['custom:role']).not.toBe('owner');
+    expect(attrs['custom:tenantIdAssigned']).not.toBe('server-tenant-1');
+  });
+
+  it('ignores an EXPIRED invitation and falls through to self-signup (never invited-as-owner confusion)', async () => {
+    ddbMock.on(QueryCommand).resolves({
+      Items: [
+        {
+          PK: 'TENANT#expired-invite',
+          SK: 'INVITE#seller@example.com',
+          email: 'seller@example.com',
+          tenantId: 'expired-invite',
+          role: 'editor',
+          status: 'pending',
+          expiresAt: NOW_SECONDS - 10,
+        },
+      ],
+    });
+    __setPendingRegistrationRepositoryForTesting(fakeRepo({ 'reg-1': makePending() }));
+
+    await handler(buildEvent('reg-1'));
+
+    const attrs = attrsFromCall();
+    // Expired invitation ignored → self-signup pending tenant used, owner role.
+    expect(attrs['custom:tenantIdAssigned']).toBe('server-tenant-1');
+    expect(attrs['custom:role']).toBe('owner');
+  });
+
+  it('fails closed (throws) when the invitation lookup errors — never mints an owner', async () => {
+    ddbMock.on(QueryCommand).rejects(new Error('AccessDenied: kms:Decrypt'));
+    __setPendingRegistrationRepositoryForTesting(fakeRepo({ 'reg-1': makePending() }));
+
+    await expect(handler(buildEvent('reg-1'))).rejects.toThrow();
+    // No identity assignment happened.
+    expect(cognitoMock.commandCalls(AdminUpdateUserAttributesCommand)).toHaveLength(0);
   });
 
   it('does NOT select by email when registrationId is absent (uses recovery fallback)', async () => {

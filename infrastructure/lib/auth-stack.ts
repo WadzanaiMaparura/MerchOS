@@ -366,8 +366,20 @@ export class AuthStack extends cdk.Stack {
       actions: ['dynamodb:GetItem'],
       resources: [tenantsTableArn],
     }));
-    // The tenants table is CMK-encrypted; reading an item requires kms:Decrypt.
-    // This is a read-only path, so GenerateDataKey (write) is NOT granted.
+    // Read invitations by verified email (email-index GSI) so an invited
+    // self-registrant receives the authoritative invited tenant/role rather
+    // than an owner-recovery identity. Read-only (Query); no write.
+    postConfirmationRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['dynamodb:Query'],
+      resources: [
+        this.invitationsTable.tableArn,
+        `${this.invitationsTable.tableArn}/index/email-index`,
+      ],
+    }));
+    // The tenants and invitations tables are CMK-encrypted; reading an item
+    // requires kms:Decrypt. Read-only path, so GenerateDataKey (write) is NOT
+    // granted.
     postConfirmationRole.addToPolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: ['kms:Decrypt'],

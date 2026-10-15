@@ -86,14 +86,14 @@ describe('invite-user handler', () => {
     ddbMock.reset();
     resetCognitoClient();
     mockEmitAuthEvent.mockClear();
-    process.env['COGNITO_TENANT_POOL_ID'] = 'us-east-1_testPoolId';
+    process.env['COGNITO_USER_POOL_ID'] = 'us-east-1_testPoolId';
     process.env['INVITATIONS_TABLE'] = 'merch-os-invitations-dev';
     process.env['EVENT_BUS_NAME'] = 'merch-os-events-dev';
     process.env['AWS_REGION'] = 'eu-west-1';
   });
 
   afterEach(() => {
-    delete process.env['COGNITO_TENANT_POOL_ID'];
+    delete process.env['COGNITO_USER_POOL_ID'];
     delete process.env['INVITATIONS_TABLE'];
     delete process.env['EVENT_BUS_NAME'];
     delete process.env['AWS_REGION'];
@@ -289,6 +289,25 @@ describe('invite-user handler', () => {
     expect(ddbMock.commandCalls(PutCommand)).toHaveLength(0);
   });
 
+  it('does NOT delete the user when AdminCreateUser returns an ambiguous (timeout) error', async () => {
+    const timeout = new Error('socket timed out');
+    (timeout as any).name = 'TimeoutError';
+    cognitoMock.on(AdminCreateUserCommand).rejects(timeout);
+    cognitoMock.on(AdminDeleteUserCommand).resolves({});
+
+    const { handler } = await import('../../handlers/invite-user');
+    const event = buildEvent({ email: 'newuser@example.com', role: 'editor', tenantId: 'tenant-1' });
+    const result = await handler(event as any, {} as any) as any;
+
+    expect(result.statusCode).toBe(500);
+    const body = JSON.parse(result.body);
+    expect(body.error.code).toBe('PROVISIONING_AMBIGUOUS');
+    // Must NEVER delete on an ambiguous create — the user may actually exist.
+    expect(cognitoMock.commandCalls(AdminDeleteUserCommand)).toHaveLength(0);
+    // No invitation record written (we never reached that step).
+    expect(ddbMock.commandCalls(PutCommand)).toHaveLength(0);
+  });
+
   it('rolls back the created user when AddToGroup fails (no orphaned user, no invite record)', async () => {
     cognitoMock.on(AdminCreateUserCommand).resolves({});
     cognitoMock.on(AdminAddUserToGroupCommand).rejects(new Error('group failure'));
@@ -389,7 +408,7 @@ describe('invite-user handler', () => {
   });
 
   it('returns 500 when env vars missing', async () => {
-    delete process.env['COGNITO_TENANT_POOL_ID'];
+    delete process.env['COGNITO_USER_POOL_ID'];
     delete process.env['INVITATIONS_TABLE'];
 
     const { handler } = await import('../../handlers/invite-user');

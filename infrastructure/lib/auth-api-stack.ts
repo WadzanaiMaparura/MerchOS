@@ -301,6 +301,14 @@ export class AuthApiStack extends cdk.Stack {
         actions: ['dynamodb:PutItem', 'dynamodb:DeleteItem'],
         resources: [invitationsTable.tableArn],
       }),
+      // The invitations table is CMK-encrypted. Writing needs GenerateDataKey;
+      // the conditional delete reads/evaluates the item and needs Decrypt.
+      // Matches the register-pending CMK access pattern.
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['kms:GenerateDataKey', 'kms:Decrypt'],
+        resources: [props.platformKey.keyArn],
+      }),
     ]);
 
     // 11. List Users

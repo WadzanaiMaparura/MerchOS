@@ -56,7 +56,7 @@ describe('pre-sign-up trigger', () => {
     process.env['AWS_REGION'] = 'eu-west-1';
   });
 
-  it('should auto-confirm and assign role when user is invited', async () => {
+  it('auto-confirms an invited user WITHOUT mutating identity attributes (assignment deferred to PostConfirmation)', async () => {
     // Arrange: invitation exists for this email
     ddbDocMock.on(QueryCommand).resolves({
       Items: [
@@ -78,11 +78,13 @@ describe('pre-sign-up trigger', () => {
     // Act
     const result = await handler(event);
 
-    // Assert
+    // Assert: auto-confirm requested, but NO identity attributes mutated here.
+    // request.userAttributes is not a supported persistence path; PostConfirmation
+    // assigns the invited tenant/role authoritatively.
     expect(result.response.autoConfirmUser).toBe(true);
     expect(result.response.autoVerifyEmail).toBe(true);
-    expect(result.request.userAttributes['custom:tenantId']).toBe('tenant-123');
-    expect(result.request.userAttributes['custom:role']).toBe('editor');
+    expect(result.request.userAttributes['custom:tenantId']).toBeUndefined();
+    expect(result.request.userAttributes['custom:role']).toBeUndefined();
   });
 
   it('defers self-signup identity assignment to PostConfirmation (no owner attrs set here)', async () => {
@@ -148,10 +150,11 @@ describe('pre-sign-up trigger', () => {
 
     const result = await handler(event);
 
+    // Invitation recognised → auto-confirm requested. Identity attributes are
+    // NOT mutated here; PostConfirmation assigns the invited tenant/role.
     expect(result.response.autoConfirmUser).toBe(true);
-    expect(result.request.userAttributes['custom:tenantId']).toBe('tenant-xyz');
-    expect(result.request.userAttributes['custom:role']).toBe('viewer');
-    expect(result.request.userAttributes['custom:role']).not.toBe('owner');
+    expect(result.request.userAttributes['custom:tenantId']).toBeUndefined();
+    expect(result.request.userAttributes['custom:role']).toBeUndefined();
   });
 
   it('accepts a genuine invitation whose numeric expiresAt is in the future', async () => {
@@ -174,7 +177,6 @@ describe('pre-sign-up trigger', () => {
     const result = await handler(buildPreSignUpEvent());
 
     expect(result.response.autoConfirmUser).toBe(true);
-    expect(result.request.userAttributes['custom:tenantId']).toBe('tenant-future');
   });
 
   it('accepts a valid legacy ISO-string expiry (backward compatibility)', async () => {
@@ -197,7 +199,6 @@ describe('pre-sign-up trigger', () => {
     const result = await handler(buildPreSignUpEvent());
 
     expect(result.response.autoConfirmUser).toBe(true);
-    expect(result.request.userAttributes['custom:tenantId']).toBe('tenant-legacy');
   });
 
   it('rejects an EXPIRED legacy ISO-string invitation', async () => {

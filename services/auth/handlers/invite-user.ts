@@ -60,6 +60,37 @@ function getDynamoDocClient(): DynamoDBDocumentClient {
 }
 
 // ---------------------------------------------------------------------------
+// Ambiguous-error detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Heuristic for an AWS SDK error whose outcome is ambiguous — the request may
+ * have reached the service and succeeded even though the client saw an error
+ * (timeouts, aborted connections, 5xx with no definitive result). Used so we
+ * never destructively "roll back" an operation that might actually have taken
+ * effect server-side.
+ */
+function isAmbiguousAwsError(err: unknown): boolean {
+  const name = (err as { name?: string })?.name ?? '';
+  const code = (err as { code?: string })?.code ?? '';
+  const httpStatus = (err as { $metadata?: { httpStatusCode?: number } })?.$metadata?.httpStatusCode;
+  const ambiguousNames = [
+    'TimeoutError',
+    'RequestTimeout',
+    'RequestTimeoutException',
+    'AbortError',
+    'NetworkingError',
+    'ServiceUnavailableException',
+    'InternalErrorException',
+  ];
+  const ambiguousCodes = ['ETIMEDOUT', 'ECONNRESET', 'ECONNABORTED', 'EPIPE'];
+  if (ambiguousNames.includes(name) || ambiguousCodes.includes(code)) return true;
+  if (typeof httpStatus === 'number' && httpStatus >= 500) return true;
+  const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return message.includes('timeout') || message.includes('timed out') || message.includes('econnreset');
+}
+
+// ---------------------------------------------------------------------------
 // Handler
 // ---------------------------------------------------------------------------
 
@@ -86,11 +117,23 @@ function getDynamoDocClient(): DynamoDBDocumentClient {
  * autoVerifyEmail response flags for admin-created users. The user is activated
  * when they set a permanent password (admin-set temporary password or the
  * invitation/reset flow), not by trigger flags.
+ *
+ * Activation instructions (IMPORTANT): MessageAction 'SUPPRESS' disables
+ * Cognito's built-in invitation email, so Cognito does NOT notify the invitee.
+ * Delivery of activation / password-setup instructions is the responsibility of
+ * the downstream notification path, driven by the auth.user.invited event
+ * emitted on success (consumer not implemented in this PR — see gated work).
+ * The invitation record's `token` + `invitationId` identify the invite for that
+ * flow. If the invitee is never notified, no activation email is sent; this is
+ * a known gap tracked with the gated notification/consumer work.
  */
 async function baseHandler(event: InviteUserEvent): Promise<APIGatewayProxyResultV2> {
   const { email, role, tenantId } = event.body;
 
-  const userPoolId = process.env['COGNITO_TENANT_POOL_ID'];
+  // Read COGNITO_USER_POOL_ID — the variable name the AuthApi stack actually
+  // injects (commonLambdaEnv). (Was previously COGNITO_TENANT_POOL_ID, which
+  // the stack does not supply.)
+  const userPoolId = process.env['COGNITO_USER_POOL_ID'];
   const invitationsTable = process.env['INVITATIONS_TABLE'];
   const eventBusName = process.env['EVENT_BUS_NAME'];
 
@@ -213,20 +256,62 @@ async function baseHandler(event: InviteUserEvent): Promise<APIGatewayProxyResul
     // forbids updating it afterwards), so tenantId and role are supplied as
     // initial UserAttributes rather than via a later AdminUpdateUserAttributes.
     // We do NOT rely on the PreSignUp trigger mutating request.userAttributes.
-    await cognitoClient.send(
-      new AdminCreateUserCommand({
-        UserPoolId: userPoolId,
-        Username: email,
-        MessageAction: 'SUPPRESS',
-        UserAttributes: [
-          { Name: 'email', Value: email },
-          { Name: 'email_verified', Value: 'true' },
-          { Name: 'custom:tenantId', Value: tenantId },
-          { Name: 'custom:role', Value: role },
-        ],
-      }),
-    );
-    userCreated = true;
+    //
+    // Ambiguous-outcome handling: AdminCreateUser is wrapped separately so a
+    // timeout / connection error (where the user MAY have been created) is
+    // never treated as "no user" and never triggers a delete. We cannot safely
+    // distinguish "created then timed out" from "never created", so we DO NOT
+    // mark userCreated and DO NOT delete; instead we surface an explicit,
+    // recoverable warning. Deleting here could destroy a legitimately created
+    // (or pre-existing) account.
+    try {
+      await cognitoClient.send(
+        new AdminCreateUserCommand({
+          UserPoolId: userPoolId,
+          Username: email,
+          MessageAction: 'SUPPRESS',
+          UserAttributes: [
+            { Name: 'email', Value: email },
+            { Name: 'email_verified', Value: 'true' },
+            { Name: 'custom:tenantId', Value: tenantId },
+            { Name: 'custom:role', Value: role },
+          ],
+        }),
+      );
+      userCreated = true;
+    } catch (createErr) {
+      if (createErr instanceof UsernameExistsException) {
+        // Definitive: the account already exists and was not created by us.
+        // Rethrow so the outer handler returns 409 without any deletion.
+        throw createErr;
+      }
+      if (isAmbiguousAwsError(createErr)) {
+        // The create MAY have succeeded. Never delete on an ambiguous create.
+        logger.error(
+          'AdminCreateUser returned an ambiguous error; user may or may not exist. NOT deleting. Manual reconciliation may be required.',
+          {
+            email,
+            tenantId,
+            invitationId,
+            error: createErr instanceof Error ? createErr.message : String(createErr),
+          },
+        );
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            error: {
+              code: 'PROVISIONING_AMBIGUOUS',
+              message:
+                'User provisioning could not be confirmed. Please retry; if the account was created, retry will report it exists.',
+            },
+          }),
+        };
+      }
+      // A definitive non-timeout failure before the user was created: nothing
+      // to roll back (userCreated is still false). Rethrow to outer handler.
+      throw createErr;
+    }
 
     // Step 2: Add user to 'Seller' group. On failure, roll back the user.
     await cognitoClient.send(
