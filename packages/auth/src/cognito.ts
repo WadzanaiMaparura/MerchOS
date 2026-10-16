@@ -3,6 +3,11 @@
  * Uses @aws-amplify/auth v6 with SRP + PKCE flow.
  */
 
+// Configure via @aws-amplify/core's shared Amplify singleton — the same
+// singleton that @aws-amplify/auth's signIn/signUp read. (The aggregated
+// `aws-amplify` package is only a convenience re-export of this singleton and
+// is intentionally NOT used, to avoid pulling a second, version-mismatched
+// copy of @aws-amplify/core into the bundle.)
 import { Amplify } from '@aws-amplify/core';
 import { signUp as amplifySignUp, confirmSignUp as amplifyConfirmSignUp } from '@aws-amplify/auth';
 
@@ -31,23 +36,38 @@ export const defaultCognitoConfig: CognitoConfig = {
  * Must be called once at app startup (e.g., in root layout or _app).
  */
 export function configureCognitoAuth(config: CognitoConfig = defaultCognitoConfig): void {
+  // Only declare the OAuth (hosted-UI) block when a domain is actually
+  // configured. An oauth block with an empty `domain` is invalid and can
+  // interfere with the username/password SRP flow the seller app relies on.
+  const cognito: Record<string, unknown> = {
+    userPoolId: config.userPoolId,
+    userPoolClientId: config.userPoolClientId,
+    // Sign-up email verification is code-based (matches the /verify flow).
+    signUpVerificationMethod: 'code',
+    // Enable EMAIL sign-in (SRP) to match the Cognito pool, which is configured
+    // with signInAliases: { email: true } (see infrastructure/lib/auth-stack.ts),
+    // and the login page accepts an email address. This is in addition to any
+    // OAuth flow.
+    loginWith: {
+      email: true,
+    } as Record<string, unknown>,
+  };
+
+  if (config.domain) {
+    (cognito['loginWith'] as Record<string, unknown>)['oauth'] = {
+      domain: config.domain,
+      scopes: ['openid', 'email', 'profile'],
+      redirectSignIn: [config.redirectSignIn],
+      redirectSignOut: [config.redirectSignOut],
+      responseType: 'code', // PKCE flow
+    };
+  }
+
   Amplify.configure({
     Auth: {
-      Cognito: {
-        userPoolId: config.userPoolId,
-        userPoolClientId: config.userPoolClientId,
-        loginWith: {
-          oauth: {
-            domain: config.domain,
-            scopes: ['openid', 'email', 'profile'],
-            redirectSignIn: [config.redirectSignIn],
-            redirectSignOut: [config.redirectSignOut],
-            responseType: 'code', // PKCE flow
-          },
-        },
-      },
+      Cognito: cognito,
     },
-  });
+  } as Parameters<typeof Amplify.configure>[0]);
 }
 
 export interface SignUpParams {
