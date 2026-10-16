@@ -44,9 +44,12 @@ export function configureCognitoAuth(config: CognitoConfig = defaultCognitoConfi
     userPoolClientId: config.userPoolClientId,
     // Sign-up email verification is code-based (matches the /verify flow).
     signUpVerificationMethod: 'code',
-    // Enable username/password sign-in (SRP) in addition to any OAuth flow.
+    // Enable EMAIL sign-in (SRP) to match the Cognito pool, which is configured
+    // with signInAliases: { email: true } (see infrastructure/lib/auth-stack.ts),
+    // and the login page accepts an email address. This is in addition to any
+    // OAuth flow.
     loginWith: {
-      username: true,
+      email: true,
     } as Record<string, unknown>,
   };
 

@@ -74,7 +74,7 @@ describe('configureCognitoAuth (SRP login regression)', () => {
     vi.clearAllMocks();
   });
 
-  it('configures Cognito with username/password SRP enabled (not OAuth-only)', () => {
+  it('configures Cognito with email SRP sign-in enabled (not OAuth-only)', () => {
     configureCognitoAuth({
       userPoolId: 'eu-west-1_pool',
       userPoolClientId: 'client123',
@@ -91,14 +91,17 @@ describe('configureCognitoAuth (SRP login regression)', () => {
       userPoolId: string;
       userPoolClientId: string;
       signUpVerificationMethod: string;
-      loginWith: { username?: boolean; oauth?: Record<string, unknown> };
+      loginWith: { email?: boolean; username?: boolean; oauth?: Record<string, unknown> };
     };
 
     expect(cognito.userPoolId).toBe('eu-west-1_pool');
     expect(cognito.userPoolClientId).toBe('client123');
-    // Username/password SRP sign-in must be enabled — the missing piece that
-    // left RespondToAuthChallenge unable to complete in production.
-    expect(cognito.loginWith.username).toBe(true);
+    // EMAIL sign-in (SRP) must be enabled to match the Cognito pool's
+    // signInAliases: { email: true } — the missing piece that left
+    // RespondToAuthChallenge unable to complete in production. Username
+    // sign-in must NOT be set (the pool uses email as the sign-in alias).
+    expect(cognito.loginWith.email).toBe(true);
+    expect(cognito.loginWith.username).toBeUndefined();
     expect(cognito.signUpVerificationMethod).toBe('code');
     // OAuth block present only when a domain is configured.
     expect(cognito.loginWith.oauth).toBeDefined();
@@ -117,9 +120,9 @@ describe('configureCognitoAuth (SRP login regression)', () => {
     });
 
     const cfg = configureMock.mock.calls[0][0] as {
-      Auth: { Cognito: { loginWith: { username?: boolean; oauth?: unknown } } };
+      Auth: { Cognito: { loginWith: { email?: boolean; oauth?: unknown } } };
     };
-    expect(cfg.Auth.Cognito.loginWith.username).toBe(true);
+    expect(cfg.Auth.Cognito.loginWith.email).toBe(true);
     expect(cfg.Auth.Cognito.loginWith.oauth).toBeUndefined();
   });
 });
