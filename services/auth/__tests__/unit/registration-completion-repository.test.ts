@@ -193,6 +193,28 @@ describe('RegistrationCompletionRepository', () => {
     expect(ddbMock.commandCalls(GetCommand)).toHaveLength(3);
   });
 
+  it('uses STRONGLY CONSISTENT reads for all three verification reads', async () => {
+    ddbMock.on(TransactWriteCommand).rejects(canceled(['ConditionalCheckFailed', 'ConditionalCheckFailed', 'ConditionalCheckFailed']));
+    stubReadBack({ tenant: existingTenant(), profile: existingProfile(), consent: existingConsent() });
+
+    await repo().complete(makeInput());
+
+    const getCalls = ddbMock.commandCalls(GetCommand);
+    expect(getCalls).toHaveLength(3);
+    // Deciding whether a prior atomic transaction committed must not rely on
+    // eventually consistent reads — every verification Get requests ConsistentRead.
+    for (const call of getCalls) {
+      expect(call.args[0].input.ConsistentRead).toBe(true);
+    }
+    // And all three SKs are covered by a consistent read.
+    const consistentSks = getCalls
+      .filter((c) => c.args[0].input.ConsistentRead === true)
+      .map((c) => c.args[0].input.Key?.['SK']);
+    expect(consistentSks).toEqual(
+      expect.arrayContaining(['METADATA', ownerProfileSK('user-1'), consentSK('user-1')]),
+    );
+  });
+
   it('fails closed: cancelled transaction but the OWNER PROFILE is missing (tenant exists only) → throws', async () => {
     ddbMock.on(TransactWriteCommand).rejects(canceled(['None', 'ConditionalCheckFailed', 'None']));
     // Tenant metadata landed on a prior partial attempt, but no profile/consent.

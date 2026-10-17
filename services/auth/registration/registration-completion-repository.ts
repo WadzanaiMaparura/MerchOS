@@ -243,6 +243,12 @@ export class RegistrationCompletionRepository {
    * This is the authoritative idempotency check: it proves the prior commit
    * actually landed all three records for THIS registration, rather than
    * inferring it from a transaction cancellation reason.
+   *
+   * All three reads use ConsistentRead: true. We are deciding whether a prior
+   * ATOMIC transaction committed; an eventually consistent read could return a
+   * stale "missing" (or a partially replicated) view and cause us to either
+   * falsely report inconsistency or, worse, miss a record that is actually
+   * present. A strongly consistent read reflects the true committed state.
    */
   private async verifyExistingRegistration(
     input: CompleteRegistrationInput
@@ -251,18 +257,24 @@ export class RegistrationCompletionRepository {
 
     const [tenantRes, profileRes, consentRes] = await Promise.all([
       this.docClient.send(
-        new GetCommand({ TableName: this.tableName, Key: { PK: pk, SK: 'METADATA' } })
+        new GetCommand({
+          TableName: this.tableName,
+          Key: { PK: pk, SK: 'METADATA' },
+          ConsistentRead: true,
+        })
       ),
       this.docClient.send(
         new GetCommand({
           TableName: this.tableName,
           Key: { PK: pk, SK: ownerProfileSK(input.userId) },
+          ConsistentRead: true,
         })
       ),
       this.docClient.send(
         new GetCommand({
           TableName: this.tableName,
           Key: { PK: pk, SK: consentSK(input.userId) },
+          ConsistentRead: true,
         })
       ),
     ]);
