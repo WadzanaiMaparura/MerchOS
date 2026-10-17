@@ -1,7 +1,8 @@
 /**
  * Cognito PostConfirmation Lambda trigger for MerchOS.
  *
- * Scope of THIS change: server-trusted identity assignment only.
+ * Scope: server-trusted identity assignment AND durable registration
+ * completion for self-signups.
  *
  * Responsibilities:
  * 1. Determine the authoritative custom:tenantId / custom:role for the
@@ -14,21 +15,39 @@
  *        non-expired pending-registration record and assign the 'owner' role.
  *        The id is written to the MUTABLE custom:tenantIdAssigned attribute
  *        (the immutable custom:tenantId cannot be set after creation).
+ * 2. Ensure Seller group membership (idempotent, retry-safe).
+ * 3. For a NEW self-signup backed by a genuine, non-expired, email-matching
+ *    pending record: commit the DURABLE registration records (tenant metadata +
+ *    owner profile + marketing-consent) into the tenants table idempotently and
+ *    atomically, THEN emit auth.user.registered, THEN delete the pending record.
  *
- * This stage does NOT emit auth.user.registered. That event signifies a
- * completed registration (durable tenant metadata + owner profile + consent),
- * which this stage does not commit. Per the approved architecture the event is
- * emitted only by the downstream completion path after those records are
- * persisted. Emitting it here would falsely signal completion.
+ * Strict ordering & failure handling (durable-completion path):
+ *   assign identity -> ensure group -> COMMIT durable records -> emit event
+ *   -> delete pending.
+ *   - The durable write is idempotent + atomic (single TransactWriteItems with
+ *     create-only conditions); a retry of an already-completed registration is
+ *     a safe no-op.
+ *   - auth.user.registered is emitted ONLY AFTER the durable records commit, so
+ *     it never falsely signals completion.
+ *   - The pending record is deleted ONLY AFTER durable completion succeeds, so
+ *     the single copy of the profile/consent data is preserved for retry if any
+ *     earlier step fails.
+ *   - If identity assignment, group membership, or the durable write fails, the
+ *     trigger throws: no success event is emitted and the pending record is
+ *     retained. If only the post-commit cleanup (event emit / pending delete)
+ *     fails, the records are already durable and the operation is retry-safe.
  *
- * Deliberately OUT OF SCOPE (gated to other work): writing tenant metadata,
- * owner-profile or consent records, emitting auth.user.registered, and any
- * SQS/DLQ reconciliation. No organisation name is derived from the email
- * address.
+ * Paths that do NOT commit durable records here (by design):
+ *   - Admin-created invitees (fast path): already fully provisioned at creation.
+ *   - Invited self-registrants: identity comes from the invitation; their
+ *     durable tenant/profile belongs to the inviting tenant and is not created
+ *     from a self-signup pending record.
+ *   - Profile-recovery fallback (missing/expired/mismatched pending): a usable
+ *     owner identity is assigned but NO profile/consent data is fabricated, so
+ *     there is nothing durable to commit and no registration event is emitted.
  *
- * Failure handling: if required identity assignment cannot be completed, the
- * trigger throws so the operation is not silently reported as successful. It
- * never falls through to grant owner privileges on an error path.
+ * Deliberately OUT OF SCOPE: SQS/DLQ reconciliation. No organisation name is
+ * derived from the email address.
  */
 
 import crypto from 'node:crypto';
@@ -41,7 +60,10 @@ import {
 import { Logger } from '@aws-lambda-powertools/logger';
 
 import { PendingRegistrationRepository } from '../registration/pending-registration-repository';
+import { RegistrationCompletionRepository } from '../registration/registration-completion-repository';
 import { findGenuineInvitationByEmail } from '../registration/invitation-lookup';
+import { emitAuthEvent } from '../utils/event-emitter';
+import type { PendingRegistrationRecord } from '../registration/types';
 
 const logger = new Logger({ serviceName: 'merch-os-post-confirmation' });
 
@@ -70,6 +92,18 @@ export function __setPendingRegistrationRepositoryForTesting(
 
 function getRepository(): PendingRegistrationRepository {
   return repositoryOverride ?? new PendingRegistrationRepository();
+}
+
+/** Allow tests to inject a mocked completion repository. */
+let completionRepositoryOverride: RegistrationCompletionRepository | null = null;
+export function __setRegistrationCompletionRepositoryForTesting(
+  repo: RegistrationCompletionRepository | null
+): void {
+  completionRepositoryOverride = repo;
+}
+
+function getCompletionRepository(): RegistrationCompletionRepository {
+  return completionRepositoryOverride ?? new RegistrationCompletionRepository();
 }
 
 // ---------------------------------------------------------------------------
@@ -121,6 +155,13 @@ export async function handler(
   // we skip the attribute write but STILL ensure group membership (retry-safe
   // repair after a prior AdminAddUserToGroup failure).
   let attributesAlreadyCorrect = false;
+  // Set ONLY on the new-self-signup path when a genuine, non-expired,
+  // email-matching pending record is resolved. Its presence is the signal to
+  // run durable registration completion (commit tenant/profile/consent, emit
+  // the event, delete the pending record). It stays null for the invited,
+  // prior-self-signup, and recovery-fallback paths, which never commit durable
+  // records here.
+  let completablePending: PendingRegistrationRecord | null = null;
 
   const invitation = await findGenuineInvitationByEmail(email);
   if (invitation) {
@@ -206,6 +247,9 @@ export async function handler(
         tenantId = reserveFallbackTenantId();
       } else {
         tenantId = pending.tenantId;
+        // Genuine, verified, non-expired pending record — eligible for durable
+        // registration completion after identity + group are established.
+        completablePending = pending;
       }
     } else {
       // Missing/expired pending registration. Approved profile-recovery
@@ -287,16 +331,71 @@ export async function handler(
 
   logger.info('Trusted identity assigned', { userId, isInvited });
 
-  // IMPORTANT: do NOT delete the pending registration here. This change only
-  // assigns Cognito identity attributes; it does not yet persist the durable
-  // tenant metadata, owner profile and consent records. Deleting now would
-  // lose the only copy of that profile/consent data. The pending record is
-  // retained (and will TTL-expire as a backstop) until the approved downstream
-  // completion path commits the durable records and performs cleanup. That
-  // path remains separately gated.
+  // -------------------------------------------------------------------------
+  // Durable registration completion (new self-signup only).
   //
-  // No auth.user.registered emission here either — identity assignment is not
-  // registration completion. The downstream completion path owns that event.
+  // Only runs when a genuine, non-expired, email-matching pending record was
+  // resolved above. Invited users, prior self-signups and the recovery
+  // fallback never reach this (completablePending stays null) — they have no
+  // self-signup profile/consent data to commit here.
+  //
+  // Strict ordering: identity + group are already established above. We now
+  //   1) COMMIT the durable tenant/profile/consent records (idempotent+atomic),
+  //   2) emit auth.user.registered (only after the commit), and
+  //   3) delete the pending record (only after the commit).
+  //
+  // If the commit fails we throw: no event, no delete, pending retained for a
+  // safe retry. If only the post-commit cleanup fails, the records are already
+  // durable, so the registration is complete and the retry is safe.
+  // -------------------------------------------------------------------------
+  if (completablePending) {
+    const pending = completablePending;
+
+    // 1) Commit durable records. Uses the SERVER-trusted tenantId from the
+    // pending record and the VERIFIED Cognito userId/email — never any
+    // client-supplied tenant id or role.
+    const completion = await getCompletionRepository().complete({
+      tenantId: pending.tenantId,
+      userId,
+      email,
+      fullName: pending.fullName,
+      phoneNumber: pending.phoneNumber,
+      organisationName: pending.organisationName,
+      marketingConsent: pending.marketingConsent,
+      registrationId: pending.registrationId,
+    });
+
+    if (completion.committed) {
+      logger.info('Durable registration records committed', { userId });
+    } else {
+      // Idempotent retry: records already existed. Still proceed to ensure the
+      // event/cleanup happen (they are themselves idempotent / safe).
+      logger.info('Durable registration already complete; ensuring event + cleanup', { userId });
+    }
+
+    // 2) Emit the registration event — strictly AFTER the durable commit, so it
+    // can never signal completion before the records exist. A failure here
+    // throws; the records are already durable, so a retry re-emits (consumers
+    // must treat auth.user.registered idempotently, keyed on tenantId/userId).
+    await emitAuthEvent({
+      detailType: 'auth.user.registered',
+      detail: {
+        userId,
+        email,
+        tenantId: pending.tenantId,
+        registrationId: pending.registrationId,
+        timestamp: new Date().toISOString(),
+      },
+    });
+    logger.info('auth.user.registered emitted', { userId });
+
+    // 3) Delete the pending record — strictly AFTER durable completion. This is
+    // the ONLY point at which the pending record is removed, so its profile/
+    // consent data is never lost before being durably persisted. deleteById is
+    // idempotent (a missing record is a no-op), so a retry is safe.
+    await getRepository().deleteById(pending.registrationId);
+    logger.info('Pending registration deleted after durable completion', { userId });
+  }
 
   return event;
 }

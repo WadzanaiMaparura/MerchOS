@@ -40,6 +40,15 @@ export class AuthStack extends cdk.Stack {
   public readonly adminDashboardClient: cognito.UserPoolClient;
   public readonly invitationsTable: dynamodb.Table;
   public readonly sessionsTable: dynamodb.Table;
+  /**
+   * Durable tenant table (merch-os-tenants-<env>). Single-table design keyed by
+   * PK=`TENANT#<tenantId>` / SK=`<ENTITY>` (METADATA, PROFILE#<userId>,
+   * CONSENT#<userId>) for committed registrations, and PK=`PENDINGREG#<id>` /
+   * SK=`METADATA` for short-lived pending-registration records (TTL on
+   * `expiresAt`). Created here (co-located with the UserPool/triggers that read
+   * and write it) and shared with AuthApiStack via props.
+   */
+  public readonly tenantsTable: dynamodb.Table;
 
   /**
    * @deprecated Use userPool instead. Kept for backward compatibility.
@@ -246,6 +255,26 @@ export class AuthStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
+    // Durable tenants table. Previously referenced only by its conventional
+    // name (merch-os-tenants-<env>) by both the register-pending handler
+    // (write) and the PostConfirmation trigger (read/write) but never actually
+    // provisioned — the missing dependency that prevented durable registration
+    // completion. It follows the same PK/SK + CMK + TTL + PITR + RETAIN pattern
+    // as the invitations/sessions tables. `expiresAt` drives TTL expiry of
+    // pending-registration records (PENDINGREG#<id>); committed tenant,
+    // owner-profile and consent records carry no `expiresAt` and are permanent.
+    this.tenantsTable = new dynamodb.Table(this, 'TenantsTable', {
+      tableName: `merch-os-tenants-${env}`,
+      partitionKey: { name: 'PK', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'SK', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      encryption: dynamodb.TableEncryption.CUSTOMER_MANAGED,
+      encryptionKey: props.platformKey,
+      timeToLiveAttribute: 'expiresAt',
+      pointInTimeRecovery: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
     // -----------------------------------------------------------------------
     // Cognito Lambda Triggers
     // These MUST live in the same stack as the UserPool because addTrigger()
@@ -353,22 +382,27 @@ export class AuthStack extends cdk.Stack {
       actions: ['cognito-idp:AdminUpdateUserAttributes', 'cognito-idp:AdminAddUserToGroup'],
       resources: [userPoolArnPattern],
     }));
-    // Read the EXACT pending-registration record by id (GetItem on PK) from the
-    // existing tenants table under PENDINGREG#<id>. This change only READS the
-    // pending record; it must NOT delete it (durable profile/consent writes are
-    // gated to the downstream completion path), so no DeleteItem is granted.
-    const tenantsTableArn = cdk.Arn.format(
-      {
-        service: 'dynamodb',
-        resource: 'table',
-        resourceName: `merch-os-tenants-${env}`,
-      },
-      cdk.Stack.of(this),
-    );
+    // Durable registration completion against the tenants table:
+    //   - GetItem: read the EXACT pending-registration record by id (PK
+    //     PENDINGREG#<id>) to recover the server-generated tenantId + the
+    //     profile/consent details captured at register time.
+    //   - PutItem / TransactWriteItems: commit the durable tenant metadata,
+    //     owner profile and consent records (TENANT#<tenantId> / METADATA +
+    //     PROFILE#<userId> + CONSENT#<userId>) idempotently and atomically.
+    //   - DeleteItem: remove the pending record, but ONLY after the durable
+    //     records have committed (the trigger never deletes it beforehand, so
+    //     the single copy of profile/consent data is preserved for retry).
+    // The real table construct is used (not a by-name ARN) now that the table
+    // is provisioned in this stack.
     postConfirmationRole.addToPolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
-      actions: ['dynamodb:GetItem'],
-      resources: [tenantsTableArn],
+      actions: [
+        'dynamodb:GetItem',
+        'dynamodb:PutItem',
+        'dynamodb:TransactWriteItems',
+        'dynamodb:DeleteItem',
+      ],
+      resources: [this.tenantsTable.tableArn],
     }));
     // Read invitations by verified email (email-index GSI) so an invited
     // self-registrant receives the authoritative invited tenant/role rather
@@ -381,17 +415,23 @@ export class AuthStack extends cdk.Stack {
         `${this.invitationsTable.tableArn}/index/email-index`,
       ],
     }));
-    // The tenants and invitations tables are CMK-encrypted; reading an item
-    // requires kms:Decrypt. Read-only path, so GenerateDataKey (write) is NOT
-    // granted.
+    // The tenants and invitations tables are CMK-encrypted. Reading an item
+    // requires kms:Decrypt; writing the durable tenant/owner/consent records to
+    // the encrypted tenants table also requires kms:GenerateDataKey.
     postConfirmationRole.addToPolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
-      actions: ['kms:Decrypt'],
+      actions: ['kms:Decrypt', 'kms:GenerateDataKey'],
       resources: [props.platformKey.keyArn],
     }));
-    // NOTE: no events:PutEvents is granted. This stage no longer emits
-    // auth.user.registered — that event belongs to the downstream completion
-    // path once durable tenant/owner/consent records are committed.
+    // Emit auth.user.registered, but ONLY after the durable registration
+    // records have committed (the trigger orders the event strictly after the
+    // transactional write). The event therefore signals a genuinely completed
+    // registration, not merely identity assignment.
+    postConfirmationRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['events:PutEvents'],
+      resources: [props.eventBus.eventBusArn],
+    }));
 
     const postConfirmationFn = new lambdaNodejs.NodejsFunction(this, 'PostConfirmation', {
       ...triggerLambdaProps,

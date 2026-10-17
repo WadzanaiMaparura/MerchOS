@@ -79,3 +79,89 @@ export interface CreatePendingRegistrationInput {
 export interface CreatePendingRegistrationResult {
   registrationId: string;
 }
+
+// ---------------------------------------------------------------------------
+// Durable registration records
+// ---------------------------------------------------------------------------
+//
+// When a self-signup registration completes (email verified + identity
+// assigned), the short-lived pending record is promoted into THREE permanent,
+// tenant-scoped records in the same tenants table, following the platform's
+// single-table conventions (PK = `TENANT#<tenantId>`):
+//   SK = `METADATA`            -> tenant metadata
+//   SK = `PROFILE#<userId>`    -> owner profile
+//   SK = `CONSENT#<userId>`    -> marketing-consent record
+// None of these carry `expiresAt`, so they are never TTL-expired.
+
+/** Durable tenant-metadata record (PK=TENANT#<tenantId>, SK=METADATA). */
+export interface TenantMetadataRecord {
+  PK: string;
+  SK: 'METADATA';
+  /** Server-generated tenant identifier (authoritative). */
+  tenantId: string;
+  /** Organisation / business name supplied at registration. */
+  organisationName: string;
+  /** Tenant lifecycle status. */
+  status: 'active';
+  /** The Cognito user id of the owner who created the tenant. */
+  ownerId: string;
+  /** ISO-8601 creation timestamp. */
+  createdAt: string;
+  /**
+   * The registrationId that produced this tenant. Stored so completion is
+   * idempotent and auditable — a retry with the same registrationId is a no-op.
+   */
+  registrationId: string;
+}
+
+/** Durable owner-profile record (PK=TENANT#<tenantId>, SK=PROFILE#<userId>). */
+export interface OwnerProfileRecord {
+  PK: string;
+  SK: string;
+  tenantId: string;
+  /** Cognito user id (sub / username). */
+  userId: string;
+  /** Verified business email (normalised). */
+  email: string;
+  /** Full name supplied at registration. */
+  fullName: string;
+  /** International phone number (E.164). */
+  phoneNumber: string;
+  /** Tenant-scoped role — always 'owner' for a self-signup registrant. */
+  role: 'owner';
+  /** ISO-8601 creation timestamp. */
+  createdAt: string;
+}
+
+/** Durable marketing-consent record (PK=TENANT#<tenantId>, SK=CONSENT#<userId>). */
+export interface ConsentRecord {
+  PK: string;
+  SK: string;
+  tenantId: string;
+  userId: string;
+  /** Consent category — marketing communications. */
+  type: 'marketing';
+  /** Whether the user opted in. */
+  granted: boolean;
+  /** ISO-8601 timestamp when consent was originally captured. */
+  capturedAt: string;
+}
+
+/**
+ * Everything the durable completion needs: the verified Cognito identity plus
+ * the server-trusted details recovered from the pending record.
+ */
+export interface CompleteRegistrationInput {
+  /** Server-generated tenant id recovered from the pending record. */
+  tenantId: string;
+  /** Verified Cognito user id. */
+  userId: string;
+  /** Verified, normalised email. */
+  email: string;
+  fullName: string;
+  phoneNumber: string;
+  organisationName: string;
+  marketingConsent: PendingMarketingConsent;
+  /** The registrationId being completed (idempotency key). */
+  registrationId: string;
+}

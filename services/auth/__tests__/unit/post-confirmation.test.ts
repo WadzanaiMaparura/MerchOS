@@ -21,8 +21,8 @@ vi.mock('@aws-lambda-powertools/logger', () => ({
   },
 }));
 
-// The identity-assignment stage must NOT emit auth.user.registered. We mock
-// the emitter purely to prove it is never invoked here.
+// auth.user.registered is emitted ONLY after durable completion of a genuine
+// self-signup. We mock the emitter to assert WHEN it is / is not invoked.
 const mockEmitAuthEvent = vi.fn().mockResolvedValue({});
 vi.mock('../../utils/event-emitter', () => ({
   emitAuthEvent: (...args: unknown[]) => mockEmitAuthEvent(...args),
@@ -33,9 +33,11 @@ const cognitoMock = mockClient(CognitoIdentityProviderClient);
 const ddbMock = mockClient(DynamoDBDocumentClient);
 
 import { PendingRegistrationRepository } from '../../registration/pending-registration-repository';
+import { RegistrationCompletionRepository } from '../../registration/registration-completion-repository';
 import {
   handler,
   __setPendingRegistrationRepositoryForTesting,
+  __setRegistrationCompletionRepositoryForTesting,
 } from '../../triggers/post-confirmation';
 
 const NOW_SECONDS = Math.floor(Date.now() / 1000);
@@ -65,6 +67,18 @@ function fakeRepo(byId: Record<string, ReturnType<typeof makePending> | null>) {
     deleteById: vi.fn().mockResolvedValue(undefined),
     create: vi.fn(),
   } as unknown as PendingRegistrationRepository;
+}
+
+/**
+ * Fake completion repository. By default a successful commit; pass an override
+ * to simulate an idempotent retry ({ committed: false }) or a failure (reject).
+ */
+function fakeCompletionRepo(
+  complete: () => Promise<{ committed: boolean }> = async () => ({ committed: true }),
+) {
+  return {
+    complete: vi.fn(complete),
+  } as unknown as RegistrationCompletionRepository;
 }
 
 function buildEvent(
@@ -104,10 +118,16 @@ describe('post-confirmation trigger — trusted identity assignment', () => {
     mockEmitAuthEvent.mockClear();
     process.env['AWS_REGION'] = 'eu-west-1';
     process.env['INVITATIONS_TABLE'] = 'merch-os-invitations-dev';
+    process.env['TENANTS_TABLE'] = 'merch-os-tenants-dev';
+    process.env['EVENT_BUS_NAME'] = 'merch-os-events-dev';
+    // Default: durable completion succeeds. Individual tests override to
+    // simulate idempotent retries or failures.
+    __setRegistrationCompletionRepositoryForTesting(fakeCompletionRepo());
   });
 
   afterEach(() => {
     __setPendingRegistrationRepositoryForTesting(null);
+    __setRegistrationCompletionRepositoryForTesting(null);
   });
 
   it('resolves the EXACT registrationId from clientMetadata and assigns its tenantId', async () => {
@@ -540,16 +560,27 @@ describe('post-confirmation trigger — trusted identity assignment', () => {
     expect(mockEmitAuthEvent).not.toHaveBeenCalled();
   });
 
-  it('does NOT emit auth.user.registered at the identity-assignment stage (self-signup)', async () => {
+  it('emits auth.user.registered AFTER durable completion for a genuine self-signup', async () => {
     __setPendingRegistrationRepositoryForTesting(fakeRepo({ 'reg-1': makePending() }));
 
     await handler(buildEvent('reg-1'));
 
     // Identity attributes were assigned...
     expect(cognitoMock.commandCalls(AdminUpdateUserAttributesCommand)).toHaveLength(1);
-    // ...but registration-completed event must be deferred to the downstream
-    // completion path once durable records are committed.
-    expect(mockEmitAuthEvent).not.toHaveBeenCalled();
+    // ...and the registration event is emitted once (post-commit), carrying the
+    // server tenant id and registrationId.
+    expect(mockEmitAuthEvent).toHaveBeenCalledTimes(1);
+    expect(mockEmitAuthEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detailType: 'auth.user.registered',
+        detail: expect.objectContaining({
+          userId: 'confirmed-user-id',
+          email: 'seller@example.com',
+          tenantId: 'server-tenant-1',
+          registrationId: 'reg-1',
+        }),
+      }),
+    );
   });
 
   it('does NOT emit auth.user.registered for the invited-user path', async () => {
@@ -575,13 +606,160 @@ describe('post-confirmation trigger — trusted identity assignment', () => {
     expect(attrsFromCall(0)).toEqual(attrsFromCall(1));
   });
 
-  it('does NOT delete the pending registration after assigning attributes', async () => {
+  it('deletes the pending registration ONLY after durable completion succeeds (self-signup)', async () => {
     const repo = fakeRepo({ 'reg-1': makePending() });
     __setPendingRegistrationRepositoryForTesting(repo);
 
     await handler(buildEvent('reg-1'));
 
-    // Retained until the durable downstream completion path commits.
+    // Deleted exactly once, by its exact registrationId, after commit + event.
+    expect(repo.deleteById).toHaveBeenCalledTimes(1);
+    expect(repo.deleteById).toHaveBeenCalledWith('reg-1');
+  });
+
+  // -------------------------------------------------------------------------
+  // Durable registration completion
+  // -------------------------------------------------------------------------
+
+  it('commits durable records with the SERVER tenantId + VERIFIED identity (never client-supplied)', async () => {
+    __setPendingRegistrationRepositoryForTesting(fakeRepo({ 'reg-1': makePending() }));
+    const completion = fakeCompletionRepo();
+    __setRegistrationCompletionRepositoryForTesting(completion);
+
+    // Even if the browser tried to smuggle a tenantId/role via clientMetadata,
+    // it must be ignored — only the pending record's server tenantId is used.
+    const event = buildEvent('reg-1');
+    (event.request as { clientMetadata?: Record<string, string> }).clientMetadata = {
+      registrationId: 'reg-1',
+      tenantId: 'ATTACKER-TENANT',
+      role: 'admin',
+    };
+
+    await handler(event);
+
+    expect(completion.complete).toHaveBeenCalledTimes(1);
+    expect(completion.complete).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 'server-tenant-1',
+        userId: 'confirmed-user-id',
+        email: 'seller@example.com',
+        fullName: 'Ada Lovelace',
+        phoneNumber: '+27831234567',
+        organisationName: 'Analytical Engines',
+        marketingConsent: { granted: false, capturedAt: '2026-01-01T00:00:00.000Z' },
+        registrationId: 'reg-1',
+      }),
+    );
+  });
+
+  it('is idempotent: an already-completed registration re-emits/cleans up without error', async () => {
+    const repo = fakeRepo({ 'reg-1': makePending() });
+    __setPendingRegistrationRepositoryForTesting(repo);
+    // Completion reports the records already exist (committed: false).
+    __setRegistrationCompletionRepositoryForTesting(
+      fakeCompletionRepo(async () => ({ committed: false })),
+    );
+
+    await handler(buildEvent('reg-1'));
+
+    // Still finishes the flow: event emitted and pending cleaned up.
+    expect(mockEmitAuthEvent).toHaveBeenCalledTimes(1);
+    expect(repo.deleteById).toHaveBeenCalledWith('reg-1');
+  });
+
+  it('retains the pending record and emits NO event when the durable write fails', async () => {
+    const repo = fakeRepo({ 'reg-1': makePending() });
+    __setPendingRegistrationRepositoryForTesting(repo);
+    __setRegistrationCompletionRepositoryForTesting(
+      fakeCompletionRepo(async () => {
+        throw new Error('DynamoDB throttled');
+      }),
+    );
+
+    await expect(handler(buildEvent('reg-1'))).rejects.toThrow();
+
+    // No success event, and the only copy of the profile/consent data is kept.
+    expect(mockEmitAuthEvent).not.toHaveBeenCalled();
     expect(repo.deleteById).not.toHaveBeenCalled();
+  });
+
+  it('does NOT emit the event or delete pending BEFORE the durable write (strict ordering)', async () => {
+    const repo = fakeRepo({ 'reg-1': makePending() });
+    __setPendingRegistrationRepositoryForTesting(repo);
+
+    const callOrder: string[] = [];
+    __setRegistrationCompletionRepositoryForTesting(
+      fakeCompletionRepo(async () => {
+        callOrder.push('commit');
+        return { committed: true };
+      }),
+    );
+    mockEmitAuthEvent.mockImplementation(async () => {
+      callOrder.push('emit');
+      return {};
+    });
+    (repo.deleteById as unknown as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      callOrder.push('delete');
+    });
+
+    await handler(buildEvent('reg-1'));
+
+    // Durable commit happens first, then the event, then pending cleanup.
+    expect(callOrder).toEqual(['commit', 'emit', 'delete']);
+  });
+
+  it('retains pending and does NOT delete it if the post-commit event emission fails', async () => {
+    const repo = fakeRepo({ 'reg-1': makePending() });
+    __setPendingRegistrationRepositoryForTesting(repo);
+    __setRegistrationCompletionRepositoryForTesting(fakeCompletionRepo());
+    // Records are durable, but emitting the event fails.
+    mockEmitAuthEvent.mockRejectedValueOnce(new Error('EventBridge unavailable'));
+
+    await expect(handler(buildEvent('reg-1'))).rejects.toThrow();
+
+    // Pending NOT deleted (delete is strictly after a successful emit), so a
+    // retry can re-emit; the durable records already exist so the retry commit
+    // is an idempotent no-op.
+    expect(repo.deleteById).not.toHaveBeenCalled();
+  });
+
+  it('does NOT commit durable records on the invited-user path', async () => {
+    ddbMock.on(QueryCommand).resolves({
+      Items: [
+        {
+          PK: 'TENANT#invited-tenant',
+          SK: 'INVITE#seller@example.com',
+          email: 'seller@example.com',
+          tenantId: 'invited-tenant',
+          role: 'editor',
+          status: 'pending',
+          expiresAt: NOW_SECONDS + 3600,
+        },
+      ],
+    });
+    __setPendingRegistrationRepositoryForTesting(fakeRepo({ 'reg-1': makePending() }));
+    const completion = fakeCompletionRepo();
+    __setRegistrationCompletionRepositoryForTesting(completion);
+
+    await handler(buildEvent('reg-1'));
+
+    // Invited users' durable profile belongs to the inviting tenant — not
+    // created here from a self-signup pending record. No event, no completion.
+    expect(completion.complete).not.toHaveBeenCalled();
+    expect(mockEmitAuthEvent).not.toHaveBeenCalled();
+  });
+
+  it('does NOT commit durable records (or emit) on the recovery-fallback path', async () => {
+    // Expired pending → recovery fallback: identity assigned, but no profile
+    // data to persist, so nothing durable is committed and no event is emitted.
+    const expired = makePending({ expiresAt: NOW_SECONDS - 10 });
+    __setPendingRegistrationRepositoryForTesting(fakeRepo({ 'reg-1': expired }));
+    const completion = fakeCompletionRepo();
+    __setRegistrationCompletionRepositoryForTesting(completion);
+
+    await handler(buildEvent('reg-1'));
+
+    expect(completion.complete).not.toHaveBeenCalled();
+    expect(mockEmitAuthEvent).not.toHaveBeenCalled();
   });
 });

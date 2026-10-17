@@ -37,6 +37,11 @@ export interface AuthApiStackProps extends cdk.StackProps {
   eventBus: events.EventBus;
   invitationsTable: dynamodb.Table;
   sessionsTable: dynamodb.Table;
+  /**
+   * Durable tenants table (merch-os-tenants-<env>), created in AuthStack.
+   * The register-pending handler writes PENDINGREG#<id> records here.
+   */
+  tenantsTable: dynamodb.Table;
 }
 
 export class AuthApiStack extends cdk.Stack {
@@ -85,15 +90,20 @@ export class AuthApiStack extends cdk.Stack {
     //
     // Each environment keeps its intended custom-domain origin, plus the exact
     // frontend origins required to actually test that environment. The dev
-    // environment is currently served by the Amplify `main` branch, so its
-    // amplifyapp.com origin and localhost (for local development) are allowed.
-    // We never use '*' — allowCredentials:true forbids it and it would be
-    // insecure.
+    // environment is currently served by the live seller frontend at
+    // https://merchos.co.za (CloudFront in front of the Amplify `main` branch),
+    // so that live origin, the raw Amplify branch origin and localhost (local
+    // development) are all allowed. We never use '*' — allowCredentials:true
+    // forbids it and it would be insecure.
     const customDomainOrigin = `https://${env === 'production' ? 'app' : env}.merchos.io`;
     const corsAllowOrigins: string[] = [customDomainOrigin];
     if (env === 'dev') {
       corsAllowOrigins.push(
-        // Active Amplify branch hosting the dev frontend.
+        // Live seller frontend (custom domain served via CloudFront). This is
+        // the exact Origin the browser sends from the deployed dev frontend.
+        'https://merchos.co.za',
+        // Raw Amplify branch origin hosting the dev frontend (direct access
+        // and pre-custom-domain fallback).
         'https://main.d1jwaah0zt7pg5.amplifyapp.com',
         // Local development.
         'http://localhost:3000',
@@ -274,21 +284,14 @@ export class AuthApiStack extends cdk.Stack {
     const sessionFn = createLambda('Session', path.join(handlersPath, 'session.ts'), []);
 
     // 9b. Register Pending (unauthenticated — pre-signup profile capture)
-    // Writes a PENDINGREG#<id> record to the existing tenants table. The table
-    // is not defined in-stack; reference its ARN by conventional name.
-    const tenantsTableArn = cdk.Arn.format(
-      {
-        service: 'dynamodb',
-        resource: 'table',
-        resourceName: `merch-os-tenants-${env}`,
-      },
-      cdk.Stack.of(this),
-    );
+    // Writes a PENDINGREG#<id> record to the durable tenants table (created in
+    // AuthStack and passed in via props).
+    const tenantsTable = props.tenantsTable;
     const registerPendingFn = createLambda('RegisterPending', path.join(handlersPath, 'register-pending.ts'), [
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['dynamodb:PutItem'],
-        resources: [tenantsTableArn],
+        resources: [tenantsTable.tableArn],
       }),
       // The tenants table is CMK-encrypted; writing a pending record needs
       // GenerateDataKey (and Decrypt for the SDK's envelope handling).
