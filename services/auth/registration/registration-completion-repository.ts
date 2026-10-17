@@ -15,9 +15,15 @@
  *   - IDEMPOTENT + ATOMIC: all three records are written in a single
  *     TransactWriteItems with per-item `attribute_not_exists` conditions, so a
  *     retry of an already-completed registration neither duplicates records nor
- *     half-writes them. A conflict (records already exist) is reported back as
- *     `alreadyCompleted` rather than thrown, so the caller can treat a retry as
- *     success and proceed to cleanup.
+ *     half-writes them. When the transaction is cancelled (records already
+ *     exist), the repository READS BACK all three records and verifies they
+ *     form a complete, matching registration before reporting a no-op retry —
+ *     it never infers success from the cancellation reason codes alone.
+ *   - FAIL-CLOSED ON INCONSISTENCY: if a cancelled transaction's existing
+ *     records are incomplete (a record is missing) or conflict (an existing
+ *     record belongs to a different registration/user), it throws a
+ *     RegistrationConsistencyError so the caller does NOT emit the event or
+ *     delete the pending record.
  *   - SERVER-TRUSTED IDENTITY: the tenantId is the server-generated id recovered
  *     from the pending record and the userId is the verified Cognito identity.
  *     No client-supplied tenant id or role is ever used; the role is fixed to
@@ -36,6 +42,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
   TransactWriteCommand,
+  GetCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { TransactionCanceledException } from '@aws-sdk/client-dynamodb';
 
@@ -46,6 +53,20 @@ import type {
   OwnerProfileRecord,
   ConsentRecord,
 } from './types';
+
+/**
+ * Raised when a create-only completion transaction is cancelled but the
+ * existing records do NOT form a complete, matching registration (a record is
+ * missing, or an existing record belongs to a different registration/user).
+ * This is a fail-closed signal: the caller must NOT emit auth.user.registered
+ * and must NOT delete the pending record.
+ */
+export class RegistrationConsistencyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RegistrationConsistencyError';
+  }
+}
 
 /** Sort key for the durable owner-profile record. */
 export function ownerProfileSK(userId: string): string {
@@ -71,9 +92,12 @@ function resolveTableName(explicit?: string): string {
 export interface CompleteRegistrationResult {
   /**
    * true  -> this call committed the durable records.
-   * false -> the records already existed (idempotent retry); nothing written.
+   * false -> the records already existed AND were VERIFIED as the matching,
+   *          complete registration (idempotent retry); nothing written.
    * Either way the registration is durably complete and the caller may emit
-   * the event and clean up the pending record.
+   * the event and clean up the pending record. A cancelled transaction whose
+   * records are missing or conflicting throws instead (see
+   * RegistrationConsistencyError).
    */
   committed: boolean;
 }
@@ -101,12 +125,20 @@ export class RegistrationCompletionRepository {
    *
    * Idempotency: each Put carries `attribute_not_exists(PK) AND
    * attribute_not_exists(SK)` so re-running with the same tenantId/userId never
-   * duplicates a record. If the transaction is cancelled solely because the
-   * records already exist (a retry after a prior successful commit), this
-   * resolves with `{ committed: false }` instead of throwing — the records are
-   * already durable. Any other failure (throttling, access denied, a genuine
-   * mid-flight error) throws so the caller does NOT emit a success event and
-   * does NOT delete the pending record, preserving state for safe retry.
+   * duplicates a record. If the transaction is cancelled because records
+   * already exist, the repository READS BACK all three records and verifies
+   * they form the matching, complete registration before returning
+   * `{ committed: false }`. It never trusts the cancellation reason codes
+   * alone: partial state (some records exist, others don't) or a conflicting
+   * owner would otherwise be misreported as a successful retry.
+   *
+   * Failure handling:
+   *   - A non-"records exist" cancellation (throttling, validation, etc.) or
+   *     any other error propagates unchanged.
+   *   - A "records exist" cancellation with missing or conflicting records
+   *     throws RegistrationConsistencyError.
+   * In every failure case the caller must NOT emit auth.user.registered and
+   * must NOT delete the pending record, preserving state for safe retry.
    */
   async complete(
     input: CompleteRegistrationInput
@@ -184,32 +216,113 @@ export class RegistrationCompletionRepository {
       );
       return { committed: true };
     } catch (error) {
-      // A TransactionCanceledException whose cancellation reasons are ALL
-      // conditional-check failures means the records already exist — an
-      // idempotent retry. Treat it as success (committed: false). Any other
-      // cancellation reason (throttling, validation, etc.) or any other error
-      // must propagate so the caller preserves pending state for retry.
+      // Only a "records already exist" cancellation is a candidate for an
+      // idempotent retry. Any other cancellation reason (throttling,
+      // validation, transaction conflict, etc.) or any non-transaction error
+      // propagates unchanged so the caller preserves pending state.
       if (
         error instanceof TransactionCanceledException &&
-        isPureConditionalFailure(error)
+        hasConditionalFailure(error)
       ) {
+        // Do NOT trust the reason codes as proof of completion. Read the three
+        // records back and verify they form the matching, complete
+        // registration. Throws RegistrationConsistencyError if not.
+        await this.verifyExistingRegistration(input);
         return { committed: false };
       }
       throw error;
     }
   }
+
+  /**
+   * Reads back the tenant metadata, owner profile and consent records and
+   * verifies ALL THREE exist and belong to this exact registration
+   * (matching tenantId, registrationId, userId and ownership). Throws
+   * RegistrationConsistencyError on any missing or conflicting record.
+   *
+   * This is the authoritative idempotency check: it proves the prior commit
+   * actually landed all three records for THIS registration, rather than
+   * inferring it from a transaction cancellation reason.
+   */
+  private async verifyExistingRegistration(
+    input: CompleteRegistrationInput
+  ): Promise<void> {
+    const pk = tenantPK(input.tenantId);
+
+    const [tenantRes, profileRes, consentRes] = await Promise.all([
+      this.docClient.send(
+        new GetCommand({ TableName: this.tableName, Key: { PK: pk, SK: 'METADATA' } })
+      ),
+      this.docClient.send(
+        new GetCommand({
+          TableName: this.tableName,
+          Key: { PK: pk, SK: ownerProfileSK(input.userId) },
+        })
+      ),
+      this.docClient.send(
+        new GetCommand({
+          TableName: this.tableName,
+          Key: { PK: pk, SK: consentSK(input.userId) },
+        })
+      ),
+    ]);
+
+    const tenant = tenantRes.Item as TenantMetadataRecord | undefined;
+    const profile = profileRes.Item as OwnerProfileRecord | undefined;
+    const consent = consentRes.Item as ConsentRecord | undefined;
+
+    // All three must exist — a cancellation with any record missing is partial
+    // state, NOT a completed registration.
+    if (!tenant) {
+      throw new RegistrationConsistencyError(
+        `Completion cancelled but tenant metadata is missing for registration ${input.registrationId}`
+      );
+    }
+    if (!profile) {
+      throw new RegistrationConsistencyError(
+        `Completion cancelled but owner profile is missing for registration ${input.registrationId}`
+      );
+    }
+    if (!consent) {
+      throw new RegistrationConsistencyError(
+        `Completion cancelled but consent record is missing for registration ${input.registrationId}`
+      );
+    }
+
+    // Each existing record must belong to THIS registration/owner. A mismatch
+    // means the slot is occupied by a different registration — fail closed.
+    if (tenant.tenantId !== input.tenantId || tenant.registrationId !== input.registrationId) {
+      throw new RegistrationConsistencyError(
+        `Existing tenant metadata does not match registration ${input.registrationId}`
+      );
+    }
+    if (tenant.ownerId !== input.userId) {
+      throw new RegistrationConsistencyError(
+        `Existing tenant metadata owner does not match user for registration ${input.registrationId}`
+      );
+    }
+    if (profile.tenantId !== input.tenantId || profile.userId !== input.userId) {
+      throw new RegistrationConsistencyError(
+        `Existing owner profile does not match registration ${input.registrationId}`
+      );
+    }
+    if (consent.tenantId !== input.tenantId || consent.userId !== input.userId) {
+      throw new RegistrationConsistencyError(
+        `Existing consent record does not match registration ${input.registrationId}`
+      );
+    }
+  }
 }
 
 /**
- * Returns true only when every cancellation reason on a cancelled transaction
- * is a conditional-check failure (i.e. the records already exist). A mix that
- * includes any other reason (ThrottlingError, TransactionConflict, etc.) is
- * NOT treated as idempotent success.
+ * Returns true when a cancelled transaction has at least one
+ * ConditionalCheckFailed reason — i.e. the cancellation was (at least partly)
+ * caused by a create-only condition tripping because a record already exists.
+ * This only gates WHETHER we read back to verify; the read-back is what
+ * actually decides idempotency vs inconsistency.
  */
-function isPureConditionalFailure(
-  error: TransactionCanceledException
-): boolean {
+function hasConditionalFailure(error: TransactionCanceledException): boolean {
   const reasons = error.CancellationReasons;
   if (!reasons || reasons.length === 0) return false;
-  return reasons.every((r) => r.Code === 'ConditionalCheckFailed' || r.Code === 'None');
+  return reasons.some((r) => r.Code === 'ConditionalCheckFailed');
 }
