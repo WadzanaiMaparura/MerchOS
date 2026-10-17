@@ -1,171 +1,102 @@
 /**
  * Cognito PreSignUp Lambda trigger for MerchOS.
  *
- * Handles new user registration by:
- * 1. Checking if the user was invited (query DynamoDB invitations table)
- * 2. If invited: auto-confirm user, auto-verify email, assign invited role
- * 3. If self sign-up: generate a new tenantId and assign 'owner' role
+ * Determines, at sign-up time, whether a user was invited and should be
+ * auto-confirmed. It does NOT persist the authoritative tenant/role identity:
+ *   - Invited self-registration (PreSignUp_SignUp): request auto-confirm /
+ *     auto-verify (these flags ARE honoured for this source). The authoritative
+ *     invited tenant/role is assigned later by PostConfirmation (which looks up
+ *     the invitation by the verified email and writes the server-managed
+ *     mutable custom:tenantIdAssigned + custom:role). We do NOT rely on mutating
+ *     event.request.userAttributes to persist custom attributes, because that is
+ *     not a supported persistence mechanism and public app clients cannot write
+ *     these fields.
+ *   - Admin-created invite (PreSignUp_AdminCreateUser): AWS IGNORES the
+ *     autoConfirm/autoVerify flags; the invite-user handler already sets the
+ *     immutable custom:tenantId + custom:role AT creation.
+ *   - Self sign-up (no invitation): defer identity assignment to
+ *     PostConfirmation (custom:tenantIdAssigned).
+ *   - Lookup FAILURE (DynamoDB/KMS): fail closed (throw) — never fall through to
+ *     mint an owner.
  *
  * Requirements: FR-3.1, FR-6.3
  */
 
-import crypto from 'node:crypto';
 import type { PreSignUpTriggerEvent } from 'aws-lambda';
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { Logger } from '@aws-lambda-powertools/logger';
 
-// ---------------------------------------------------------------------------
-// Logger
-// ---------------------------------------------------------------------------
+import {
+  findGenuineInvitationByEmail,
+  InvitationLookupError,
+  AmbiguousInvitationError,
+  type InvitationRecord,
+} from '../registration/invitation-lookup';
+
+// Re-export for backward compatibility with existing importers/tests.
+export { InvitationLookupError, parseExpiryToEpochSeconds } from '../registration/invitation-lookup';
 
 const logger = new Logger({ serviceName: 'merch-os-pre-sign-up' });
 
-// ---------------------------------------------------------------------------
-// DynamoDB Client (singleton)
-// ---------------------------------------------------------------------------
-
-let ddbDocClient: DynamoDBDocumentClient | null = null;
-
-function getDynamoDocClient(): DynamoDBDocumentClient {
-  if (!ddbDocClient) {
-    const client = new DynamoDBClient({
-      region: process.env['AWS_REGION'] ?? 'eu-west-1',
-    });
-    ddbDocClient = DynamoDBDocumentClient.from(client);
-  }
-  return ddbDocClient;
-}
-
-// ---------------------------------------------------------------------------
-// Invitation Lookup
-// ---------------------------------------------------------------------------
-
-interface InvitationRecord {
-  PK: string;
-  SK: string;
-  email: string;
-  tenantId: string;
-  role: string;
-  status: string;
-}
-
-/**
- * Queries the invitations table for a pending invitation matching the email.
- * Uses the email-index GSI to look up invitations by email address.
- */
-async function findPendingInvitation(
-  email: string,
-): Promise<InvitationRecord | null> {
-  const invitationsTable = process.env['INVITATIONS_TABLE'];
-  if (!invitationsTable) {
-    logger.warn('INVITATIONS_TABLE not configured, skipping invitation check');
-    return null;
-  }
-
-  const docClient = getDynamoDocClient();
-
-  try {
-    const result = await docClient.send(
-      new QueryCommand({
-        TableName: invitationsTable,
-        IndexName: 'email-index',
-        KeyConditionExpression: 'email = :email',
-        FilterExpression: '#status = :status',
-        ExpressionAttributeNames: {
-          '#status': 'status',
-        },
-        ExpressionAttributeValues: {
-          ':email': email,
-          ':status': 'pending',
-        },
-        Limit: 1,
-      }),
-    );
-
-    if (result.Items && result.Items.length > 0) {
-      return result.Items[0] as InvitationRecord;
-    }
-
-    return null;
-  } catch (error) {
-    logger.error('Failed to query invitations table', {
-      error: error instanceof Error ? error.message : String(error),
-      email,
-    });
-    return null;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Handler
-// ---------------------------------------------------------------------------
-
-/**
- * Cognito PreSignUp trigger handler.
- *
- * For invited users:
- *   - Auto-confirms the user (skips email verification)
- *   - Auto-verifies the email
- *   - Assigns the invited role and tenantId via request.userAttributes
- *
- * For self sign-ups:
- *   - Generates a new tenantId (UUID)
- *   - Assigns the 'owner' role
- *
- * Note: Custom attributes are set on event.request.userAttributes which Cognito
- * persists after the trigger returns. The response object only supports
- * autoConfirmUser, autoVerifyEmail, and autoVerifyPhone flags.
- */
 export async function handler(
   event: PreSignUpTriggerEvent,
 ): Promise<PreSignUpTriggerEvent> {
-  const email =
-    event.request.userAttributes['email'] ?? event.userName;
+  const email = event.request.userAttributes['email'] ?? event.userName;
 
   logger.info('PreSignUp trigger invoked', {
     email,
     triggerSource: event.triggerSource,
   });
 
+  // The invitation lookup is intentionally OUTSIDE a catch-all. A lookup
+  // FAILURE (DynamoDB/KMS) must propagate and fail the sign-up closed. It must
+  // never be swallowed and fall through to the owner self-signup path, which
+  // would silently grant tenant-owner privileges on an infrastructure error.
+  let invitation: InvitationRecord | null;
   try {
-    // Check if user was invited
-    const invitation = await findPendingInvitation(email);
-
-    if (invitation) {
-      // Invited user: auto-confirm and assign invited role/tenant
-      logger.info('User was invited, auto-confirming', {
-        email,
-        tenantId: invitation.tenantId,
-        role: invitation.role,
-      });
-
-      event.response.autoConfirmUser = true;
-      event.response.autoVerifyEmail = true;
-
-      // Set custom attributes on request.userAttributes (Cognito persists these)
-      event.request.userAttributes['custom:tenantId'] = invitation.tenantId;
-      event.request.userAttributes['custom:role'] = invitation.role;
-    } else {
-      // Self sign-up: generate new tenant
-      const tenantId = crypto.randomUUID();
-
-      logger.info('Self sign-up, generating new tenantId', {
-        email,
-        tenantId,
-      });
-
-      // Set custom attributes on request.userAttributes (Cognito persists these)
-      event.request.userAttributes['custom:tenantId'] = tenantId;
-      event.request.userAttributes['custom:role'] = 'owner';
-    }
+    invitation = await findGenuineInvitationByEmail(email);
   } catch (error) {
-    // Log error but don't block sign-up: return event as-is
-    logger.error('Error in PreSignUp trigger', {
+    logger.error('PreSignUp failing closed due to invitation lookup error', {
       error: error instanceof Error ? error.message : String(error),
       email,
     });
+    // Ambiguous invitations and lookup failures both fail the sign-up closed.
+    if (error instanceof InvitationLookupError || error instanceof AmbiguousInvitationError) {
+      throw error;
+    }
+    throw new InvitationLookupError('Invitation lookup failed', error);
   }
+
+  if (invitation) {
+    // Genuine, non-expired invitation found for an invited SELF-registration
+    // (PreSignUp_SignUp).
+    //
+    // IMPORTANT: we DO NOT auto-confirm or auto-verify here. Two reasons:
+    //   1. Mailbox control — possessing an invitation record for an email does
+    //      NOT prove the registrant controls that mailbox. The registrant must
+    //      still complete the normal email-code confirmation (ConfirmSignUp).
+    //   2. Trigger ordering — if PreSignUp auto-confirms, Cognito does NOT run
+    //      PostConfirmation for that SignUp, so the authoritative invited
+    //      identity + Seller group assignment (which live in PostConfirmation)
+    //      would never execute. Leaving confirmation to the normal flow ensures
+    //      PostConfirmation runs on ConfirmSignUp.
+    //
+    // We also do not mutate request.userAttributes (unsupported persistence,
+    // and public clients cannot write these fields). PostConfirmation performs
+    // the authoritative assignment after verified email confirmation.
+    logger.info('Genuine invitation found; deferring confirmation to normal email flow + PostConfirmation', {
+      email,
+      tenantId: invitation.tenantId,
+      role: invitation.role,
+      triggerSource: event.triggerSource,
+    });
+    return event;
+  }
+
+  // Self sign-up: successful lookup, no invitation. Defer identity assignment
+  // to PostConfirmation (custom:tenantIdAssigned). Nothing mutated here.
+  logger.info('Self sign-up detected; deferring identity assignment to PostConfirmation', {
+    email,
+  });
 
   return event;
 }

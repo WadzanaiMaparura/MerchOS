@@ -37,6 +37,14 @@ export interface AuthApiStackProps extends cdk.StackProps {
   eventBus: events.EventBus;
   invitationsTable: dynamodb.Table;
   sessionsTable: dynamodb.Table;
+  /**
+   * Durable tenants table (merch-os-tenants-<env>). A REFERENCE to the table
+   * owned by the separate MerchOS-Tenant-<env> stack, imported by AuthStack
+   * from its SSM export and passed through here. Typed as ITable (imported
+   * reference, not a managed construct). The register-pending handler writes
+   * PENDINGREG#<id> records to it.
+   */
+  tenantsTable: dynamodb.ITable;
 }
 
 export class AuthApiStack extends cdk.Stack {
@@ -80,6 +88,32 @@ export class AuthApiStack extends cdk.Stack {
     });
 
     // -----------------------------------------------------------------------
+    // CORS allow-list (explicit origins only — never '*')
+    // -----------------------------------------------------------------------
+    //
+    // Each environment keeps its intended custom-domain origin, plus the exact
+    // frontend origins required to actually test that environment. The dev
+    // environment is currently served by the live seller frontend at
+    // https://merchos.co.za (CloudFront in front of the Amplify `main` branch),
+    // so that live origin, the raw Amplify branch origin and localhost (local
+    // development) are all allowed. We never use '*' — allowCredentials:true
+    // forbids it and it would be insecure.
+    const customDomainOrigin = `https://${env === 'production' ? 'app' : env}.merchos.io`;
+    const corsAllowOrigins: string[] = [customDomainOrigin];
+    if (env === 'dev') {
+      corsAllowOrigins.push(
+        // Live seller frontend (custom domain served via CloudFront). This is
+        // the exact Origin the browser sends from the deployed dev frontend.
+        'https://merchos.co.za',
+        // Raw Amplify branch origin hosting the dev frontend (direct access
+        // and pre-custom-domain fallback).
+        'https://main.d1jwaah0zt7pg5.amplifyapp.com',
+        // Local development.
+        'http://localhost:3000',
+      );
+    }
+
+    // -----------------------------------------------------------------------
     // HTTP API Gateway
     // -----------------------------------------------------------------------
 
@@ -89,7 +123,7 @@ export class AuthApiStack extends cdk.Stack {
       corsPreflight: {
         allowHeaders: ['Content-Type', 'Authorization', 'X-Amz-Date'],
         allowMethods: [CorsHttpMethod.GET, CorsHttpMethod.POST, CorsHttpMethod.PUT, CorsHttpMethod.DELETE, CorsHttpMethod.OPTIONS],
-        allowOrigins: [`https://${env === 'production' ? 'app' : env}.merchos.io`],
+        allowOrigins: corsAllowOrigins,
         allowCredentials: true,
         maxAge: cdk.Duration.hours(1),
       },
@@ -116,6 +150,9 @@ export class AuthApiStack extends cdk.Stack {
       COGNITO_ISSUER: `https://cognito-idp.${region}.amazonaws.com/${props.userPool.userPoolId}`,
       INVITATIONS_TABLE: invitationsTable.tableName,
       SESSIONS_TABLE: sessionsTable.tableName,
+      // Pending registrations are stored in the existing tenants table under
+      // PENDINGREG#<id>. Referenced by conventional name (table not in-stack).
+      TENANTS_TABLE: `merch-os-tenants-${env}`,
       RATE_LIMITS_TABLE: this.rateLimitsTable.tableName,
       EVENT_BUS_NAME: props.eventBus.eventBusName,
       ENVIRONMENT: env,
@@ -249,6 +286,26 @@ export class AuthApiStack extends cdk.Stack {
     // 9. Session (no Cognito permissions — reads JWT claims only)
     const sessionFn = createLambda('Session', path.join(handlersPath, 'session.ts'), []);
 
+    // 9b. Register Pending (unauthenticated — pre-signup profile capture)
+    // Writes a PENDINGREG#<id> record to the durable tenants table. This is the
+    // table owned by MerchOS-Tenant-<env>, imported by AuthStack from SSM and
+    // passed in via props. The PutItem grant is scoped to its specific ARN.
+    const tenantsTable = props.tenantsTable;
+    const registerPendingFn = createLambda('RegisterPending', path.join(handlersPath, 'register-pending.ts'), [
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['dynamodb:PutItem'],
+        resources: [tenantsTable.tableArn],
+      }),
+      // The tenants table is CMK-encrypted; writing a pending record needs
+      // GenerateDataKey (and Decrypt for the SDK's envelope handling).
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['kms:GenerateDataKey', 'kms:Decrypt'],
+        resources: [props.platformKey.keyArn],
+      }),
+    ]);
+
     // 10. Invite User
     const inviteUserFn = createLambda('InviteUser', path.join(handlersPath, 'invite-user.ts'), [
       new iam.PolicyStatement({
@@ -256,14 +313,29 @@ export class AuthApiStack extends cdk.Stack {
         actions: [
           'cognito-idp:AdminCreateUser',
           'cognito-idp:AdminAddUserToGroup',
-          'cognito-idp:AdminUpdateUserAttributes',
+          // Compensation / rollback for a partially provisioned invited user
+          // (AddToGroup or invitation-record write failed). Enables retry-safe,
+          // all-or-nothing invitation creation.
+          'cognito-idp:AdminRemoveUserFromGroup',
+          'cognito-idp:AdminDeleteUser',
         ],
         resources: [props.userPool.userPoolArn],
       }),
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: ['dynamodb:PutItem'],
+        // PutItem writes the invitation record. DeleteItem is required for
+        // conditional compensation when a write outcome is ambiguous (the
+        // record may have committed before the client errored).
+        actions: ['dynamodb:PutItem', 'dynamodb:DeleteItem'],
         resources: [invitationsTable.tableArn],
+      }),
+      // The invitations table is CMK-encrypted. Writing needs GenerateDataKey;
+      // the conditional delete reads/evaluates the item and needs Decrypt.
+      // Matches the register-pending CMK access pattern.
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['kms:GenerateDataKey', 'kms:Decrypt'],
+        resources: [props.platformKey.keyArn],
       }),
     ]);
 
@@ -353,6 +425,12 @@ export class AuthApiStack extends cdk.Stack {
       path: '/auth/verify-email',
       methods: [HttpMethod.POST],
       integration: new HttpLambdaIntegration('VerifyEmailIntegration', verifyEmailFn),
+    });
+
+    this.httpApi.addRoutes({
+      path: '/auth/register-pending',
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration('RegisterPendingIntegration', registerPendingFn),
     });
 
     // Authenticated routes (JWT authorizer)

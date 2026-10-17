@@ -102,6 +102,38 @@ export const verifyEmailSchema = z.object({
 export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
 
 /**
+ * International phone validator — requires an explicit leading `+` and country
+ * code (E.164-style). No default country is assumed.
+ */
+export const internationalPhoneValidator = z
+  .string()
+  .trim()
+  .regex(
+    /^\+[1-9]\d{6,14}$/,
+    'Phone number must be in international format with a country code, e.g. +27831234567'
+  );
+
+/**
+ * POST /auth/register-pending
+ *
+ * Validates the approved registration fields. The password, password
+ * confirmation and verification code are intentionally NOT part of this schema
+ * — they must never reach the pending-registration store.
+ */
+export const registerPendingSchema = z.object({
+  fullName: z.string().trim().min(2, 'Full name must be at least 2 characters').max(100),
+  email: emailValidator,
+  phoneNumber: internationalPhoneValidator,
+  organisationName: z
+    .string()
+    .trim()
+    .min(2, 'Organisation name must be at least 2 characters')
+    .max(100),
+  marketingConsent: z.boolean().optional().default(false),
+});
+export type RegisterPendingInput = z.infer<typeof registerPendingSchema>;
+
+/**
  * POST /auth/invite
  */
 export const inviteUserSchema = z.object({

@@ -70,6 +70,34 @@ describe('pre-token-generation trigger', () => {
     });
   });
 
+  it('maps the server-managed custom:tenantIdAssigned onto the custom:tenantId claim (self-signup)', async () => {
+    const event = buildPreTokenEvent({
+      'custom:tenantIdAssigned': 'assigned-tenant-1',
+      'custom:role': 'owner',
+    });
+
+    const result = await handler(event);
+
+    expect(result.response.claimsOverrideDetails?.claimsToAddOrOverride).toEqual({
+      'custom:tenantId': 'assigned-tenant-1',
+      'custom:role': 'owner',
+    });
+  });
+
+  it('prefers the immutable custom:tenantId over custom:tenantIdAssigned (invited user)', async () => {
+    const event = buildPreTokenEvent({
+      'custom:tenantId': 'invited-tenant',
+      'custom:tenantIdAssigned': 'should-be-ignored',
+      'custom:role': 'editor',
+    });
+
+    const result = await handler(event);
+
+    expect(
+      result.response.claimsOverrideDetails?.claimsToAddOrOverride?.['custom:tenantId'],
+    ).toBe('invited-tenant');
+  });
+
   it('should handle missing tenantId gracefully', async () => {
     const event = buildPreTokenEvent({
       'custom:role': 'viewer',

@@ -40,6 +40,22 @@ export class AuthStack extends cdk.Stack {
   public readonly adminDashboardClient: cognito.UserPoolClient;
   public readonly invitationsTable: dynamodb.Table;
   public readonly sessionsTable: dynamodb.Table;
+  /**
+   * Durable tenant table (merch-os-tenants-<env>). Single-table design keyed by
+   * PK=`TENANT#<tenantId>` / SK=`<ENTITY>` (METADATA, PROFILE#<userId>,
+   * CONSENT#<userId>) for committed registrations, and PK=`PENDINGREG#<id>` /
+   * SK=`METADATA` for short-lived pending-registration records (TTL on
+   * `expiresAt`).
+   *
+   * This is a REFERENCE to the physical table owned by the separate
+   * MerchOS-Tenant-<env> (TenantStack) — NOT a table defined by this stack.
+   * Declaring a second `new dynamodb.Table` with the same physical name here
+   * would collide with that stack's resource on deploy. Resolved from the
+   * TenantStack's SSM export so the two stacks stay decoupled (no cross-stack
+   * construct dependency). Typed as ITable (an imported reference, not a
+   * managed construct). Shared with AuthApiStack via props.
+   */
+  public readonly tenantsTable: dynamodb.ITable;
 
   /**
    * @deprecated Use userPool instead. Kept for backward compatibility.
@@ -73,7 +89,19 @@ export class AuthStack extends cdk.Stack {
         familyName: { required: false, mutable: true },
       },
       customAttributes: {
+        // Immutable tenant id. Can only be populated AT user creation, which is
+        // how invited users receive their authoritative tenant (set by the
+        // PreSignUp trigger during the invited sign-up). AWS forbids updating
+        // an immutable custom attribute after creation.
         tenantId: new cognito.StringAttribute({ mutable: false }),
+        // Server-managed MUTABLE tenant id used for the self-signup path, where
+        // the tenant id is only known after email verification (PostConfirmation
+        // via AdminUpdateUserAttributes). Public app clients are explicitly
+        // denied write access to this attribute (see writeAttributes below), so
+        // only server-side admin calls can set it. PreTokenGeneration treats
+        // custom:tenantId (immutable, invited) OR custom:tenantIdAssigned
+        // (mutable, self-signup) as the effective tenant id.
+        tenantIdAssigned: new cognito.StringAttribute({ mutable: true }),
         role: new cognito.StringAttribute({ mutable: true }),
       },
       passwordPolicy: {
@@ -123,6 +151,27 @@ export class AuthStack extends cdk.Stack {
     // App Clients
     // -----------------------------------------------------------------------
 
+    // Attribute permissions for app clients.
+    //
+    // READ: clients may read standard profile attributes plus the server-set
+    // tenant/role attributes (needed for the SPA to display context). Reading
+    // is safe; it does not permit modification.
+    //
+    // WRITE: clients may ONLY write the standard profile attributes a user may
+    // legitimately self-edit. The tenant/role custom attributes
+    // (custom:tenantId, custom:tenantIdAssigned, custom:role) are deliberately
+    // OMITTED from the write set, so no public app client can set or alter a
+    // user's tenant or role. Only server-side admin operations
+    // (AdminUpdateUserAttributes / AdminCreateUser) can write them.
+    const clientReadAttributes = new cognito.ClientAttributes()
+      .withStandardAttributes({ email: true, emailVerified: true, givenName: true, familyName: true })
+      .withCustomAttributes('tenantId', 'tenantIdAssigned', 'role');
+
+    const clientWriteAttributes = new cognito.ClientAttributes()
+      .withStandardAttributes({ email: true, givenName: true, familyName: true });
+    // NOTE: no .withCustomAttributes(...) on the write set — tenant/role are
+    // server-managed and must not be client-writable.
+
     // Seller Dashboard app client (SPA, PKCE, no secret)
     this.sellerDashboardClient = this.userPool.addClient('SellerDashboardClient', {
       userPoolClientName: `seller-dashboard-${env}`,
@@ -137,6 +186,8 @@ export class AuthStack extends cdk.Stack {
       },
       generateSecret: false,
       preventUserExistenceErrors: true,
+      readAttributes: clientReadAttributes,
+      writeAttributes: clientWriteAttributes,
       accessTokenValidity: cdk.Duration.minutes(60),
       refreshTokenValidity: cdk.Duration.days(30),
       idTokenValidity: cdk.Duration.minutes(60),
@@ -150,6 +201,8 @@ export class AuthStack extends cdk.Stack {
       },
       generateSecret: true,
       preventUserExistenceErrors: true,
+      readAttributes: clientReadAttributes,
+      writeAttributes: clientWriteAttributes,
       accessTokenValidity: cdk.Duration.minutes(60),
       refreshTokenValidity: cdk.Duration.days(30),
     });
@@ -168,6 +221,8 @@ export class AuthStack extends cdk.Stack {
       },
       generateSecret: false,
       preventUserExistenceErrors: true,
+      readAttributes: clientReadAttributes,
+      writeAttributes: clientWriteAttributes,
       accessTokenValidity: cdk.Duration.minutes(60),
       refreshTokenValidity: cdk.Duration.days(30),
     });
@@ -207,6 +262,26 @@ export class AuthStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
+    // Durable tenants table — REFERENCE to the existing physical table owned by
+    // the separate MerchOS-Tenant-<env> stack (TenantStack). That stack defines
+    // the table (PK/SK, CMK, TTL on `expiresAt`, PITR, RETAIN) and exports its
+    // ARN to SSM. We must NOT declare our own `new dynamodb.Table` with the same
+    // physical name `merch-os-tenants-<env>` here: CloudFormation only allows a
+    // physical resource to be owned by one stack, so a second declaration would
+    // fail to deploy ("resource already exists") against the live table.
+    //
+    // Resolve the ARN from the TenantStack's env-specific SSM export (not a
+    // hardcoded ARN) and import it as an ITable. Using SSM (rather than a passed
+    // construct) keeps AuthStack decoupled from TenantStack — no cross-stack
+    // construct dependency or deploy-ordering edge, matching the pattern
+    // TenantStack documents. The imported table's `.tableArn` is exactly this
+    // ARN, so IAM grants below stay scoped to the specific table (never '*').
+    const tenantsTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/merch-os/${env}/dynamodb/tenants-table-arn`,
+    );
+    this.tenantsTable = dynamodb.Table.fromTableArn(this, 'TenantsTable', tenantsTableArn);
+
     // -----------------------------------------------------------------------
     // Cognito Lambda Triggers
     // These MUST live in the same stack as the UserPool because addTrigger()
@@ -228,6 +303,13 @@ export class AuthStack extends cdk.Stack {
       environment: {
         INVITATIONS_TABLE: this.invitationsTable.tableName,
         SESSIONS_TABLE: this.sessionsTable.tableName,
+        // Pending-registration records live in the TenantStack-owned tenants
+        // table under PENDINGREG#<id>. The Lambda resolves items by table NAME,
+        // which is the stable convention `merch-os-tenants-<env>` (the physical
+        // name owned by MerchOS-Tenant-<env>). This is intentionally the name,
+        // not the imported construct's tableName token, so the runtime contract
+        // is unchanged by the ownership refactor.
+        TENANTS_TABLE: `merch-os-tenants-${env}`,
         EVENT_BUS_NAME: props.eventBus.eventBusName,
         ENVIRONMENT: env,
       },
@@ -256,6 +338,15 @@ export class AuthStack extends cdk.Stack {
         `${this.invitationsTable.tableArn}/index/email-index`,
       ],
     }));
+    // The invitations table is encrypted with the platform CMK, so reading it
+    // requires kms:Decrypt on that key. This is a read-only lookup: we grant
+    // Decrypt only, NOT GenerateDataKey (which is for writes), keeping the
+    // trigger least-privilege.
+    preSignUpRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['kms:Decrypt'],
+      resources: [props.platformKey.keyArn],
+    }));
 
     const preSignUpFn = new lambdaNodejs.NodejsFunction(this, 'PreSignUp', {
       ...triggerLambdaProps,
@@ -272,11 +363,81 @@ export class AuthStack extends cdk.Stack {
         iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
       ],
     });
+    // Trusted identity assignment: persist custom:tenantId / custom:role via a
+    // server-side Cognito operation. The Lambda reads the pool id from the
+    // trigger event payload (event.userPoolId) at runtime.
+    //
+    // IMPORTANT: we must NOT reference this.userPool.userPoolArn here. Because
+    // this Lambda is attached to the pool via addTrigger(), referencing the
+    // pool's ARN attribute in the role policy creates a CloudFormation cycle:
+    //   UserPool -> PostConfirmation (trigger) -> Role policy -> UserPool.
+    // Instead we scope to a region/account-bound userpool ARN pattern built
+    // from stable stack tokens (region/account), which carries no dependency
+    // edge back to the UserPool resource. This stays least-privilege (this
+    // account's Cognito user pools in this region) without the wildcard '*'.
+    const userPoolArnPattern = cdk.Arn.format(
+      {
+        service: 'cognito-idp',
+        resource: 'userpool',
+        resourceName: '*',
+      },
+      cdk.Stack.of(this),
+    );
+    // AdminUpdateUserAttributes (identity) + AdminAddUserToGroup (invited
+    // self-registrants join 'Seller' so RBAC's cognito:groups claim authorizes
+    // them). Both scoped to the region/account userpool ARN pattern to avoid
+    // the intra-stack circular dependency described above.
     postConfirmationRole.addToPolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
-      actions: ['dynamodb:PutItem'],
-      resources: [this.sessionsTable.tableArn],
+      actions: ['cognito-idp:AdminUpdateUserAttributes', 'cognito-idp:AdminAddUserToGroup'],
+      resources: [userPoolArnPattern],
     }));
+    // Durable registration completion against the tenants table:
+    //   - GetItem: read the EXACT pending-registration record by id (PK
+    //     PENDINGREG#<id>) to recover the server-generated tenantId + the
+    //     profile/consent details captured at register time.
+    //   - PutItem / TransactWriteItems: commit the durable tenant metadata,
+    //     owner profile and consent records (TENANT#<tenantId> / METADATA +
+    //     PROFILE#<userId> + CONSENT#<userId>) idempotently and atomically.
+    //   - DeleteItem: remove the pending record, but ONLY after the durable
+    //     records have committed (the trigger never deletes it beforehand, so
+    //     the single copy of profile/consent data is preserved for retry).
+    // Scoped to the imported tenants table's ARN (resolved from the TenantStack
+    // SSM export), so the grant targets exactly merch-os-tenants-<env> — never
+    // a wildcard.
+    postConfirmationRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'dynamodb:GetItem',
+        'dynamodb:PutItem',
+        'dynamodb:TransactWriteItems',
+        'dynamodb:DeleteItem',
+      ],
+      resources: [this.tenantsTable.tableArn],
+    }));
+    // Read invitations by verified email (email-index GSI) so an invited
+    // self-registrant receives the authoritative invited tenant/role rather
+    // than an owner-recovery identity. Read-only (Query); no write.
+    postConfirmationRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['dynamodb:Query'],
+      resources: [
+        this.invitationsTable.tableArn,
+        `${this.invitationsTable.tableArn}/index/email-index`,
+      ],
+    }));
+    // The tenants and invitations tables are CMK-encrypted. Reading an item
+    // requires kms:Decrypt; writing the durable tenant/owner/consent records to
+    // the encrypted tenants table also requires kms:GenerateDataKey.
+    postConfirmationRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['kms:Decrypt', 'kms:GenerateDataKey'],
+      resources: [props.platformKey.keyArn],
+    }));
+    // Emit auth.user.registered, but ONLY after the durable registration
+    // records have committed (the trigger orders the event strictly after the
+    // transactional write). The event therefore signals a genuinely completed
+    // registration, not merely identity assignment.
     postConfirmationRole.addToPolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: ['events:PutEvents'],
