@@ -73,23 +73,30 @@ export function configureCognitoAuth(config: CognitoConfig = defaultCognitoConfi
 export interface SignUpParams {
   email: string;
   password: string;
-  organisationName: string;
-  contactEmail: string;
+  /**
+   * Opaque, server-generated pending-registration id. Forwarded to Cognito as
+   * clientMetadata so the PostConfirmation trigger can resolve the exact
+   * pending-registration record (by id) and assign the trusted tenant/role.
+   * It is NOT a user attribute and is never persisted on the Cognito user.
+   */
+  registrationId?: string;
 }
 
 /**
  * Register a new seller account via Cognito.
  * Creates the account and triggers email verification.
+ *
+ * Only the standard `email` attribute (plus password) is sent to Cognito. The
+ * user pool schema defines just custom:tenantId and custom:role (set by the
+ * triggers); any other custom attribute would be rejected.
+ *
+ * Additional registration details (full name, phone, organisation name,
+ * marketing consent) are NOT sent here — they live in the server-side
+ * pending-registration record. We pass only the opaque `registrationId` via
+ * clientMetadata so PostConfirmation can correlate the verified identity with
+ * that record.
  */
-export async function cognitoSignUp({ email, password }: SignUpParams): Promise<{ isSignUpComplete: boolean; userId?: string }> {
-  // NOTE: organisationName and contactEmail are intentionally NOT sent to
-  // Cognito. The user pool schema only defines custom:tenantId and custom:role
-  // (set by the PreSignUp trigger); custom:organisationName and
-  // custom:contactEmail are not declared, so sending them makes Cognito reject
-  // the sign-up ("Type for attribute {custom:contactEmail} could not be
-  // determined"). The standard `email` attribute covers the contact email, and
-  // the tenant record name is derived in the PostConfirmation trigger. The
-  // SignUpParams signature is kept intact so the registration form is unchanged.
+export async function cognitoSignUp({ email, password, registrationId }: SignUpParams): Promise<{ isSignUpComplete: boolean; userId?: string }> {
   const result = await amplifySignUp({
     username: email,
     password,
@@ -97,6 +104,9 @@ export async function cognitoSignUp({ email, password }: SignUpParams): Promise<
       userAttributes: {
         email,
       },
+      // clientMetadata is passed to the Lambda triggers; it is transient and
+      // never stored as a user attribute.
+      ...(registrationId ? { clientMetadata: { registrationId } } : {}),
     },
   });
 
@@ -108,11 +118,22 @@ export async function cognitoSignUp({ email, password }: SignUpParams): Promise<
 
 /**
  * Confirm email verification code after registration.
+ *
+ * The same `registrationId` supplied at sign-up is forwarded again via
+ * clientMetadata so the PostConfirmation trigger (which runs on ConfirmSignUp)
+ * can resolve the exact pending-registration record for the now-verified user.
  */
-export async function cognitoConfirmSignUp(email: string, code: string): Promise<{ isSignUpComplete: boolean }> {
+export async function cognitoConfirmSignUp(
+  email: string,
+  code: string,
+  registrationId?: string,
+): Promise<{ isSignUpComplete: boolean }> {
   const result = await amplifyConfirmSignUp({
     username: email,
     confirmationCode: code,
+    ...(registrationId
+      ? { options: { clientMetadata: { registrationId } } }
+      : {}),
   });
 
   return {
