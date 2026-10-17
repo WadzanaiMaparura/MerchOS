@@ -179,6 +179,15 @@ export class RegistrationCompletionRepository {
       // Preserve the ORIGINAL capture timestamp from the registration form,
       // not the completion time — consent was recorded when the user submitted.
       capturedAt: input.marketingConsent.capturedAt,
+      // Optional audit metadata — persisted when the caller supplies it (the
+      // complete-profile recovery path). The self-signup path omits these and
+      // they are simply absent (removeUndefinedValues strips undefined). Only
+      // channels explicitly selected under an opt-in are stored.
+      channels: input.marketingConsent.granted
+        ? input.marketingConsent.channels
+        : [],
+      consentTextVersion: input.marketingConsent.consentTextVersion,
+      source: input.marketingConsent.source,
     };
 
     // Create-only condition: the exact PK+SK must not already exist. Guarantees
