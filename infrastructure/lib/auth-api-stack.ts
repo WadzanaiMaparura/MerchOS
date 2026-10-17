@@ -306,6 +306,51 @@ export class AuthApiStack extends cdk.Stack {
       }),
     ]);
 
+    // 9c. Profile Status (authenticated recovery read)
+    // Reads canonical tenant metadata + owner profile from the tenants table
+    // and an invitation record from the invitations table (to classify invited
+    // users). Read-only; scoped to the existing tables; CMK Decrypt only.
+    const profileStatusFn = createLambda('ProfileStatus', path.join(handlersPath, 'profile-status.ts'), [
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['dynamodb:GetItem'],
+        resources: [tenantsTable.tableArn, invitationsTable.tableArn],
+      }),
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['kms:Decrypt'],
+        resources: [props.platformKey.keyArn],
+      }),
+    ]);
+
+    // 9d. Complete Profile (authenticated recovery write)
+    // Atomic TransactWriteItems to create the CANONICAL tenant metadata + owner
+    // profile + consent; GetItem for idempotency/verification reads and the
+    // invited-user safeguard. Writes are scoped to the tenants table; the
+    // invitations table is read-only here.
+    const completeProfileFn = createLambda('CompleteProfile', path.join(handlersPath, 'complete-profile.ts'), [
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+        resources: [tenantsTable.tableArn],
+      }),
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['dynamodb:GetItem'],
+        resources: [invitationsTable.tableArn],
+      }),
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['kms:Decrypt', 'kms:GenerateDataKey'],
+        resources: [props.platformKey.keyArn],
+      }),
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['events:PutEvents'],
+        resources: [props.eventBus.eventBusArn],
+      }),
+    ]);
+
     // 10. Invite User
     const inviteUserFn = createLambda('InviteUser', path.join(handlersPath, 'invite-user.ts'), [
       new iam.PolicyStatement({
@@ -434,6 +479,24 @@ export class AuthApiStack extends cdk.Stack {
     });
 
     // Authenticated routes (JWT authorizer)
+
+    // Registration recovery (authenticated — JWT authorizer). Preserves the
+    // live GET /auth/profile-status and POST /auth/complete-profile endpoints
+    // the seller dashboard depends on.
+    this.httpApi.addRoutes({
+      path: '/auth/profile-status',
+      methods: [HttpMethod.GET],
+      integration: new HttpLambdaIntegration('ProfileStatusIntegration', profileStatusFn),
+      authorizer: jwtAuthorizer,
+    });
+
+    this.httpApi.addRoutes({
+      path: '/auth/complete-profile',
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration('CompleteProfileIntegration', completeProfileFn),
+      authorizer: jwtAuthorizer,
+    });
+
     this.httpApi.addRoutes({
       path: '/auth/logout',
       methods: [HttpMethod.POST],
