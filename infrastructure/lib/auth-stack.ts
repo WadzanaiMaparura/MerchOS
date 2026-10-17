@@ -45,10 +45,17 @@ export class AuthStack extends cdk.Stack {
    * PK=`TENANT#<tenantId>` / SK=`<ENTITY>` (METADATA, PROFILE#<userId>,
    * CONSENT#<userId>) for committed registrations, and PK=`PENDINGREG#<id>` /
    * SK=`METADATA` for short-lived pending-registration records (TTL on
-   * `expiresAt`). Created here (co-located with the UserPool/triggers that read
-   * and write it) and shared with AuthApiStack via props.
+   * `expiresAt`).
+   *
+   * This is a REFERENCE to the physical table owned by the separate
+   * MerchOS-Tenant-<env> (TenantStack) — NOT a table defined by this stack.
+   * Declaring a second `new dynamodb.Table` with the same physical name here
+   * would collide with that stack's resource on deploy. Resolved from the
+   * TenantStack's SSM export so the two stacks stay decoupled (no cross-stack
+   * construct dependency). Typed as ITable (an imported reference, not a
+   * managed construct). Shared with AuthApiStack via props.
    */
-  public readonly tenantsTable: dynamodb.Table;
+  public readonly tenantsTable: dynamodb.ITable;
 
   /**
    * @deprecated Use userPool instead. Kept for backward compatibility.
@@ -255,25 +262,25 @@ export class AuthStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
-    // Durable tenants table. Previously referenced only by its conventional
-    // name (merch-os-tenants-<env>) by both the register-pending handler
-    // (write) and the PostConfirmation trigger (read/write) but never actually
-    // provisioned — the missing dependency that prevented durable registration
-    // completion. It follows the same PK/SK + CMK + TTL + PITR + RETAIN pattern
-    // as the invitations/sessions tables. `expiresAt` drives TTL expiry of
-    // pending-registration records (PENDINGREG#<id>); committed tenant,
-    // owner-profile and consent records carry no `expiresAt` and are permanent.
-    this.tenantsTable = new dynamodb.Table(this, 'TenantsTable', {
-      tableName: `merch-os-tenants-${env}`,
-      partitionKey: { name: 'PK', type: dynamodb.AttributeType.STRING },
-      sortKey: { name: 'SK', type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      encryption: dynamodb.TableEncryption.CUSTOMER_MANAGED,
-      encryptionKey: props.platformKey,
-      timeToLiveAttribute: 'expiresAt',
-      pointInTimeRecovery: true,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-    });
+    // Durable tenants table — REFERENCE to the existing physical table owned by
+    // the separate MerchOS-Tenant-<env> stack (TenantStack). That stack defines
+    // the table (PK/SK, CMK, TTL on `expiresAt`, PITR, RETAIN) and exports its
+    // ARN to SSM. We must NOT declare our own `new dynamodb.Table` with the same
+    // physical name `merch-os-tenants-<env>` here: CloudFormation only allows a
+    // physical resource to be owned by one stack, so a second declaration would
+    // fail to deploy ("resource already exists") against the live table.
+    //
+    // Resolve the ARN from the TenantStack's env-specific SSM export (not a
+    // hardcoded ARN) and import it as an ITable. Using SSM (rather than a passed
+    // construct) keeps AuthStack decoupled from TenantStack — no cross-stack
+    // construct dependency or deploy-ordering edge, matching the pattern
+    // TenantStack documents. The imported table's `.tableArn` is exactly this
+    // ARN, so IAM grants below stay scoped to the specific table (never '*').
+    const tenantsTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/merch-os/${env}/dynamodb/tenants-table-arn`,
+    );
+    this.tenantsTable = dynamodb.Table.fromTableArn(this, 'TenantsTable', tenantsTableArn);
 
     // -----------------------------------------------------------------------
     // Cognito Lambda Triggers
@@ -296,9 +303,12 @@ export class AuthStack extends cdk.Stack {
       environment: {
         INVITATIONS_TABLE: this.invitationsTable.tableName,
         SESSIONS_TABLE: this.sessionsTable.tableName,
-        // Pending-registration records live in the existing tenants table under
-        // PENDINGREG#<id>. The table is not defined in this stack; reference it
-        // by its conventional name so PostConfirmation can resolve records by id.
+        // Pending-registration records live in the TenantStack-owned tenants
+        // table under PENDINGREG#<id>. The Lambda resolves items by table NAME,
+        // which is the stable convention `merch-os-tenants-<env>` (the physical
+        // name owned by MerchOS-Tenant-<env>). This is intentionally the name,
+        // not the imported construct's tableName token, so the runtime contract
+        // is unchanged by the ownership refactor.
         TENANTS_TABLE: `merch-os-tenants-${env}`,
         EVENT_BUS_NAME: props.eventBus.eventBusName,
         ENVIRONMENT: env,
@@ -392,8 +402,9 @@ export class AuthStack extends cdk.Stack {
     //   - DeleteItem: remove the pending record, but ONLY after the durable
     //     records have committed (the trigger never deletes it beforehand, so
     //     the single copy of profile/consent data is preserved for retry).
-    // The real table construct is used (not a by-name ARN) now that the table
-    // is provisioned in this stack.
+    // Scoped to the imported tenants table's ARN (resolved from the TenantStack
+    // SSM export), so the grant targets exactly merch-os-tenants-<env> — never
+    // a wildcard.
     postConfirmationRole.addToPolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: [

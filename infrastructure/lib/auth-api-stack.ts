@@ -38,10 +38,13 @@ export interface AuthApiStackProps extends cdk.StackProps {
   invitationsTable: dynamodb.Table;
   sessionsTable: dynamodb.Table;
   /**
-   * Durable tenants table (merch-os-tenants-<env>), created in AuthStack.
-   * The register-pending handler writes PENDINGREG#<id> records here.
+   * Durable tenants table (merch-os-tenants-<env>). A REFERENCE to the table
+   * owned by the separate MerchOS-Tenant-<env> stack, imported by AuthStack
+   * from its SSM export and passed through here. Typed as ITable (imported
+   * reference, not a managed construct). The register-pending handler writes
+   * PENDINGREG#<id> records to it.
    */
-  tenantsTable: dynamodb.Table;
+  tenantsTable: dynamodb.ITable;
 }
 
 export class AuthApiStack extends cdk.Stack {
@@ -284,8 +287,9 @@ export class AuthApiStack extends cdk.Stack {
     const sessionFn = createLambda('Session', path.join(handlersPath, 'session.ts'), []);
 
     // 9b. Register Pending (unauthenticated — pre-signup profile capture)
-    // Writes a PENDINGREG#<id> record to the durable tenants table (created in
-    // AuthStack and passed in via props).
+    // Writes a PENDINGREG#<id> record to the durable tenants table. This is the
+    // table owned by MerchOS-Tenant-<env>, imported by AuthStack from SSM and
+    // passed in via props. The PutItem grant is scoped to its specific ARN.
     const tenantsTable = props.tenantsTable;
     const registerPendingFn = createLambda('RegisterPending', path.join(handlersPath, 'register-pending.ts'), [
       new iam.PolicyStatement({

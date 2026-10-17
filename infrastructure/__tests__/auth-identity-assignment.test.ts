@@ -146,31 +146,69 @@ describe('Auth identity-assignment infrastructure', () => {
     expect(actions.some((a) => a.startsWith('s3:'))).toBe(false);
   });
 
-  it('provisions the durable tenants table (merch-os-tenants-<env>) with CMK encryption and TTL', () => {
+  it('does NOT declare a merch-os-tenants table in AuthStack (avoids owning the MerchOS-Tenant stack table)', () => {
     const { auth } = synth();
-    // The previously-missing dependency: the tenants table is now a real CDK
-    // resource (not just a by-name ARN reference), so durable registration
-    // records can actually be written.
-    auth.hasResourceProperties('AWS::DynamoDB::Table', {
-      TableName: 'merch-os-tenants-dev',
-      TimeToLiveSpecification: { AttributeName: 'expiresAt', Enabled: true },
-      SSESpecification: { SSEEnabled: true },
-    });
+    // The tenants table is owned by the separate MerchOS-Tenant-<env> stack.
+    // AuthStack must only REFERENCE it (imported from SSM), never declare a
+    // second physical table with the same name — that would collide on deploy.
+    const tables = auth.findResources('AWS::DynamoDB::Table');
+    const tableNames = Object.values(tables).map(
+      (t) => (t as { Properties: { TableName?: string } }).Properties.TableName,
+    );
+    expect(tableNames).not.toContain('merch-os-tenants-dev');
+    // AuthStack still owns ONLY its own tables (invitations + sessions).
+    expect(tableNames).toEqual(
+      expect.arrayContaining(['merch-os-invitations-dev', 'merch-os-sessions-dev']),
+    );
+    // And it reads the tenants-table ARN from the TenantStack's env-specific
+    // SSM export (not a hardcoded ARN).
+    const authJson = JSON.stringify(auth.toJSON());
+    expect(authJson).toContain('/merch-os/dev/dynamodb/tenants-table-arn');
+  });
+
+  it('keeps the registration Lambdas pointed at TENANTS_TABLE=merch-os-tenants-<env> (runtime contract unchanged)', () => {
+    const { auth, authApi } = synth();
+
+    // PostConfirmation (AuthStack) resolves pending/durable records by table
+    // NAME — must remain the stable physical name regardless of the ownership
+    // refactor.
+    const authFns = auth.findResources('AWS::Lambda::Function');
+    const postConfirmation = Object.values(authFns).find((f) =>
+      ((f as { Properties: { FunctionName?: string } }).Properties.FunctionName ?? '')
+        .includes('postconfirmation'),
+    ) as { Properties: { Environment?: { Variables?: Record<string, unknown> } } } | undefined;
+    expect(postConfirmation).toBeDefined();
+    expect(postConfirmation!.Properties.Environment?.Variables?.['TENANTS_TABLE']).toBe(
+      'merch-os-tenants-dev',
+    );
+
+    // RegisterPending (AuthApi stack) writes pending records by the same name.
+    const apiFns = authApi.findResources('AWS::Lambda::Function');
+    const registerPending = Object.values(apiFns).find((f) =>
+      ((f as { Properties: { FunctionName?: string } }).Properties.FunctionName ?? '')
+        .includes('registerpending'),
+    ) as { Properties: { Environment?: { Variables?: Record<string, unknown> } } } | undefined;
+    expect(registerPending).toBeDefined();
+    expect(registerPending!.Properties.Environment?.Variables?.['TENANTS_TABLE']).toBe(
+      'merch-os-tenants-dev',
+    );
   });
 
   it('scopes RegisterPending and PostConfirmation DynamoDB access to the tenants table', () => {
     const { auth, authApi } = synth();
 
-    // The tenants table is OWNED by AuthStack, so its literal name appears in
-    // that stack's template (table resource + PostConfirmation grant).
+    // The tenants table is REFERENCED (not owned) by AuthStack. Its physical
+    // name still appears in the template via the TENANTS_TABLE Lambda env var,
+    // and the imported ARN is resolved from the TenantStack's SSM export.
     const authJson = JSON.stringify(auth.toJSON());
     expect(authJson).toContain('merch-os-tenants-dev');
+    expect(authJson).toContain('/merch-os/dev/dynamodb/tenants-table-arn');
 
     // The register-pending handler (AuthApi stack) writes to that same table.
-    // AuthApi references the table via a cross-stack reference (Fn::ImportValue
-    // / Fn::GetAtt against the AuthStack export) rather than an inline literal
-    // name, so assert the RegisterPending role has a PutItem statement whose
-    // Resource is a non-wildcard reference (an object token, not '*').
+    // AuthApi references the table via a cross-stack reference rather than an
+    // inline literal ARN, so assert the RegisterPending role has a PutItem
+    // statement whose Resource is a non-wildcard reference (an object token,
+    // not '*').
     const policies = authApi.findResources('AWS::IAM::Policy');
     let registerPendingPutScoped = false;
     for (const [logicalId, p] of Object.entries(policies)) {
