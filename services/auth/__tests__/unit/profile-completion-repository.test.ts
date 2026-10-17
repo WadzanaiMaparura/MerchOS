@@ -50,6 +50,39 @@ function canceled(codes: string[]): TransactionCanceledException {
   });
 }
 
+// Durable records that FULLY match the default params() (same-data retry).
+// createdAt/capturedAt use different timestamps than a fresh request on purpose —
+// the verifier must NOT compare those volatile values for equality.
+function storedTenant(overrides: Record<string, unknown> = {}) {
+  return {
+    PK, SK: 'METADATA', tenantId: 'tenant-1', organisationName: 'Analytical Engines',
+    ownerId: 'user-1', registrationId: 'some-earlier-reg-id', status: 'active',
+    createdAt: '2026-01-01T00:00:00.000Z', ...overrides,
+  };
+}
+function storedOwner(overrides: Record<string, unknown> = {}) {
+  return {
+    PK, SK: OWNER_SK, tenantId: 'tenant-1', userId: 'user-1', email: 'seller@example.com',
+    fullName: 'Ada Lovelace', phoneNumber: '+27831234567', role: 'owner',
+    createdAt: '2026-01-01T00:00:00.000Z', ...overrides,
+  };
+}
+function storedConsent(overrides: Record<string, unknown> = {}) {
+  return {
+    PK, SK: CONSENT_SK, tenantId: 'tenant-1', userId: 'user-1', type: 'marketing',
+    granted: true, capturedAt: '2026-01-01T00:00:00.000Z', channels: ['email'],
+    consentTextVersion: 'draft-2026-10-11', source: 'profile-completion', ...overrides,
+  };
+}
+
+/** Stub a conditional cancellation + read-back of the three stored records. */
+function stubRetry(records: { tenant?: unknown; owner?: unknown; consent?: unknown }) {
+  ddbMock.on(TransactWriteCommand).rejects(canceled(['ConditionalCheckFailed', 'ConditionalCheckFailed', 'ConditionalCheckFailed']));
+  ddbMock.on(GetCommand, { Key: { PK, SK: 'METADATA' } }).resolves({ Item: records.tenant as Record<string, unknown> | undefined });
+  ddbMock.on(GetCommand, { Key: { PK, SK: OWNER_SK } }).resolves({ Item: records.owner as Record<string, unknown> | undefined });
+  ddbMock.on(GetCommand, { Key: { PK, SK: CONSENT_SK } }).resolves({ Item: records.consent as Record<string, unknown> | undefined });
+}
+
 describe('profile-completion-repository (canonical schema)', () => {
   beforeEach(() => {
     ddbMock.reset();
@@ -102,11 +135,10 @@ describe('profile-completion-repository (canonical schema)', () => {
     expect(consent['channels']).toEqual([]);
   });
 
-  it('idempotent replay: all three records exist for THIS subject -> already_completed', async () => {
-    ddbMock.on(TransactWriteCommand).rejects(canceled(['ConditionalCheckFailed', 'ConditionalCheckFailed', 'ConditionalCheckFailed']));
-    ddbMock.on(GetCommand, { Key: { PK, SK: 'METADATA' } }).resolves({ Item: { ownerId: 'user-1', tenantId: 'tenant-1' } });
-    ddbMock.on(GetCommand, { Key: { PK, SK: OWNER_SK } }).resolves({ Item: { userId: 'user-1', tenantId: 'tenant-1' } });
-    ddbMock.on(GetCommand, { Key: { PK, SK: CONSENT_SK } }).resolves({ Item: { userId: 'user-1', tenantId: 'tenant-1' } });
+  it('idempotent same-data replay: all three records exist AND every field matches -> already_completed', async () => {
+    // Stored records fully match params() (but with different volatile
+    // registrationId/createdAt/capturedAt — which must NOT be compared).
+    stubRetry({ tenant: storedTenant(), owner: storedOwner(), consent: storedConsent() });
 
     const result = await completeOwnerProfile(TABLE, params());
     expect(result).toEqual({ result: 'already_completed' });
@@ -116,24 +148,103 @@ describe('profile-completion-repository (canonical schema)', () => {
     }
   });
 
-  it('conflict: owner profile belongs to a DIFFERENT subject -> never overwrites', async () => {
-    ddbMock.on(TransactWriteCommand).rejects(canceled(['ConditionalCheckFailed', 'ConditionalCheckFailed', 'ConditionalCheckFailed']));
-    ddbMock.on(GetCommand, { Key: { PK, SK: 'METADATA' } }).resolves({ Item: { ownerId: 'other', tenantId: 'tenant-1' } });
-    ddbMock.on(GetCommand, { Key: { PK, SK: OWNER_SK } }).resolves({ Item: { userId: 'other', tenantId: 'tenant-1' } });
-    ddbMock.on(GetCommand, { Key: { PK, SK: CONSENT_SK } }).resolves({});
+  it('idempotent replay tolerates different registrationId/timestamps (volatile values not compared)', async () => {
+    stubRetry({
+      tenant: storedTenant({ registrationId: 'totally-different-reg', createdAt: '2025-06-01T12:00:00.000Z' }),
+      owner: storedOwner({ createdAt: '2025-06-01T12:00:00.000Z' }),
+      consent: storedConsent({ capturedAt: '2025-06-01T12:00:00.000Z' }),
+    });
+    const result = await completeOwnerProfile(TABLE, params());
+    expect(result).toEqual({ result: 'already_completed' });
+  });
 
+  it('conflict: owner profile belongs to a DIFFERENT subject -> never overwrites', async () => {
+    stubRetry({
+      tenant: storedTenant({ ownerId: 'other' }),
+      owner: storedOwner({ userId: 'other' }),
+      consent: undefined,
+    });
     const result = await completeOwnerProfile(TABLE, params());
     expect(result.result).toBe('conflict');
   });
 
-  it('conflict: partial/inconsistent durable state fails safe', async () => {
-    ddbMock.on(TransactWriteCommand).rejects(canceled(['ConditionalCheckFailed', 'None', 'None']));
-    ddbMock.on(GetCommand, { Key: { PK, SK: 'METADATA' } }).resolves({ Item: { ownerId: 'user-1', tenantId: 'tenant-1' } });
-    ddbMock.on(GetCommand, { Key: { PK, SK: OWNER_SK } }).resolves({}); // owner missing
-    ddbMock.on(GetCommand, { Key: { PK, SK: CONSENT_SK } }).resolves({});
-
+  it('conflict: partial/inconsistent durable state fails safe (owner missing)', async () => {
+    stubRetry({ tenant: storedTenant(), owner: undefined, consent: undefined });
     const result = await completeOwnerProfile(TABLE, params());
     expect(result.result).toBe('conflict');
+  });
+
+  // ---------------------------------------------------------------------------
+  // Data-mismatch regression: records exist for THIS subject but hold different
+  // submitted data. Must fail closed (conflict), never already_completed, never
+  // overwrite.
+  // ---------------------------------------------------------------------------
+
+  it('conflict when stored organisationName differs from submitted', async () => {
+    stubRetry({ tenant: storedTenant({ organisationName: 'Different Org Ltd' }), owner: storedOwner(), consent: storedConsent() });
+    const r = await completeOwnerProfile(TABLE, params());
+    expect(r.result).toBe('conflict');
+  });
+
+  it('conflict when stored tenant status is not active', async () => {
+    stubRetry({ tenant: storedTenant({ status: 'suspended' }), owner: storedOwner(), consent: storedConsent() });
+    const r = await completeOwnerProfile(TABLE, params());
+    expect(r.result).toBe('conflict');
+  });
+
+  it('conflict when stored owner fullName differs from submitted', async () => {
+    stubRetry({ tenant: storedTenant(), owner: storedOwner({ fullName: 'Someone Else' }), consent: storedConsent() });
+    const r = await completeOwnerProfile(TABLE, params());
+    expect(r.result).toBe('conflict');
+  });
+
+  it('conflict when stored owner phoneNumber differs from submitted', async () => {
+    stubRetry({ tenant: storedTenant(), owner: storedOwner({ phoneNumber: '+27110000000' }), consent: storedConsent() });
+    const r = await completeOwnerProfile(TABLE, params());
+    expect(r.result).toBe('conflict');
+  });
+
+  it('conflict when stored owner email differs from submitted', async () => {
+    stubRetry({ tenant: storedTenant(), owner: storedOwner({ email: 'other@example.com' }), consent: storedConsent() });
+    const r = await completeOwnerProfile(TABLE, params());
+    expect(r.result).toBe('conflict');
+  });
+
+  it('conflict when stored consent granted state differs from submitted', async () => {
+    // Submitted consentGranted:true, but stored says false.
+    stubRetry({ tenant: storedTenant(), owner: storedOwner(), consent: storedConsent({ granted: false, channels: [] }) });
+    const r = await completeOwnerProfile(TABLE, params());
+    expect(r.result).toBe('conflict');
+  });
+
+  it('conflict when stored consent channels differ from submitted', async () => {
+    // Submitted ['email'], stored ['email','sms'].
+    stubRetry({ tenant: storedTenant(), owner: storedOwner(), consent: storedConsent({ channels: ['email', 'sms'] }) });
+    const r = await completeOwnerProfile(TABLE, params());
+    expect(r.result).toBe('conflict');
+  });
+
+  it('conflict when stored consentTextVersion differs from submitted', async () => {
+    stubRetry({ tenant: storedTenant(), owner: storedOwner(), consent: storedConsent({ consentTextVersion: 'draft-old-version' }) });
+    const r = await completeOwnerProfile(TABLE, params());
+    expect(r.result).toBe('conflict');
+  });
+
+  it('conflict when stored consent is missing its capturedAt audit timestamp', async () => {
+    stubRetry({ tenant: storedTenant(), owner: storedOwner(), consent: storedConsent({ capturedAt: '' }) });
+    const r = await completeOwnerProfile(TABLE, params());
+    expect(r.result).toBe('conflict');
+  });
+
+  it('same-data retry with consent NOT granted and no channels -> already_completed', async () => {
+    const notGranted = params({ consentGranted: false, consentChannels: [] });
+    stubRetry({
+      tenant: storedTenant(),
+      owner: storedOwner(),
+      consent: storedConsent({ granted: false, channels: [] }),
+    });
+    const r = await completeOwnerProfile(TABLE, notGranted);
+    expect(r).toEqual({ result: 'already_completed' });
   });
 
   it('throws TransientPersistenceError on a purely transient cancellation (caller retries)', async () => {

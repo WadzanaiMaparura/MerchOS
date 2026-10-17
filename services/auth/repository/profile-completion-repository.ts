@@ -106,12 +106,17 @@ export interface CompleteOwnerProfileParams {
 export type CompleteOwnerProfileOutcome =
   /** The transaction committed on this call. */
   | { result: 'created' }
-  /** A prior call already committed the identical records (idempotent replay). */
+  /**
+   * A prior call already committed records that are complete AND whose saved
+   * data matches the submitted registration for this subject (idempotent
+   * same-data replay). Verified field-by-field, not just by IDs/presence.
+   */
   | { result: 'already_completed' }
   /**
-   * Durable state conflicts with this subject (tenant/owner owned by someone
-   * else, or inconsistent partial state). The caller must fail safe and NOT
-   * overwrite.
+   * Durable state conflicts with this subject: tenant/owner owned by someone
+   * else, inconsistent/partial state, OR an existing record whose saved data
+   * differs from the submitted registration. The caller must fail safe and
+   * NEVER overwrite.
    */
   | { result: 'conflict'; reason: string };
 
@@ -288,34 +293,102 @@ export async function completeOwnerProfile(
     // durable state (strongly consistent) before deciding success vs conflict.
     if (err instanceof TransactionCanceledException) {
       const state = await readDurableState(tableName, params);
-
-      const metadataOwnedByUs =
-        state.metadata?.ownerId === params.userId &&
-        state.metadata?.tenantId === params.tenantId;
-      const ownerIsUs =
-        state.owner?.userId === params.userId && state.owner?.tenantId === params.tenantId;
-
-      // Fully and consistently completed by a prior invocation for THIS subject.
-      if (state.metadata && state.owner && state.consent && metadataOwnedByUs && ownerIsUs) {
-        return { result: 'already_completed' };
-      }
-
-      // Tenant/owner belongs to a different subject — never overwrite.
-      if ((state.owner && !ownerIsUs) || (state.metadata && !metadataOwnedByUs)) {
-        return {
-          result: 'conflict',
-          reason: 'tenant or owner profile belongs to a different subject',
-        };
-      }
-
-      // Partial / inconsistent durable state — fail safe, do not fabricate.
-      return {
-        result: 'conflict',
-        reason: 'incomplete or inconsistent durable state; manual reconciliation required',
-      };
+      return classifyExistingState(state, params);
     }
 
     // Unknown / programming error — surface it (non-retryable).
     throw err;
   }
+}
+
+/**
+ * Decide the retry outcome from the durable state read back after a conditional
+ * cancellation.
+ *
+ * `already_completed` is returned ONLY when all three records exist AND every
+ * persisted field matches the submitted registration data for THIS subject.
+ * Verifying IDs + presence alone is insufficient: a record could reference the
+ * right user yet hold different organisation/name/phone/consent values — which
+ * must fail closed rather than be reported as a successful idempotent retry (and
+ * must never be overwritten).
+ *
+ * This recovery handler mints a fresh registrationId and timestamp on every
+ * request, so those volatile values are NOT compared against the submitted
+ * ones: registrationId/createdAt/capturedAt are validated for presence/validity
+ * only, never for equality with this attempt's regenerated values.
+ */
+function classifyExistingState(
+  state: DurableState,
+  params: CompleteOwnerProfileParams,
+): CompleteOwnerProfileOutcome {
+  const { metadata, owner, consent } = state;
+
+  const metadataOwnedByUs =
+    metadata?.ownerId === params.userId && metadata?.tenantId === params.tenantId;
+  const ownerIsUs =
+    owner?.userId === params.userId && owner?.tenantId === params.tenantId;
+
+  // Tenant/owner belongs to a DIFFERENT subject — never overwrite.
+  if ((owner && !ownerIsUs) || (metadata && !metadataOwnedByUs)) {
+    return {
+      result: 'conflict',
+      reason: 'tenant or owner profile belongs to a different subject',
+    };
+  }
+
+  // Any record missing → partial/inconsistent state, fail safe.
+  if (!metadata || !owner || !consent) {
+    return {
+      result: 'conflict',
+      reason: 'incomplete or inconsistent durable state; manual reconciliation required',
+    };
+  }
+
+  // All three exist for THIS subject. Now require the SAVED data to match the
+  // submitted registration data. A mismatch is a genuine data conflict (the
+  // caller submitted different details than what is already stored) — fail
+  // closed; never silently report success and never overwrite.
+  const expectedChannels = params.consentGranted ? params.consentChannels : [];
+  const mismatches: string[] = [];
+
+  // Tenant metadata.
+  if (metadata.organisationName !== params.organisationName) mismatches.push('tenant.organisationName');
+  if (metadata.status !== 'active') mismatches.push('tenant.status');
+
+  // Owner profile.
+  if (owner.email !== params.email) mismatches.push('owner.email');
+  if (owner.fullName !== params.fullName) mismatches.push('owner.fullName');
+  if (owner.phoneNumber !== params.phone) mismatches.push('owner.phoneNumber');
+  if (owner.role !== 'owner') mismatches.push('owner.role');
+
+  // Consent: identity + type + granted state + audit metadata.
+  if (consent.type !== 'marketing') mismatches.push('consent.type');
+  if (consent.granted !== params.consentGranted) mismatches.push('consent.granted');
+  if (consent.consentTextVersion !== params.consentTextVersion) mismatches.push('consent.consentTextVersion');
+  if (!channelsEqual(consent.channels ?? [], expectedChannels)) mismatches.push('consent.channels');
+  // capturedAt is a per-request timestamp (regenerated on each retry), so it is
+  // validated for PRESENCE/validity only — never compared for equality.
+  if (!isNonEmptyString(consent.capturedAt)) mismatches.push('consent.capturedAt');
+
+  if (mismatches.length > 0) {
+    return {
+      result: 'conflict',
+      reason: `existing profile data does not match submitted registration (${mismatches.join(', ')})`,
+    };
+  }
+
+  // Fully consistent, same-data retry.
+  return { result: 'already_completed' };
+}
+
+/** True when two consent-channel lists contain the same set of channels. */
+function channelsEqual(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  const sa = [...a].sort();
+  const sb = [...b].sort();
+  return sa.every((v, i) => v === sb[i]);
+}
+
+function isNonEmptyString(v: unknown): boolean {
+  return typeof v === 'string' && v.trim().length > 0;
 }
