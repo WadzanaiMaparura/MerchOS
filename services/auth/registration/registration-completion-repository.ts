@@ -236,13 +236,21 @@ export class RegistrationCompletionRepository {
 
   /**
    * Reads back the tenant metadata, owner profile and consent records and
-   * verifies ALL THREE exist and belong to this exact registration
-   * (matching tenantId, registrationId, userId and ownership). Throws
-   * RegistrationConsistencyError on any missing or conflicting record.
+   * verifies ALL THREE exist AND carry the EXACT expected registration data:
+   *   - tenant metadata: tenantId, registrationId, ownerId, organisationName,
+   *     status === 'active'
+   *   - owner profile:   tenantId, userId, email, fullName, phoneNumber,
+   *     role === 'owner'
+   *   - marketing consent: tenantId, userId, type === 'marketing', granted,
+   *     capturedAt
+   * Throws RegistrationConsistencyError on any missing, conflicting OR
+   * mismatched field. Verifying ownership alone is not enough — a record could
+   * reference the correct user yet hold stale/incorrect data; deleting the
+   * pending record in that case would lose the authoritative values.
    *
    * This is the authoritative idempotency check: it proves the prior commit
-   * actually landed all three records for THIS registration, rather than
-   * inferring it from a transaction cancellation reason.
+   * actually landed all three records, in full, for THIS registration, rather
+   * than inferring it from a transaction cancellation reason.
    *
    * All three reads use ConsistentRead: true. We are deciding whether a prior
    * ATOMIC transaction committed; an eventually consistent read could return a
@@ -301,8 +309,15 @@ export class RegistrationCompletionRepository {
       );
     }
 
-    // Each existing record must belong to THIS registration/owner. A mismatch
-    // means the slot is occupied by a different registration — fail closed.
+    // Every existing record must not only belong to THIS registration/owner but
+    // also carry the EXACT registration data we would have written. Matching
+    // identifiers alone is insufficient: a record could reference the right
+    // user yet hold stale or incorrect profile/consent fields. If any field is
+    // missing or mismatched we fail closed — the pending record is retained and
+    // no success event is emitted — so the authoritative data is never lost or
+    // silently superseded by a divergent copy.
+
+    // Tenant metadata: identifiers + ownership + organisation name + status.
     if (tenant.tenantId !== input.tenantId || tenant.registrationId !== input.registrationId) {
       throw new RegistrationConsistencyError(
         `Existing tenant metadata does not match registration ${input.registrationId}`
@@ -313,14 +328,63 @@ export class RegistrationCompletionRepository {
         `Existing tenant metadata owner does not match user for registration ${input.registrationId}`
       );
     }
+    if (tenant.organisationName !== input.organisationName) {
+      throw new RegistrationConsistencyError(
+        `Existing tenant metadata organisationName does not match registration ${input.registrationId}`
+      );
+    }
+    if (tenant.status !== 'active') {
+      throw new RegistrationConsistencyError(
+        `Existing tenant metadata status is not active for registration ${input.registrationId}`
+      );
+    }
+
+    // Owner profile: identifiers + verified email + full name + phone + role.
     if (profile.tenantId !== input.tenantId || profile.userId !== input.userId) {
       throw new RegistrationConsistencyError(
         `Existing owner profile does not match registration ${input.registrationId}`
       );
     }
+    if (profile.email !== input.email) {
+      throw new RegistrationConsistencyError(
+        `Existing owner profile email does not match registration ${input.registrationId}`
+      );
+    }
+    if (profile.fullName !== input.fullName) {
+      throw new RegistrationConsistencyError(
+        `Existing owner profile fullName does not match registration ${input.registrationId}`
+      );
+    }
+    if (profile.phoneNumber !== input.phoneNumber) {
+      throw new RegistrationConsistencyError(
+        `Existing owner profile phoneNumber does not match registration ${input.registrationId}`
+      );
+    }
+    if (profile.role !== 'owner') {
+      throw new RegistrationConsistencyError(
+        `Existing owner profile role is not owner for registration ${input.registrationId}`
+      );
+    }
+
+    // Marketing consent: identifiers + type + granted state + capture time.
     if (consent.tenantId !== input.tenantId || consent.userId !== input.userId) {
       throw new RegistrationConsistencyError(
         `Existing consent record does not match registration ${input.registrationId}`
+      );
+    }
+    if (consent.type !== 'marketing') {
+      throw new RegistrationConsistencyError(
+        `Existing consent record type is not marketing for registration ${input.registrationId}`
+      );
+    }
+    if (consent.granted !== input.marketingConsent.granted) {
+      throw new RegistrationConsistencyError(
+        `Existing consent record granted state does not match registration ${input.registrationId}`
+      );
+    }
+    if (consent.capturedAt !== input.marketingConsent.capturedAt) {
+      throw new RegistrationConsistencyError(
+        `Existing consent record capturedAt does not match registration ${input.registrationId}`
       );
     }
   }

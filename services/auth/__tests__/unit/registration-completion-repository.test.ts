@@ -253,6 +253,76 @@ describe('RegistrationCompletionRepository', () => {
     await expect(repo().complete(makeInput())).rejects.toBeInstanceOf(RegistrationConsistencyError);
   });
 
+  // ---------------------------------------------------------------------------
+  // Full field verification: records that belong to the right user but hold
+  // INCORRECT registration data must still fail closed (pending retained).
+  // ---------------------------------------------------------------------------
+
+  /**
+   * All three records exist for the correct user, but one field diverges from
+   * the expected input. Every such case must throw RegistrationConsistencyError
+   * so the PostConfirmation flow keeps the pending record and emits no event.
+   */
+  function expectFailClosedWith(records: {
+    tenant?: Record<string, unknown>;
+    profile?: Record<string, unknown>;
+    consent?: Record<string, unknown>;
+  }) {
+    ddbMock.on(TransactWriteCommand).rejects(canceled(['ConditionalCheckFailed', 'ConditionalCheckFailed', 'ConditionalCheckFailed']));
+    stubReadBack({
+      tenant: records.tenant ?? existingTenant(),
+      profile: records.profile ?? existingProfile(),
+      consent: records.consent ?? existingConsent(),
+    });
+    return expect(repo().complete(makeInput())).rejects.toBeInstanceOf(RegistrationConsistencyError);
+  }
+
+  it('fails closed: tenant metadata organisationName does not match → throws', async () => {
+    await expectFailClosedWith({ tenant: existingTenant({ organisationName: 'Someone Else Ltd' }) });
+  });
+
+  it('fails closed: tenant metadata status is not active → throws', async () => {
+    await expectFailClosedWith({ tenant: existingTenant({ status: 'suspended' }) });
+  });
+
+  it('fails closed: owner profile fullName does not match → throws', async () => {
+    await expectFailClosedWith({ profile: existingProfile({ fullName: 'Someone Else' }) });
+  });
+
+  it('fails closed: owner profile phoneNumber does not match → throws', async () => {
+    await expectFailClosedWith({ profile: existingProfile({ phoneNumber: '+27110000000' }) });
+  });
+
+  it('fails closed: owner profile email does not match → throws', async () => {
+    await expectFailClosedWith({ profile: existingProfile({ email: 'other@example.com' }) });
+  });
+
+  it('fails closed: owner profile role is not owner → throws', async () => {
+    await expectFailClosedWith({ profile: existingProfile({ role: 'editor' }) });
+  });
+
+  it('fails closed: consent granted state does not match → throws', async () => {
+    // Expected input has granted:true; the stored record says false.
+    await expectFailClosedWith({ consent: existingConsent({ granted: false }) });
+  });
+
+  it('fails closed: consent capturedAt timestamp does not match → throws', async () => {
+    await expectFailClosedWith({ consent: existingConsent({ capturedAt: '2025-12-31T23:59:59.000Z' }) });
+  });
+
+  it('fails closed: consent type is not marketing → throws', async () => {
+    await expectFailClosedWith({ consent: existingConsent({ type: 'transactional' }) });
+  });
+
+  it('idempotent retry succeeds when EVERY field matches (full-field verification passes)', async () => {
+    ddbMock.on(TransactWriteCommand).rejects(canceled(['ConditionalCheckFailed', 'ConditionalCheckFailed', 'ConditionalCheckFailed']));
+    stubReadBack({ tenant: existingTenant(), profile: existingProfile(), consent: existingConsent() });
+
+    const result = await repo().complete(makeInput());
+
+    expect(result).toEqual({ committed: false });
+  });
+
   it('propagates (throws) when the cancellation has NO conditional failure (e.g. pure throttling) — no read-back', async () => {
     ddbMock
       .on(TransactWriteCommand)
