@@ -13,12 +13,34 @@
  * assign trusted custom:tenantId / custom:role attributes.
  */
 
-/** Marketing-consent capture (optional, defaults to not consented). */
+/** Marketing communication channel a user may explicitly opt into. */
+export type ConsentChannel = 'email' | 'sms';
+
+/** Where a consent decision originated. */
+export type ConsentSource = 'self-signup' | 'profile-completion';
+
+/**
+ * Marketing-consent capture (optional, defaults to not consented).
+ *
+ * `granted` + `capturedAt` are the canonical, always-present fields (written by
+ * both the PostConfirmation self-signup path and the complete-profile recovery
+ * path). The remaining fields are OPTIONAL audit metadata: the self-signup path
+ * only knows granted/capturedAt (captured on the registration form), while the
+ * recovery path additionally captures the explicitly-selected channels, the
+ * consent-copy version and the decision source. They are optional so a single
+ * consent record format serves both writers.
+ */
 export interface PendingMarketingConsent {
   /** Whether the user opted in to marketing communications. */
   granted: boolean;
   /** ISO-8601 timestamp when consent was captured. */
   capturedAt: string;
+  /** Channels the user EXPLICITLY selected. Empty/absent when not granted. */
+  channels?: ConsentChannel[];
+  /** Identifier of the consent copy/version the user saw. */
+  consentTextVersion?: string;
+  /** Where the consent decision originated. */
+  source?: ConsentSource;
 }
 
 /**
@@ -133,7 +155,15 @@ export interface OwnerProfileRecord {
   createdAt: string;
 }
 
-/** Durable marketing-consent record (PK=TENANT#<tenantId>, SK=CONSENT#<userId>). */
+/**
+ * Durable marketing-consent record (PK=TENANT#<tenantId>, SK=CONSENT#<userId>).
+ *
+ * ONE canonical consent format shared by both writers. `type`, `granted` and
+ * `capturedAt` are the canonical always-present fields. `channels`,
+ * `consentTextVersion`, `source` and `grantedAt` are OPTIONAL audit metadata
+ * preserved from the richer complete-profile recovery flow; the self-signup
+ * PostConfirmation path omits the channel/version detail it does not have.
+ */
 export interface ConsentRecord {
   PK: string;
   SK: string;
@@ -145,6 +175,12 @@ export interface ConsentRecord {
   granted: boolean;
   /** ISO-8601 timestamp when consent was originally captured. */
   capturedAt: string;
+  /** Channels the user EXPLICITLY selected (audit). Empty when not granted. */
+  channels?: ConsentChannel[];
+  /** Identifier of the consent copy/version the user saw (audit). */
+  consentTextVersion?: string;
+  /** Where the consent decision originated (audit). */
+  source?: ConsentSource;
 }
 
 /**

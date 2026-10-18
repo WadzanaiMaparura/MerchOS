@@ -134,6 +134,52 @@ export const registerPendingSchema = z.object({
 export type RegisterPendingInput = z.infer<typeof registerPendingSchema>;
 
 /**
+ * POST /auth/complete-profile
+ *
+ * Authenticated owner profile-completion recovery. The server derives sub,
+ * tenantId, role and verified email from trusted JWT claims — the body MUST
+ * NOT carry identity, tenantId, role, or a second contact email.
+ *
+ * Marketing consent is optional and defaults to NOT granted. `consentChannels`
+ * may only be non-empty when `consentGranted` is true; a cross-field refine
+ * enforces this so channels can never be inferred without an explicit opt-in.
+ */
+export const consentChannelSchema = z.enum(['email', 'sms']);
+
+export const completeProfileSchema = z
+  .object({
+    fullName: z
+      .string()
+      .trim()
+      .min(1, 'Full name is required')
+      .max(100, 'Full name must be at most 100 characters'),
+    phone: z
+      .string()
+      .trim()
+      .min(5, 'Phone number is too short')
+      .max(20, 'Phone number is too long')
+      .regex(/^[+()\-\s0-9]+$/, 'Phone number contains invalid characters'),
+    organisationName: z
+      .string()
+      .trim()
+      .min(2, 'Organisation name must be at least 2 characters')
+      .max(100, 'Organisation name must be at most 100 characters'),
+    /** Optional marketing consent — defaults to false (unchecked). */
+    consentGranted: z.boolean().optional().default(false),
+    /** Channels explicitly selected; only permitted when consentGranted. */
+    consentChannels: z.array(consentChannelSchema).max(2).optional().default([]),
+  })
+  .strict()
+  .refine(
+    (data) => data.consentGranted || data.consentChannels.length === 0,
+    {
+      message: 'Channels may only be selected when marketing consent is granted',
+      path: ['consentChannels'],
+    },
+  );
+export type CompleteProfileInput = z.infer<typeof completeProfileSchema>;
+
+/**
  * POST /auth/invite
  */
 export const inviteUserSchema = z.object({
