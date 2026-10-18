@@ -247,6 +247,66 @@ describe('profile-completion-repository (canonical schema)', () => {
     expect(r).toEqual({ result: 'already_completed' });
   });
 
+  // ---------------------------------------------------------------------------
+  // Timestamp / registrationId validity regression. These volatile fields are
+  // validated independently (never compared to the request's regenerated
+  // values). Missing or malformed values must fail closed.
+  // ---------------------------------------------------------------------------
+
+  it('conflict when tenant registrationId is missing', async () => {
+    stubRetry({ tenant: storedTenant({ registrationId: undefined }), owner: storedOwner(), consent: storedConsent() });
+    const r = await completeOwnerProfile(TABLE, params());
+    expect(r.result).toBe('conflict');
+  });
+
+  it('conflict when tenant registrationId is an empty string', async () => {
+    stubRetry({ tenant: storedTenant({ registrationId: '' }), owner: storedOwner(), consent: storedConsent() });
+    const r = await completeOwnerProfile(TABLE, params());
+    expect(r.result).toBe('conflict');
+  });
+
+  it('conflict when tenant createdAt is a malformed timestamp', async () => {
+    stubRetry({ tenant: storedTenant({ createdAt: 'not-a-date' }), owner: storedOwner(), consent: storedConsent() });
+    const r = await completeOwnerProfile(TABLE, params());
+    expect(r.result).toBe('conflict');
+  });
+
+  it('conflict when tenant createdAt is missing', async () => {
+    stubRetry({ tenant: storedTenant({ createdAt: undefined }), owner: storedOwner(), consent: storedConsent() });
+    const r = await completeOwnerProfile(TABLE, params());
+    expect(r.result).toBe('conflict');
+  });
+
+  it('conflict when owner createdAt is a malformed timestamp', async () => {
+    stubRetry({ tenant: storedTenant(), owner: storedOwner({ createdAt: '2026-13-45T99:99:99Z' }), consent: storedConsent() });
+    const r = await completeOwnerProfile(TABLE, params());
+    expect(r.result).toBe('conflict');
+  });
+
+  it('conflict when consent capturedAt is a malformed timestamp (not merely non-empty)', async () => {
+    stubRetry({ tenant: storedTenant(), owner: storedOwner(), consent: storedConsent({ capturedAt: 'yesterday' }) });
+    const r = await completeOwnerProfile(TABLE, params());
+    expect(r.result).toBe('conflict');
+  });
+
+  it('conflict when consent capturedAt is missing', async () => {
+    stubRetry({ tenant: storedTenant(), owner: storedOwner(), consent: storedConsent({ capturedAt: undefined }) });
+    const r = await completeOwnerProfile(TABLE, params());
+    expect(r.result).toBe('conflict');
+  });
+
+  it('already_completed accepts valid stored timestamps that differ from the request values', async () => {
+    // Well-formed but different timestamps + a different registrationId → still
+    // a valid same-data retry (volatile values validated, not compared).
+    stubRetry({
+      tenant: storedTenant({ registrationId: 'older-reg', createdAt: '2025-02-03T04:05:06.000Z' }),
+      owner: storedOwner({ createdAt: '2025-02-03T04:05:06.000Z' }),
+      consent: storedConsent({ capturedAt: '2025-02-03T04:05:06.000Z' }),
+    });
+    const r = await completeOwnerProfile(TABLE, params());
+    expect(r).toEqual({ result: 'already_completed' });
+  });
+
   it('throws TransientPersistenceError on a purely transient cancellation (caller retries)', async () => {
     ddbMock.on(TransactWriteCommand).rejects(canceled(['TransactionConflict', 'None', 'None']));
     await expect(completeOwnerProfile(TABLE, params())).rejects.toBeInstanceOf(TransientPersistenceError);

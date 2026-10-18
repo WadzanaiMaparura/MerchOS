@@ -314,8 +314,11 @@ export async function completeOwnerProfile(
  *
  * This recovery handler mints a fresh registrationId and timestamp on every
  * request, so those volatile values are NOT compared against the submitted
- * ones: registrationId/createdAt/capturedAt are validated for presence/validity
- * only, never for equality with this attempt's regenerated values.
+ * ones. Instead they are validated independently: the stored tenant
+ * registrationId must be a non-empty string, and the tenant/owner createdAt and
+ * consent capturedAt must each be well-formed timestamps (a non-empty string
+ * alone is insufficient). A missing registrationId or a malformed/absent
+ * timestamp yields conflict, never already_completed.
  */
 function classifyExistingState(
   state: DurableState,
@@ -354,12 +357,20 @@ function classifyExistingState(
   // Tenant metadata.
   if (metadata.organisationName !== params.organisationName) mismatches.push('tenant.organisationName');
   if (metadata.status !== 'active') mismatches.push('tenant.status');
+  // registrationId is a server-minted correlation id regenerated on every
+  // retry, so it is validated for PRESENCE only — never compared to this
+  // request's id (which would spuriously fail every retry).
+  if (!isNonEmptyString(metadata.registrationId)) mismatches.push('tenant.registrationId');
+  // createdAt is a per-record timestamp; validate it is a well-formed timestamp
+  // (not merely non-empty), never compared to this request's regenerated value.
+  if (!isValidTimestamp(metadata.createdAt)) mismatches.push('tenant.createdAt');
 
   // Owner profile.
   if (owner.email !== params.email) mismatches.push('owner.email');
   if (owner.fullName !== params.fullName) mismatches.push('owner.fullName');
   if (owner.phoneNumber !== params.phone) mismatches.push('owner.phoneNumber');
   if (owner.role !== 'owner') mismatches.push('owner.role');
+  if (!isValidTimestamp(owner.createdAt)) mismatches.push('owner.createdAt');
 
   // Consent: identity + type + granted state + audit metadata.
   if (consent.type !== 'marketing') mismatches.push('consent.type');
@@ -367,8 +378,9 @@ function classifyExistingState(
   if (consent.consentTextVersion !== params.consentTextVersion) mismatches.push('consent.consentTextVersion');
   if (!channelsEqual(consent.channels ?? [], expectedChannels)) mismatches.push('consent.channels');
   // capturedAt is a per-request timestamp (regenerated on each retry), so it is
-  // validated for PRESENCE/validity only — never compared for equality.
-  if (!isNonEmptyString(consent.capturedAt)) mismatches.push('consent.capturedAt');
+  // validated as a WELL-FORMED timestamp (not merely non-empty) — never
+  // compared for equality with this attempt's value.
+  if (!isValidTimestamp(consent.capturedAt)) mismatches.push('consent.capturedAt');
 
   if (mismatches.length > 0) {
     return {
@@ -391,4 +403,16 @@ function channelsEqual(a: readonly string[], b: readonly string[]): boolean {
 
 function isNonEmptyString(v: unknown): boolean {
   return typeof v === 'string' && v.trim().length > 0;
+}
+
+/**
+ * True when `v` is a non-empty string that parses as a valid calendar date-time
+ * (e.g. an ISO-8601 timestamp). Rejects missing values, non-strings, empty
+ * strings, and malformed timestamp strings. This is a validity check only — it
+ * never compares the value against the current request's regenerated timestamp.
+ */
+function isValidTimestamp(v: unknown): boolean {
+  if (typeof v !== 'string' || v.trim().length === 0) return false;
+  const ms = Date.parse(v);
+  return !Number.isNaN(ms);
 }
