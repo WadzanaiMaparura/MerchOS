@@ -181,6 +181,10 @@ export class AuthApiStack extends cdk.Stack {
       logicalId: string,
       entry: string,
       policyStatements: iam.PolicyStatement[],
+      // Optional per-handler bundling override, deep-merged onto the shared
+      // defaultLambdaProps.bundling. Used to narrowly switch a single handler's
+      // output format without affecting the shared ESM defaults.
+      bundlingOverride?: Partial<lambdaNodejs.BundlingOptions>,
     ): lambdaNodejs.NodejsFunction => {
       const role = new iam.Role(this, `${logicalId}Role`, {
         assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com') as unknown as iam.IPrincipal,
@@ -199,6 +203,10 @@ export class AuthApiStack extends cdk.Stack {
         functionName: `merch-os-auth-${logicalId.toLowerCase()}-${env}`,
         entry,
         role: role as unknown as iam.IRole,
+        bundling: {
+          ...defaultLambdaProps.bundling,
+          ...bundlingOverride,
+        },
       });
     };
 
@@ -304,7 +312,23 @@ export class AuthApiStack extends cdk.Stack {
         actions: ['kms:GenerateDataKey', 'kms:Decrypt'],
         resources: [props.platformKey.keyArn],
       }),
-    ]);
+    ],
+    // ESM BUNDLING FIX (RegisterPending only): the shared default bundles as
+    // ESM (OutputFormat.ESM). A transitive dependency — lodash.merge, pulled in
+    // via @aws-lambda-powertools/logger — performs a top-level
+    // `require("util").types`. Under esbuild's ESM output that compiles to the
+    // `__require` shim, which throws at module init:
+    //   "Dynamic require of \"util\" is not supported"
+    // crashing the function during INIT (Runtime.Unknown) before the handler
+    // runs, so POST /auth/register-pending returns 502. Emitting this one
+    // handler as CommonJS preserves a real `require("util")` that Node 20
+    // satisfies natively. `mainFields` is flipped to prefer the CJS `main`
+    // entrypoint of dependencies to match the CJS output. The shared ESM
+    // defaults for every other handler are intentionally left unchanged.
+    {
+      format: lambdaNodejs.OutputFormat.CJS,
+      mainFields: ['main', 'module'],
+    });
 
     // 9c. Profile Status (authenticated recovery read)
     // Reads canonical tenant metadata + owner profile from the tenants table
