@@ -94,7 +94,20 @@ export default function LoginPage() {
 
         // Successful authentication — redirect to dashboard
         router.push('/dashboard');
-      } catch {
+      } catch (err) {
+        // TEMPORARY DIAGNOSTIC: surface only safe, non-sensitive fields of the
+        // underlying auth exception so the real failure (hidden by the generic
+        // user-facing message) can be identified. Does NOT log the full error
+        // object, password, email, request payload, SRP values, challenge
+        // parameters, secret blocks, tokens or cookies. Remove once the login
+        // failure root cause is confirmed.
+        const diagError = err as { name?: unknown; message?: unknown; code?: unknown };
+        console.error('[MerchOS Auth Diagnostic]', {
+          name: typeof diagError?.name === 'string' ? diagError.name : undefined,
+          message: typeof diagError?.message === 'string' ? diagError.message : undefined,
+          code: typeof diagError?.code === 'string' ? diagError.code : undefined,
+        });
+
         // Record failed attempt timestamp
         const now = Date.now();
         const updatedAttempts = [...failedAttempts, now].filter(
