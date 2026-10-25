@@ -4,7 +4,7 @@
  * signs in with their temporary password for the first time.
  */
 
-import { signIn, confirmSignIn } from '@aws-amplify/auth';
+import { signIn, confirmSignIn } from 'aws-amplify/auth';
 
 export interface AcceptInvitationParams {
   email: string;
