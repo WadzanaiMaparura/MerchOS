@@ -23,6 +23,7 @@ This Blueprint is the authoritative engineering architecture reference for the M
 11. [Canonical Product Model](#11-canonical-product-model)
 12. [Marketplace Export Architecture](#12-marketplace-export-architecture)
 13. [Implementation Roadmap](#13-implementation-roadmap)
+14. [AI / Bedrock Model Strategy](#14-ai--bedrock-model-strategy)
 
 ---
 
@@ -40,7 +41,20 @@ The platform uses a **single Cognito User Pool** containing all platform users r
 
 ### 1.3 App Client Configuration
 
-A **single App Client** is configured for the User Pool. All frontend applications (Admin Portal and Seller Portal) authenticate against Cognito using this shared App Client. The App Client is configured to issue JWTs containing the necessary claims for downstream authorization, including `sub`, `custom:tenantId`, and `cognito:groups`.
+The User Pool is configured with **three App Clients**, one per authentication surface. All clients issue JWTs containing the claims required for downstream authorization (`sub`, `custom:tenantId`, and `cognito:groups`); they differ only in flow and secret configuration.
+
+| App Client | Name (`{env}`) | Secret | Flow | Purpose |
+|------------|----------------|--------|------|---------|
+| Seller Dashboard | `seller-dashboard-{env}` | No secret | SPA / PKCE (SRP) | Seller Portal frontend authentication |
+| Admin Dashboard | `admin-dashboard-{env}` | No secret | SPA / PKCE (SRP) | Admin Portal frontend authentication (same pool) |
+| API Gateway | `api-gateway-{env}` | Secret (`generateSecret: true`) | SRP | Backend token validation / confidential client |
+
+**Rationale for separate clients:**
+- Public SPA clients (seller, admin) are secret-less and use PKCE, which is the correct pattern for browser apps that cannot safely hold a secret.
+- The API Gateway client is a confidential client with a secret, kept distinct from the public clients so a browser never holds secret-bearing credentials.
+- Separate seller vs admin clients allow per-surface OAuth callback/logout URL configuration and independent token settings, without needing separate user pools.
+
+> **Note (as-built):** Earlier revisions of this document described a *single* App Client. The deployed CDK (`infrastructure/lib/auth-stack.ts`) provisions the three clients above. Client IDs for the seller and admin clients are exported via SSM (`/merch-os/{env}/cognito/seller-client-id`, `/merch-os/{env}/cognito/admin-client-id`).
 
 ### 1.4 JWT Bearer Token Requirement
 
@@ -270,6 +284,12 @@ Each cell in the matrix resolves to exactly one of these three states. No cell i
 | ai-listings | Create | 🔒 | ❌ | ✅ |
 | ai-listings | Update | 🔒 | ❌ | ✅ |
 | ai-listings | Delete | 🔒 | ❌ | ✅ |
+| images | Read | 🔒 | ❌ | ✅ |
+| images | Create | 🔒 | ❌ | ✅ |
+| images | Update | 🔒 | ❌ | ✅ |
+| images | Delete | 🔒 | ❌ | ✅ |
+
+> **`images`** is the Image Intelligence Engine resource (upload presign, process, job status, signed-URL delivery). Seller access is own-tenant-scoped (🔒) via the JWT `custom:tenantId`; Support has no image access. Endpoints: `POST /v1/images/upload` and `POST /v1/images/{productId}/process` require `images.create`; `GET /v1/images/{imageJobId}` and `GET /v1/images/{imageId}/url/{channel}` require `images.read`.
 
 ### 3.5 Marketplace Domain
 
@@ -1497,3 +1517,65 @@ This section documents the phased implementation plan for the marketplace export
 6. **Marketplace requirements are external configuration** — As documented in [ADR-003](./adr/ADR-003-canonical-product-model-marketplace-adapters.md), marketplace requirements are treated as external knowledge/configuration and are never assumed to be permanently static. Schema Registry entries must be maintained as platforms evolve.
 
 ---
+
+## 14. AI / Bedrock Model Strategy
+
+This section documents how MerchOS uses Amazon Bedrock foundation models for AI-assisted product enrichment, the multi-model routing pattern the platform follows, and the strategy for evolving model choices over time. The runtime implementation lives in the Product Intelligence service (`services/product-intelligence`), with model selection defined in `services/product-intelligence/services/model-config.ts` and IAM scoping in `infrastructure/lib/product-intelligence-stack.ts`.
+
+### 14.1 Single-API, Multi-Model Principle
+
+Amazon Bedrock is the **sole AI model service** for the platform. All generative/LLM calls go through one managed API (`InvokeModel`), regardless of which underlying foundation model is used. This gives MerchOS:
+
+- **One integration surface** — a single shared Bedrock client (`bedrock-client.ts`) with uniform retry/backoff, token tracking, and failure-event emission, independent of the model being invoked.
+- **Per-task model selection** — the right model is chosen per generation task rather than forcing one model to do everything.
+- **Vendor flexibility** — Anthropic, Amazon, and Stability models all sit behind the same API, avoiding lock-in to a single provider.
+- **Least-privilege per model** — IAM grants `bedrock:InvokeModel` only on the specific foundation-model ARNs the platform actually uses; adding a model is an explicit, auditable allow-list change.
+
+### 14.2 Model Routing (Text)
+
+Text generation tasks are routed to a model based on complexity, output length, and cost. This mapping is the source of truth in `model-config.ts`:
+
+| Generation task | Model | Rationale |
+|-----------------|-------|-----------|
+| title | Claude 3 Haiku | Short output, low complexity |
+| bullets | Claude 3 Haiku | Short structured output |
+| category | Claude 3 Haiku | Classification, low token cost |
+| brand | Claude 3 Haiku | Entity extraction |
+| attributes | Claude 3 Haiku | Structured extraction |
+| keywords | Claude 3 Haiku | List generation |
+| description | Claude 3 Sonnet | Longer creative output, medium complexity |
+| seo | Claude 3 Sonnet | Analysis requires reasoning |
+| compliance | Claude 3 Sonnet | Policy reasoning requires deeper analysis |
+
+**Pattern:** cheap/fast model (Haiku) for short or classification tasks; stronger reasoning model (Sonnet) only where it adds value. This controls Bedrock spend without compromising quality on the tasks that need it.
+
+### 14.3 Model Routing (Image — image-to-image)
+
+Image generation in MerchOS is **image-to-image only**: the merchant always supplies a product photo, and the platform produces clean, marketplace-ready versions of it. The platform never generates a product image from text alone (doing so would risk misrepresenting a real product).
+
+The chosen image path (roadmap — see Gap Register G01–G03):
+
+1. **Rekognition + Sharp (deterministic baseline)** — subject detection, background removal to a white hero image, and per-channel resizing. Predictable and low-cost; satisfies the hero-image + resize requirements.
+2. **Bedrock image model (enhancement booster)** — for weak photos, image-conditioned enhancement/upscaling/background replacement, always conditioned on the merchant's supplied image. Recommended model: **Amazon Nova Canvas** (image conditioning), with Amazon Titan Image Generator G1 v2 and Stability AI (Stable Diffusion 3.5) as alternatives. Confirm regional availability before wiring in.
+
+Image models follow the same single-API, least-privilege pattern as text models: a new foundation-model ARN is added to the IAM allow-list, and a small per-model-family request/response adapter handles the differing payload shape (image models take an input image + parameters and return image bytes rather than text).
+
+### 14.4 Model Versioning Strategy
+
+**Current state (as-built):** The platform pins the original **Claude 3** generation:
+
+- `anthropic.claude-3-haiku-20240307-v1:0`
+- `anthropic.claude-3-sonnet-20240229-v1:0`
+
+These IDs are referenced both in `model-config.ts` and in the Bedrock IAM policy. This is intentional pinning (reproducible behaviour), not drift.
+
+**Upgrade considerations:**
+
+- Evaluate newer Anthropic models (e.g. Claude 3.5 Haiku / Sonnet or later) as a likely quality/price improvement. The `token-tracker` already records input/output tokens per call, providing the data to A/B cost and quality on real prompts before switching.
+- **Inference profiles:** newer Bedrock models are often invoked via a cross-region **inference profile ID** rather than a bare `foundation-model` ARN. Adopting such a model changes *both* the model ID used at invocation *and* the IAM resource ARN (it must reference the inference-profile ARN). Account for both when upgrading.
+- Any model change is a config + IAM allow-list update, not a code rewrite — the shared client and routing layer are model-agnostic.
+
+### 14.5 Budget & Failure Handling
+
+- **Budget enforcement:** the Product Intelligence `generate` path checks a per-tenant token budget before invoking a model (returns HTTP 402 when exceeded).
+- **Failure isolation:** Bedrock throttling/service errors are retried with exponential backoff + jitter; on exhaustion the client emits a `product-intelligence.bedrock-failure` EventBridge event and surfaces a `BEDROCK_UNAVAILABLE` error rather than silently succeeding.
