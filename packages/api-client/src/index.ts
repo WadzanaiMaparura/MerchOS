@@ -83,9 +83,24 @@ export {
   useProductSearch,
   useProductExport,
   useProductUpload,
-  useImageUpload,
-  useSetHeroImage,
 } from './hooks/useProducts';
+
+// Image Intelligence Engine hooks (async image pipeline)
+export {
+  imageKeys,
+  useRequestUploadUrl,
+  useStartImageProcessing,
+  useImageJob,
+  useImageSignedUrl,
+} from './hooks/useImageIntelligence';
+export type {
+  ImageJobStatus,
+  ImageJob,
+  ImageVariant,
+  ImageModeration,
+  UploadUrlResponse,
+  SignedUrlResponse,
+} from './hooks/useImageIntelligence';
 
 // Admin Health hooks
 export {

@@ -9,7 +9,9 @@ import { FoundationStack } from '../lib/foundation-stack';
 import { AuthStack } from '../lib/auth-stack';
 import { AuthApiStack } from '../lib/auth-api-stack';
 import { ProductApiStack } from '../lib/product-api-stack';
+import { InventoryApiStack } from '../lib/inventory-api-stack';
 import { SupplierIntelligenceStack } from '../lib/supplier-intelligence-stack';
+import { ImageIntelligenceStack } from '../lib/image-intelligence-stack';
 
 const app = new cdk.App();
 
@@ -52,6 +54,23 @@ const productApiStack = new ProductApiStack(app, `MerchOS-ProductApi-${env}`, {
   eventBus: foundationStack.eventBus,
 });
 
+// Phase 8A — Inventory Core. Full stack: two DynamoDB tables, HTTP API v2 with
+// Cognito JWT authorizer, five ESM Lambdas, routes, least-privilege IAM, and
+// SSM exports.
+const inventoryApiStack = new InventoryApiStack(app, `MerchOS-InventoryApi-${env}`, {
+  env: cdkEnv,
+  environment: env,
+  userPool: authStack.userPool,
+  sellerDashboardClient: authStack.sellerDashboardClient,
+  platformKey: foundationStack.platformKey,
+});
+
+// InventoryApi reads the Products table name from ProductApi's SSM parameter
+// (/product-api/table-name) for SKU validation. Declare the deploy-time
+// dependency so the parameter exists before this stack deploys. This is a
+// one-way deploy dependency (Inventory -> Product), not a runtime cycle.
+inventoryApiStack.addDependency(productApiStack);
+
 const supplierStack = new SupplierIntelligenceStack(app, `MerchOS-SupplierIntelligence-${env}`, {
   env: cdkEnv,
   environment: env,
@@ -67,5 +86,15 @@ supplierStack.addDependency(authStack);
 // parameter (/product-api/table-name); declare the dependency so the parameter
 // exists before this stack deploys.
 supplierStack.addDependency(productApiStack);
+
+// Image Intelligence (Phase 1) reads Foundation (KMS, EventBridge, S3 buckets)
+// and Auth (Cognito pool/client) values via SSM at deploy time. Declare the
+// deploy-time dependencies so those parameters exist before this stack deploys.
+const imageStack = new ImageIntelligenceStack(app, `MerchOS-ImageIntelligence-${env}`, {
+  env: cdkEnv,
+  environment: env,
+});
+imageStack.addDependency(foundationStack);
+imageStack.addDependency(authStack);
 
 app.synth();

@@ -10,6 +10,8 @@ export const defaultPermissionConfig: PermissionRegistryConfig = {
         { resource: 'products', actions: ['create', 'read', 'update', 'delete'] },
         { resource: 'suppliers', actions: ['create', 'read', 'update', 'delete'] },
         { resource: 'ai-listings', actions: ['create', 'read', 'update', 'delete'] },
+        { resource: 'images', actions: ['create', 'read', 'update', 'delete'] },
+        { resource: 'inventory', actions: ['read', 'update'] },
         { resource: 'analytics', actions: ['read'] },
         { resource: 'exports', actions: ['create', 'read'] },
         { resource: 'subscription', actions: ['read', 'update'] },
@@ -20,6 +22,7 @@ export const defaultPermissionConfig: PermissionRegistryConfig = {
       permissions: [
         { resource: 'users.search', actions: ['read'] },
         { resource: 'users.profile', actions: ['read'] },
+        { resource: 'inventory', actions: ['read'] },
         { resource: 'processing-jobs', actions: ['read'] },
         { resource: 'logs', actions: ['read'] },
         { resource: 'users.verification', actions: ['create'] }, // resend verification email
@@ -31,6 +34,8 @@ export const defaultPermissionConfig: PermissionRegistryConfig = {
         { resource: 'products', actions: ['create', 'read', 'update', 'delete'] },
         { resource: 'suppliers', actions: ['create', 'read', 'update', 'delete'] },
         { resource: 'ai-listings', actions: ['create', 'read', 'update', 'delete'] },
+        { resource: 'images', actions: ['create', 'read', 'update', 'delete'] },
+        { resource: 'inventory', actions: ['create', 'read', 'update', 'delete'] },
         { resource: 'analytics', actions: ['create', 'read', 'update', 'delete'] },
         { resource: 'exports', actions: ['create', 'read', 'update', 'delete'] },
         { resource: 'subscription', actions: ['create', 'read', 'update', 'delete'] },

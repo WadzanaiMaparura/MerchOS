@@ -34,6 +34,60 @@ describe('PermissionRegistry', () => {
     });
   });
 
+  describe('inventory resource permissions (Phase 8A R1)', () => {
+    it('grants Seller inventory:read and inventory:update', () => {
+      expect(registry.hasPermission('Seller', 'inventory', 'read')).toEqual({ granted: true });
+      expect(registry.hasPermission('Seller', 'inventory', 'update')).toEqual({ granted: true });
+    });
+
+    it('denies Seller inventory:create and inventory:delete', () => {
+      expect(registry.hasPermission('Seller', 'inventory', 'create').granted).toBe(false);
+      expect(registry.hasPermission('Seller', 'inventory', 'delete').granted).toBe(false);
+    });
+
+    it('grants Support inventory:read only', () => {
+      expect(registry.hasPermission('Support', 'inventory', 'read')).toEqual({ granted: true });
+      expect(registry.hasPermission('Support', 'inventory', 'create').granted).toBe(false);
+      expect(registry.hasPermission('Support', 'inventory', 'update').granted).toBe(false);
+      expect(registry.hasPermission('Support', 'inventory', 'delete').granted).toBe(false);
+    });
+
+    it('grants Admin full CRUD on inventory', () => {
+      expect(registry.hasPermission('Admin', 'inventory', 'create')).toEqual({ granted: true });
+      expect(registry.hasPermission('Admin', 'inventory', 'read')).toEqual({ granted: true });
+      expect(registry.hasPermission('Admin', 'inventory', 'update')).toEqual({ granted: true });
+      expect(registry.hasPermission('Admin', 'inventory', 'delete')).toEqual({ granted: true });
+    });
+
+    it('reports resource access for inventory per role', () => {
+      expect(registry.hasResourceAccess('Seller', 'inventory')).toBe(true);
+      expect(registry.hasResourceAccess('Support', 'inventory')).toBe(true);
+      expect(registry.hasResourceAccess('Admin', 'inventory')).toBe(true);
+    });
+  });
+
+  describe('images resource permissions (Image Intelligence Engine)', () => {
+    it('grants Seller full own-tenant CRUD on images', () => {
+      expect(registry.hasPermission('Seller', 'images', 'create')).toEqual({ granted: true });
+      expect(registry.hasPermission('Seller', 'images', 'read')).toEqual({ granted: true });
+      expect(registry.hasPermission('Seller', 'images', 'update')).toEqual({ granted: true });
+      expect(registry.hasPermission('Seller', 'images', 'delete')).toEqual({ granted: true });
+    });
+
+    it('grants Admin full CRUD on images', () => {
+      expect(registry.hasPermission('Admin', 'images', 'create')).toEqual({ granted: true });
+      expect(registry.hasPermission('Admin', 'images', 'read')).toEqual({ granted: true });
+      expect(registry.hasPermission('Admin', 'images', 'update')).toEqual({ granted: true });
+      expect(registry.hasPermission('Admin', 'images', 'delete')).toEqual({ granted: true });
+    });
+
+    it('denies Support any image access (not in its read-oriented scope)', () => {
+      expect(registry.hasPermission('Support', 'images', 'read').granted).toBe(false);
+      expect(registry.hasPermission('Support', 'images', 'create').granted).toBe(false);
+      expect(registry.hasResourceAccess('Support', 'images')).toBe(false);
+    });
+  });
+
   describe('unrecognized roles return denied with reason', () => {
     it('returns denied with reason for unknown role', () => {
       const result = registry.hasPermission('UnknownRole', 'products', 'read');
