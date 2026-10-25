@@ -3,8 +3,11 @@
 /**
  * Admin Login Page — Email + password form.
  *
- * On success the admin Cognito Pool always returns a TOTP MFA challenge,
- * so we redirect to the /mfa page to complete the second factor.
+ * Admin access is MFA-gated. On a valid password the operator is routed to:
+ *  - /mfa       when a TOTP challenge is returned (device enrolled), or
+ *  - /mfa/setup when no second factor was required (no device enrolled),
+ * since the shared Cognito pool is Mfa.OPTIONAL and cannot guarantee a
+ * second factor for operators on its own.
  *
  * Requirements: 1.2, 1.3, 1.5
  */
@@ -72,10 +75,18 @@ export default function AdminLoginPage() {
       setIsSubmitting(true);
 
       try {
-        // Admin Cognito Pool mandates TOTP — login always returns MfaChallengeResult
-        await login(data.email, data.password);
-        // Redirect to MFA page to complete the TOTP challenge
-        router.push('/mfa');
+        const challenge = await login(data.email, data.password);
+
+        if (challenge) {
+          // Operator has TOTP enrolled — complete the second factor.
+          router.push('/mfa');
+          return;
+        }
+
+        // Valid password but no second factor was required: the operator has
+        // no TOTP device enrolled. Admin access is MFA-gated, so route to
+        // enrollment rather than admitting a session without a second factor.
+        router.push('/mfa/setup');
       } catch {
         const now = Date.now();
         const updatedAttempts = [...failedAttempts, now].filter(
