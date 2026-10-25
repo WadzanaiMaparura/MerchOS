@@ -6,6 +6,7 @@
 
 import * as cdk from 'aws-cdk-lib';
 import { FoundationStack } from '../lib/foundation-stack';
+import { TenantStack } from '../lib/tenant-stack';
 import { AuthStack } from '../lib/auth-stack';
 import { AuthApiStack } from '../lib/auth-api-stack';
 import { ProductApiStack } from '../lib/product-api-stack';
@@ -23,6 +24,16 @@ const cdkEnv: cdk.Environment = {
 const foundationStack = new FoundationStack(app, `MerchOS-Foundation-${env}`, {
   env: cdkEnv,
   environment: env,
+});
+
+// TenantStack — single DynamoDB table for tenant, account-owner, consent, and
+// short-lived pending-registration data. Depends only on the Foundation KMS
+// key; intentionally independent of AuthStack/AuthApiStack to keep the stack
+// graph acyclic. Consumers read the table name/ARN via SSM parameters.
+new TenantStack(app, `MerchOS-Tenant-${env}`, {
+  env: cdkEnv,
+  environment: env,
+  platformKey: foundationStack.platformKey,
 });
 
 const authStack = new AuthStack(app, `MerchOS-Auth-${env}`, {
