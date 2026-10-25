@@ -25,6 +25,7 @@ function VerifyPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const email = searchParams.get('email') ?? '';
+  const registrationId = searchParams.get('registrationId') ?? '';
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,11 +45,22 @@ function VerifyPageContent() {
       return;
     }
 
+    // The registrationId links this account to its pending-registration record
+    // (tenant/role/profile). If it is missing we must NOT silently proceed as
+    // though the registration were fully linked — doing so would strand the
+    // account on the recovery path with no tenant/profile correlation.
+    if (!registrationId) {
+      setError(
+        'Your registration link is incomplete. Please start registration again so your account can be set up correctly.',
+      );
+      return;
+    }
+
     setIsSubmitting(true);
     setError(null);
 
     try {
-      const result = await cognitoConfirmSignUp(email, data.code);
+      const result = await cognitoConfirmSignUp(email, data.code, registrationId);
 
       if (result.isSignUpComplete) {
         setSuccess(true);

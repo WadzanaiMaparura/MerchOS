@@ -37,6 +37,14 @@ export interface AuthApiStackProps extends cdk.StackProps {
   eventBus: events.EventBus;
   invitationsTable: dynamodb.Table;
   sessionsTable: dynamodb.Table;
+  /**
+   * Durable tenants table (merch-os-tenants-<env>). A REFERENCE to the table
+   * owned by the separate MerchOS-Tenant-<env> stack, imported by AuthStack
+   * from its SSM export and passed through here. Typed as ITable (imported
+   * reference, not a managed construct). The register-pending handler writes
+   * PENDINGREG#<id> records to it.
+   */
+  tenantsTable: dynamodb.ITable;
 }
 
 export class AuthApiStack extends cdk.Stack {
@@ -80,6 +88,32 @@ export class AuthApiStack extends cdk.Stack {
     });
 
     // -----------------------------------------------------------------------
+    // CORS allow-list (explicit origins only — never '*')
+    // -----------------------------------------------------------------------
+    //
+    // Each environment keeps its intended custom-domain origin, plus the exact
+    // frontend origins required to actually test that environment. The dev
+    // environment is currently served by the live seller frontend at
+    // https://merchos.co.za (CloudFront in front of the Amplify `main` branch),
+    // so that live origin, the raw Amplify branch origin and localhost (local
+    // development) are all allowed. We never use '*' — allowCredentials:true
+    // forbids it and it would be insecure.
+    const customDomainOrigin = `https://${env === 'production' ? 'app' : env}.merchos.io`;
+    const corsAllowOrigins: string[] = [customDomainOrigin];
+    if (env === 'dev') {
+      corsAllowOrigins.push(
+        // Live seller frontend (custom domain served via CloudFront). This is
+        // the exact Origin the browser sends from the deployed dev frontend.
+        'https://merchos.co.za',
+        // Raw Amplify branch origin hosting the dev frontend (direct access
+        // and pre-custom-domain fallback).
+        'https://main.d1jwaah0zt7pg5.amplifyapp.com',
+        // Local development.
+        'http://localhost:3000',
+      );
+    }
+
+    // -----------------------------------------------------------------------
     // HTTP API Gateway
     // -----------------------------------------------------------------------
 
@@ -89,7 +123,7 @@ export class AuthApiStack extends cdk.Stack {
       corsPreflight: {
         allowHeaders: ['Content-Type', 'Authorization', 'X-Amz-Date'],
         allowMethods: [CorsHttpMethod.GET, CorsHttpMethod.POST, CorsHttpMethod.PUT, CorsHttpMethod.DELETE, CorsHttpMethod.OPTIONS],
-        allowOrigins: [`https://${env === 'production' ? 'app' : env}.merchos.io`],
+        allowOrigins: corsAllowOrigins,
         allowCredentials: true,
         maxAge: cdk.Duration.hours(1),
       },
@@ -110,22 +144,15 @@ export class AuthApiStack extends cdk.Stack {
 
     const handlersPath = path.join(__dirname, '../../services/auth/handlers');
 
-    // AWS Powertools Lambda layer — provides logger/tracer/metrics at runtime so
-    // they can be externalized from the esbuild bundle. The tracer pulls in
-    // aws-xray-sdk-core, whose dynamic './aws-xray' require cannot be bundled by
-    // esbuild; externalizing (as the product-intelligence stack does) avoids it.
-    const powertoolsLayer = lambda.LayerVersion.fromLayerVersionArn(
-      this,
-      'PowertoolsLayer',
-      `arn:aws:lambda:${this.region}:094274105915:layer:AWSLambdaPowertoolsTypeScriptV2:latest`,
-    );
-
     const commonLambdaEnv: Record<string, string> = {
       COGNITO_USER_POOL_ID: props.userPool.userPoolId,
       COGNITO_SELLER_CLIENT_ID: props.sellerDashboardClient.userPoolClientId,
       COGNITO_ISSUER: `https://cognito-idp.${region}.amazonaws.com/${props.userPool.userPoolId}`,
       INVITATIONS_TABLE: invitationsTable.tableName,
       SESSIONS_TABLE: sessionsTable.tableName,
+      // Pending registrations are stored in the existing tenants table under
+      // PENDINGREG#<id>. Referenced by conventional name (table not in-stack).
+      TENANTS_TABLE: `merch-os-tenants-${env}`,
       RATE_LIMITS_TABLE: this.rateLimitsTable.tableName,
       EVENT_BUS_NAME: props.eventBus.eventBusName,
       ENVIRONMENT: env,
@@ -137,18 +164,12 @@ export class AuthApiStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
       environment: commonLambdaEnv,
-      layers: [powertoolsLayer],
       bundling: {
         minify: true,
         sourceMap: true,
         target: 'node20',
         format: lambdaNodejs.OutputFormat.ESM,
         mainFields: ['module', 'main'],
-        externalModules: [
-          '@aws-lambda-powertools/logger',
-          '@aws-lambda-powertools/tracer',
-          '@aws-lambda-powertools/metrics',
-        ],
       },
     };
 
@@ -160,6 +181,10 @@ export class AuthApiStack extends cdk.Stack {
       logicalId: string,
       entry: string,
       policyStatements: iam.PolicyStatement[],
+      // Optional per-handler bundling override, deep-merged onto the shared
+      // defaultLambdaProps.bundling. Used to narrowly switch a single handler's
+      // output format without affecting the shared ESM defaults.
+      bundlingOverride?: Partial<lambdaNodejs.BundlingOptions>,
     ): lambdaNodejs.NodejsFunction => {
       const role = new iam.Role(this, `${logicalId}Role`, {
         assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com') as unknown as iam.IPrincipal,
@@ -178,6 +203,10 @@ export class AuthApiStack extends cdk.Stack {
         functionName: `merch-os-auth-${logicalId.toLowerCase()}-${env}`,
         entry,
         role: role as unknown as iam.IRole,
+        bundling: {
+          ...defaultLambdaProps.bundling,
+          ...bundlingOverride,
+        },
       });
     };
 
@@ -185,31 +214,127 @@ export class AuthApiStack extends cdk.Stack {
     // Lambda Functions — Auth Handlers
     // -----------------------------------------------------------------------
 
-    // NOTE: Identity operations (login, refresh, logout, forgot/reset password,
-    // verify email, change password, MFA setup, session) are intentionally NOT
-    // served by this API. Per ADR-005 they run client-side via the aws-amplify
-    // library directly against Cognito. Only privileged/admin operations that
-    // require the ADR-001 authorization pipeline or Cognito Admin APIs live here.
+    // NOTE (ADR-005): identity operations — login, refresh, logout, forgot/reset
+    // password, verify-email, change-password, mfa-setup, session — are NOT
+    // served here. They run client-side via the aws-amplify library directly
+    // against Cognito. Only privileged/admin + registration-lifecycle handlers
+    // live in this stack.
 
-    // 1. Invite User
+    // Register Pending (unauthenticated — pre-signup profile capture)
+    // Writes a PENDINGREG#<id> record to the durable tenants table. This is the
+    // table owned by MerchOS-Tenant-<env>, imported by AuthStack from SSM and
+    // passed in via props. The PutItem grant is scoped to its specific ARN.
+    const tenantsTable = props.tenantsTable;
+    const registerPendingFn = createLambda('RegisterPending', path.join(handlersPath, 'register-pending.ts'), [
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['dynamodb:PutItem'],
+        resources: [tenantsTable.tableArn],
+      }),
+      // The tenants table is CMK-encrypted; writing a pending record needs
+      // GenerateDataKey (and Decrypt for the SDK's envelope handling).
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['kms:GenerateDataKey', 'kms:Decrypt'],
+        resources: [props.platformKey.keyArn],
+      }),
+    ],
+    // ESM BUNDLING FIX (RegisterPending only): the shared default bundles as
+    // ESM (OutputFormat.ESM). A transitive dependency — lodash.merge, pulled in
+    // via @aws-lambda-powertools/logger — performs a top-level
+    // `require("util").types`. Under esbuild's ESM output that compiles to the
+    // `__require` shim, which throws at module init:
+    //   "Dynamic require of \"util\" is not supported"
+    // crashing the function during INIT (Runtime.Unknown) before the handler
+    // runs, so POST /auth/register-pending returns 502. Emitting this one
+    // handler as CommonJS preserves a real `require("util")` that Node 20
+    // satisfies natively. `mainFields` is flipped to prefer the CJS `main`
+    // entrypoint of dependencies to match the CJS output. The shared ESM
+    // defaults for every other handler are intentionally left unchanged.
+    {
+      format: lambdaNodejs.OutputFormat.CJS,
+      mainFields: ['main', 'module'],
+    });
+
+    // 9c. Profile Status (authenticated recovery read)
+    // Reads canonical tenant metadata + owner profile from the tenants table
+    // and an invitation record from the invitations table (to classify invited
+    // users). Read-only; scoped to the existing tables; CMK Decrypt only.
+    const profileStatusFn = createLambda('ProfileStatus', path.join(handlersPath, 'profile-status.ts'), [
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['dynamodb:GetItem'],
+        resources: [tenantsTable.tableArn, invitationsTable.tableArn],
+      }),
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['kms:Decrypt'],
+        resources: [props.platformKey.keyArn],
+      }),
+    ]);
+
+    // 9d. Complete Profile (authenticated recovery write)
+    // Atomic TransactWriteItems to create the CANONICAL tenant metadata + owner
+    // profile + consent; GetItem for idempotency/verification reads and the
+    // invited-user safeguard. Writes are scoped to the tenants table; the
+    // invitations table is read-only here.
+    const completeProfileFn = createLambda('CompleteProfile', path.join(handlersPath, 'complete-profile.ts'), [
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+        resources: [tenantsTable.tableArn],
+      }),
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['dynamodb:GetItem'],
+        resources: [invitationsTable.tableArn],
+      }),
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['kms:Decrypt', 'kms:GenerateDataKey'],
+        resources: [props.platformKey.keyArn],
+      }),
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['events:PutEvents'],
+        resources: [props.eventBus.eventBusArn],
+      }),
+    ]);
+
+    // 10. Invite User
     const inviteUserFn = createLambda('InviteUser', path.join(handlersPath, 'invite-user.ts'), [
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: [
           'cognito-idp:AdminCreateUser',
           'cognito-idp:AdminAddUserToGroup',
-          'cognito-idp:AdminUpdateUserAttributes',
+          // Compensation / rollback for a partially provisioned invited user
+          // (AddToGroup or invitation-record write failed). Enables retry-safe,
+          // all-or-nothing invitation creation.
+          'cognito-idp:AdminRemoveUserFromGroup',
+          'cognito-idp:AdminDeleteUser',
         ],
         resources: [props.userPool.userPoolArn],
       }),
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: ['dynamodb:PutItem'],
+        // PutItem writes the invitation record. DeleteItem is required for
+        // conditional compensation when a write outcome is ambiguous (the
+        // record may have committed before the client errored).
+        actions: ['dynamodb:PutItem', 'dynamodb:DeleteItem'],
         resources: [invitationsTable.tableArn],
+      }),
+      // The invitations table is CMK-encrypted. Writing needs GenerateDataKey;
+      // the conditional delete reads/evaluates the item and needs Decrypt.
+      // Matches the register-pending CMK access pattern.
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['kms:GenerateDataKey', 'kms:Decrypt'],
+        resources: [props.platformKey.keyArn],
       }),
     ]);
 
-    // 2. List Users
+    // 11. List Users
     const listUsersFn = createLambda('ListUsers', path.join(handlersPath, 'list-users.ts'), [
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
@@ -218,7 +343,7 @@ export class AuthApiStack extends cdk.Stack {
       }),
     ]);
 
-    // 3. Update Role
+    // 12. Update Role
     const updateRoleFn = createLambda('UpdateRole', path.join(handlersPath, 'update-role.ts'), [
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
@@ -232,7 +357,7 @@ export class AuthApiStack extends cdk.Stack {
       }),
     ]);
 
-    // 4. Disable User
+    // 13. Disable User
     const disableUserFn = createLambda('DisableUser', path.join(handlersPath, 'disable-user.ts'), [
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
@@ -241,7 +366,7 @@ export class AuthApiStack extends cdk.Stack {
       }),
     ]);
 
-    // 5. Delete User
+    // 14. Delete User
     const deleteUserFn = createLambda('DeleteUser', path.join(handlersPath, 'delete-user.ts'), [
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
@@ -266,9 +391,40 @@ export class AuthApiStack extends cdk.Stack {
     // Route Integrations
     // -----------------------------------------------------------------------
 
-    // All routes below are privileged/admin operations (ADR-005) and require the
-    // JWT authorizer. Identity operations are handled client-side via aws-amplify
-    // and have no routes here.
+    // Unauthenticated routes (no authorizer)
+    // NOTE (ADR-005): /auth/login, /auth/refresh, /auth/forgot-password,
+    // /auth/reset-password and /auth/verify-email are intentionally absent —
+    // those identity operations run client-side via aws-amplify. Only
+    // register-pending (pre-signup capture) is served unauthenticated here.
+    this.httpApi.addRoutes({
+      path: '/auth/register-pending',
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration('RegisterPendingIntegration', registerPendingFn),
+    });
+
+    // Authenticated routes (JWT authorizer)
+
+    // Registration recovery (authenticated — JWT authorizer). Preserves the
+    // live GET /auth/profile-status and POST /auth/complete-profile endpoints
+    // the seller dashboard depends on.
+    this.httpApi.addRoutes({
+      path: '/auth/profile-status',
+      methods: [HttpMethod.GET],
+      integration: new HttpLambdaIntegration('ProfileStatusIntegration', profileStatusFn),
+      authorizer: jwtAuthorizer,
+    });
+
+    this.httpApi.addRoutes({
+      path: '/auth/complete-profile',
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration('CompleteProfileIntegration', completeProfileFn),
+      authorizer: jwtAuthorizer,
+    });
+
+    // NOTE (ADR-005): /auth/logout, /auth/change-password, /auth/mfa/setup and
+    // /auth/session are intentionally absent — handled client-side via
+    // aws-amplify.
+
     this.httpApi.addRoutes({
       path: '/auth/invite',
       methods: [HttpMethod.POST],

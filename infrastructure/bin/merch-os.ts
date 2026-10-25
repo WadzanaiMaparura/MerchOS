@@ -43,6 +43,7 @@ new AuthApiStack(app, `MerchOS-AuthApi-${env}`, {
   eventBus: foundationStack.eventBus,
   invitationsTable: authStack.invitationsTable,
   sessionsTable: authStack.sessionsTable,
+  tenantsTable: authStack.tenantsTable,
 });
 
 const productApiStack = new ProductApiStack(app, `MerchOS-ProductApi-${env}`, {

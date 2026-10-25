@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { PreTokenGenerationV2TriggerEvent } from 'aws-lambda';
+import type { PreTokenGenerationTriggerEvent } from 'aws-lambda';
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -22,14 +22,9 @@ import { handler } from '../../triggers/pre-token-generation';
 
 function buildPreTokenEvent(
   userAttributes: Record<string, string> = {},
-  groupConfiguration?: {
-    groupsToOverride?: string[];
-    iamRolesToOverride?: string[];
-    preferredRole?: string;
-  },
-): PreTokenGenerationV2TriggerEvent {
+): PreTokenGenerationTriggerEvent {
   return {
-    version: '2',
+    version: '1',
     region: 'eu-west-1',
     userPoolId: 'eu-west-1_testPool',
     userName: 'test-user-id',
@@ -37,26 +32,30 @@ function buildPreTokenEvent(
       awsSdkVersion: '3.0.0',
       clientId: 'test-client-id',
     },
-    triggerSource: 'TokenGeneration_Authentication',
+    triggerSource: 'TokenGeneration_HostedAuth',
     request: {
       userAttributes: {
         sub: 'test-user-id',
         email: 'user@example.com',
         ...userAttributes,
       },
-      groupConfiguration: groupConfiguration ?? {
+      groupConfiguration: {
         groupsToOverride: undefined,
         iamRolesToOverride: undefined,
         preferredRole: undefined,
       },
     },
     response: {
-      claimsAndScopeOverrideDetails: {},
+      claimsOverrideDetails: {
+        claimsToAddOrOverride: undefined,
+        claimsToSuppress: undefined,
+        groupOverrideDetails: undefined,
+      },
     },
-  } as unknown as PreTokenGenerationV2TriggerEvent;
+  } as unknown as PreTokenGenerationTriggerEvent;
 }
 
-describe('pre-token-generation trigger (V2_0)', () => {
+describe('pre-token-generation trigger', () => {
   it('should inject tenantId and role into access token claims', async () => {
     const event = buildPreTokenEvent({
       'custom:tenantId': 'tenant-abc',
@@ -65,13 +64,38 @@ describe('pre-token-generation trigger (V2_0)', () => {
 
     const result = await handler(event);
 
-    expect(
-      result.response.claimsAndScopeOverrideDetails?.accessTokenGeneration
-        ?.claimsToAddOrOverride,
-    ).toEqual({
+    expect(result.response.claimsOverrideDetails?.claimsToAddOrOverride).toEqual({
       'custom:tenantId': 'tenant-abc',
       'custom:role': 'admin',
     });
+  });
+
+  it('maps the server-managed custom:tenantIdAssigned onto the custom:tenantId claim (self-signup)', async () => {
+    const event = buildPreTokenEvent({
+      'custom:tenantIdAssigned': 'assigned-tenant-1',
+      'custom:role': 'owner',
+    });
+
+    const result = await handler(event);
+
+    expect(result.response.claimsOverrideDetails?.claimsToAddOrOverride).toEqual({
+      'custom:tenantId': 'assigned-tenant-1',
+      'custom:role': 'owner',
+    });
+  });
+
+  it('prefers the immutable custom:tenantId over custom:tenantIdAssigned (invited user)', async () => {
+    const event = buildPreTokenEvent({
+      'custom:tenantId': 'invited-tenant',
+      'custom:tenantIdAssigned': 'should-be-ignored',
+      'custom:role': 'editor',
+    });
+
+    const result = await handler(event);
+
+    expect(
+      result.response.claimsOverrideDetails?.claimsToAddOrOverride?.['custom:tenantId'],
+    ).toBe('invited-tenant');
   });
 
   it('should handle missing tenantId gracefully', async () => {
@@ -81,10 +105,7 @@ describe('pre-token-generation trigger (V2_0)', () => {
 
     const result = await handler(event);
 
-    expect(
-      result.response.claimsAndScopeOverrideDetails?.accessTokenGeneration
-        ?.claimsToAddOrOverride,
-    ).toEqual({
+    expect(result.response.claimsOverrideDetails?.claimsToAddOrOverride).toEqual({
       'custom:tenantId': '',
       'custom:role': 'viewer',
     });
@@ -97,10 +118,7 @@ describe('pre-token-generation trigger (V2_0)', () => {
 
     const result = await handler(event);
 
-    expect(
-      result.response.claimsAndScopeOverrideDetails?.accessTokenGeneration
-        ?.claimsToAddOrOverride,
-    ).toEqual({
+    expect(result.response.claimsOverrideDetails?.claimsToAddOrOverride).toEqual({
       'custom:tenantId': 'tenant-xyz',
       'custom:role': '',
     });
@@ -111,35 +129,29 @@ describe('pre-token-generation trigger (V2_0)', () => {
 
     const result = await handler(event);
 
-    expect(
-      result.response.claimsAndScopeOverrideDetails?.accessTokenGeneration
-        ?.claimsToAddOrOverride,
-    ).toEqual({
+    expect(result.response.claimsOverrideDetails?.claimsToAddOrOverride).toEqual({
       'custom:tenantId': '',
       'custom:role': '',
     });
   });
 
-  it('should preserve existing access-token claims rather than overwriting them', async () => {
+  it('should preserve existing claimsOverrideDetails', async () => {
     const event = buildPreTokenEvent({
       'custom:tenantId': 'tenant-123',
       'custom:role': 'owner',
     });
-    // Set existing V2_0 access-token claims
-    event.response.claimsAndScopeOverrideDetails = {
-      accessTokenGeneration: {
-        claimsToAddOrOverride: {
-          existingClaim: 'existingValue',
-        },
+    // Set existing claims
+    event.response.claimsOverrideDetails = {
+      claimsToAddOrOverride: {
+        existingClaim: 'existingValue',
       },
+      claimsToSuppress: undefined,
+      groupOverrideDetails: undefined,
     };
 
     const result = await handler(event);
 
-    expect(
-      result.response.claimsAndScopeOverrideDetails?.accessTokenGeneration
-        ?.claimsToAddOrOverride,
-    ).toEqual({
+    expect(result.response.claimsOverrideDetails?.claimsToAddOrOverride).toEqual({
       existingClaim: 'existingValue',
       'custom:tenantId': 'tenant-123',
       'custom:role': 'owner',
@@ -147,6 +159,7 @@ describe('pre-token-generation trigger (V2_0)', () => {
   });
 
   it('should return the event unchanged on error', async () => {
+    // Force an error by making userAttributes throw
     const event = buildPreTokenEvent({
       'custom:tenantId': 'tenant-123',
       'custom:role': 'owner',
@@ -156,80 +169,5 @@ describe('pre-token-generation trigger (V2_0)', () => {
     const result = await handler(event);
     expect(result).toBeDefined();
     expect(result.userName).toBe('test-user-id');
-  });
-
-  // -------------------------------------------------------------------------
-  // Group projection (cognito:groups via groupOverrideDetails)
-  // -------------------------------------------------------------------------
-
-  it('should project the user\'s group membership into the token via groupOverrideDetails', async () => {
-    const event = buildPreTokenEvent(
-      { 'custom:tenantId': 'tenant-abc', 'custom:role': 'seller' },
-      { groupsToOverride: ['Seller'], iamRolesToOverride: undefined, preferredRole: undefined },
-    );
-
-    const result = await handler(event);
-
-    // groupOverrideDetails is copied from request.groupConfiguration (preserves groups)
-    expect(result.response.claimsAndScopeOverrideDetails?.groupOverrideDetails).toEqual({
-      groupsToOverride: ['Seller'],
-      iamRolesToOverride: undefined,
-      preferredRole: undefined,
-    });
-    expect(
-      result.response.claimsAndScopeOverrideDetails?.groupOverrideDetails?.groupsToOverride,
-    ).toContain('Seller');
-  });
-
-  it('should still inject custom:tenantId and custom:role alongside group projection', async () => {
-    const event = buildPreTokenEvent(
-      { 'custom:tenantId': 'tenant-abc', 'custom:role': 'seller' },
-      { groupsToOverride: ['Seller'] },
-    );
-
-    const result = await handler(event);
-
-    // Custom claims unchanged by the group-projection addition
-    expect(
-      result.response.claimsAndScopeOverrideDetails?.accessTokenGeneration
-        ?.claimsToAddOrOverride,
-    ).toEqual({
-      'custom:tenantId': 'tenant-abc',
-      'custom:role': 'seller',
-    });
-    // Groups preserved
-    expect(
-      result.response.claimsAndScopeOverrideDetails?.groupOverrideDetails?.groupsToOverride,
-    ).toEqual(['Seller']);
-  });
-
-  it('should preserve multiple groups and not suppress them', async () => {
-    const event = buildPreTokenEvent(
-      { 'custom:tenantId': 'tenant-abc', 'custom:role': 'seller' },
-      { groupsToOverride: ['Seller', 'Admin'] },
-    );
-
-    const result = await handler(event);
-
-    const projected = result.response.claimsAndScopeOverrideDetails?.groupOverrideDetails;
-    // Not an empty/null object (which would SUPPRESS groups in Cognito)
-    expect(projected).toBeDefined();
-    expect(projected?.groupsToOverride).toEqual(['Seller', 'Admin']);
-    expect(projected?.groupsToOverride?.length).toBe(2);
-  });
-
-  it('should pass through an empty group configuration unchanged (no invented groups)', async () => {
-    // Default fixture: groupConfiguration with all-undefined fields.
-    const event = buildPreTokenEvent({ 'custom:tenantId': 'tenant-abc', 'custom:role': 'seller' });
-
-    const result = await handler(event);
-
-    // groupOverrideDetails equals the request's groupConfiguration (pass-through),
-    // the handler does not fabricate groups.
-    expect(result.response.claimsAndScopeOverrideDetails?.groupOverrideDetails).toEqual({
-      groupsToOverride: undefined,
-      iamRolesToOverride: undefined,
-      preferredRole: undefined,
-    });
   });
 });
