@@ -120,6 +120,27 @@ export {
 } from './hooks/useAdminTenants';
 export type { TenantListParams } from './hooks/useAdminTenants';
 
+// Admin Users hooks (Category 2 auth endpoints — ADR-005)
+export {
+  adminUserKeys,
+  useAdminUsers,
+  useInviteUser,
+  useUpdateUserRole,
+  useDisableUser,
+  useDeleteUser,
+} from './hooks/useAdminUsers';
+export type {
+  AdminUserSummary,
+  ListUsersResponse,
+  ListUsersParams,
+  InviteUserPayload,
+  InviteUserResponse,
+  UpdateUserRolePayload,
+  UpdateUserRoleResponse,
+  DisableUserPayload,
+  DeleteUserPayload,
+} from './hooks/useAdminUsers';
+
 // Admin Compliance hooks
 export {
   adminComplianceKeys,
