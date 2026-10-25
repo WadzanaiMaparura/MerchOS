@@ -214,87 +214,13 @@ export class AuthApiStack extends cdk.Stack {
     // Lambda Functions — Auth Handlers
     // -----------------------------------------------------------------------
 
-    // 1. Login
-    const loginFn = createLambda('Login', path.join(handlersPath, 'login.ts'), [
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ['cognito-idp:AdminInitiateAuth'],
-        resources: [props.userPool.userPoolArn],
-      }),
-    ]);
+    // NOTE (ADR-005): identity operations — login, refresh, logout, forgot/reset
+    // password, verify-email, change-password, mfa-setup, session — are NOT
+    // served here. They run client-side via the aws-amplify library directly
+    // against Cognito. Only privileged/admin + registration-lifecycle handlers
+    // live in this stack.
 
-    // 2. Refresh
-    const refreshFn = createLambda('Refresh', path.join(handlersPath, 'refresh.ts'), [
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ['cognito-idp:AdminInitiateAuth'],
-        resources: [props.userPool.userPoolArn],
-      }),
-    ]);
-
-    // 3. Logout
-    const logoutFn = createLambda('Logout', path.join(handlersPath, 'logout.ts'), [
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ['cognito-idp:GlobalSignOut'],
-        resources: [props.userPool.userPoolArn],
-      }),
-    ]);
-
-    // 4. Forgot Password
-    const forgotPasswordFn = createLambda('ForgotPassword', path.join(handlersPath, 'forgot-password.ts'), [
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ['cognito-idp:ForgotPassword'],
-        resources: [props.userPool.userPoolArn],
-      }),
-    ]);
-
-    // 5. Reset Password
-    const resetPasswordFn = createLambda('ResetPassword', path.join(handlersPath, 'reset-password.ts'), [
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ['cognito-idp:ConfirmForgotPassword'],
-        resources: [props.userPool.userPoolArn],
-      }),
-    ]);
-
-    // 6. Verify Email
-    const verifyEmailFn = createLambda('VerifyEmail', path.join(handlersPath, 'verify-email.ts'), [
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ['cognito-idp:ConfirmSignUp'],
-        resources: [props.userPool.userPoolArn],
-      }),
-    ]);
-
-
-    // 7. Change Password
-    const changePasswordFn = createLambda('ChangePassword', path.join(handlersPath, 'change-password.ts'), [
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ['cognito-idp:ChangePassword'],
-        resources: [props.userPool.userPoolArn],
-      }),
-    ]);
-
-    // 8. MFA Setup
-    const mfaSetupFn = createLambda('MfaSetup', path.join(handlersPath, 'mfa-setup.ts'), [
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: [
-          'cognito-idp:AssociateSoftwareToken',
-          'cognito-idp:VerifySoftwareToken',
-          'cognito-idp:AdminSetUserMFAPreference',
-        ],
-        resources: [props.userPool.userPoolArn],
-      }),
-    ]);
-
-    // 9. Session (no Cognito permissions — reads JWT claims only)
-    const sessionFn = createLambda('Session', path.join(handlersPath, 'session.ts'), []);
-
-    // 9b. Register Pending (unauthenticated — pre-signup profile capture)
+    // Register Pending (unauthenticated — pre-signup profile capture)
     // Writes a PENDINGREG#<id> record to the durable tenants table. This is the
     // table owned by MerchOS-Tenant-<env>, imported by AuthStack from SSM and
     // passed in via props. The PutItem grant is scoped to its specific ARN.
@@ -456,7 +382,7 @@ export class AuthApiStack extends cdk.Stack {
       resources: [props.eventBus.eventBusArn],
     });
 
-    [logoutFn, inviteUserFn, disableUserFn, deleteUserFn, updateRoleFn].forEach((fn) => {
+    [inviteUserFn, disableUserFn, deleteUserFn, updateRoleFn].forEach((fn) => {
       fn.role!.addToPrincipalPolicy(eventBusPolicy);
     });
 
@@ -466,36 +392,10 @@ export class AuthApiStack extends cdk.Stack {
     // -----------------------------------------------------------------------
 
     // Unauthenticated routes (no authorizer)
-    this.httpApi.addRoutes({
-      path: '/auth/login',
-      methods: [HttpMethod.POST],
-      integration: new HttpLambdaIntegration('LoginIntegration', loginFn),
-    });
-
-    this.httpApi.addRoutes({
-      path: '/auth/refresh',
-      methods: [HttpMethod.POST],
-      integration: new HttpLambdaIntegration('RefreshIntegration', refreshFn),
-    });
-
-    this.httpApi.addRoutes({
-      path: '/auth/forgot-password',
-      methods: [HttpMethod.POST],
-      integration: new HttpLambdaIntegration('ForgotPasswordIntegration', forgotPasswordFn),
-    });
-
-    this.httpApi.addRoutes({
-      path: '/auth/reset-password',
-      methods: [HttpMethod.POST],
-      integration: new HttpLambdaIntegration('ResetPasswordIntegration', resetPasswordFn),
-    });
-
-    this.httpApi.addRoutes({
-      path: '/auth/verify-email',
-      methods: [HttpMethod.POST],
-      integration: new HttpLambdaIntegration('VerifyEmailIntegration', verifyEmailFn),
-    });
-
+    // NOTE (ADR-005): /auth/login, /auth/refresh, /auth/forgot-password,
+    // /auth/reset-password and /auth/verify-email are intentionally absent —
+    // those identity operations run client-side via aws-amplify. Only
+    // register-pending (pre-signup capture) is served unauthenticated here.
     this.httpApi.addRoutes({
       path: '/auth/register-pending',
       methods: [HttpMethod.POST],
@@ -521,33 +421,9 @@ export class AuthApiStack extends cdk.Stack {
       authorizer: jwtAuthorizer,
     });
 
-    this.httpApi.addRoutes({
-      path: '/auth/logout',
-      methods: [HttpMethod.POST],
-      integration: new HttpLambdaIntegration('LogoutIntegration', logoutFn),
-      authorizer: jwtAuthorizer,
-    });
-
-    this.httpApi.addRoutes({
-      path: '/auth/change-password',
-      methods: [HttpMethod.POST],
-      integration: new HttpLambdaIntegration('ChangePasswordIntegration', changePasswordFn),
-      authorizer: jwtAuthorizer,
-    });
-
-    this.httpApi.addRoutes({
-      path: '/auth/mfa/setup',
-      methods: [HttpMethod.POST],
-      integration: new HttpLambdaIntegration('MfaSetupIntegration', mfaSetupFn),
-      authorizer: jwtAuthorizer,
-    });
-
-    this.httpApi.addRoutes({
-      path: '/auth/session',
-      methods: [HttpMethod.GET],
-      integration: new HttpLambdaIntegration('SessionIntegration', sessionFn),
-      authorizer: jwtAuthorizer,
-    });
+    // NOTE (ADR-005): /auth/logout, /auth/change-password, /auth/mfa/setup and
+    // /auth/session are intentionally absent — handled client-side via
+    // aws-amplify.
 
     this.httpApi.addRoutes({
       path: '/auth/invite',

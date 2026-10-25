@@ -1,4 +1,5 @@
 export { ProductService } from './product-service';
+export { getProductService, setProductServiceInstance, resetProductService } from './product-service-factory';
 export {
   ProductNotFoundError,
   ProductAlreadyExistsError,

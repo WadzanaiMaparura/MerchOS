@@ -10,7 +10,7 @@
 
 import middy from '@middy/core';
 import type { ZodSchema, ZodError } from 'zod';
-import { logger } from './powertools';
+import { logger } from './logger';
 
 // ---------------------------------------------------------------------------
 // Types

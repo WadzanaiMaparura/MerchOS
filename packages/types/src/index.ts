@@ -69,6 +69,7 @@ export type {
   AuthUser,
   AuthState,
   MfaChallengeResult,
+  TotpSetupDetails,
   AuthContextValue,
 } from './auth';
 

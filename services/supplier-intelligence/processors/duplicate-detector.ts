@@ -129,15 +129,19 @@ async function queryBySku(
 
   const client = getDynamoClient();
 
-  // GSI: GSI1PK = "TENANT#{tenantId}#SKU#{sku}"
-  // Using the pattern established in the data model: tenant-scoped SKU index
+  // Unified canonical SKU index (G07): the Products table GSI1 is keyed
+  //   GSI1PK = "TENANT#{tenantId}#SKU", GSI1SK = "SKU#{sku}"
+  // identical to ProductRepository.toItem. Querying this exact layout means the
+  // detector sees BOTH import-created and API-created products, so an imported
+  // SKU is detected as a duplicate of an API product and vice versa.
   const result = await client.send(
     new QueryCommand({
       TableName: tableName,
       IndexName: 'GSI1',
-      KeyConditionExpression: 'GSI1PK = :pk',
+      KeyConditionExpression: 'GSI1PK = :pk AND GSI1SK = :sk',
       ExpressionAttributeValues: {
-        ':pk': `TENANT#${tenantId}#SKU#${sku}`,
+        ':pk': `TENANT#${tenantId}#SKU`,
+        ':sk': `SKU#${sku}`,
       },
       // We only need the first hit and its productId
       Limit: 1,
@@ -182,33 +186,51 @@ async function queryTitlesBySupplier(
   const results: Array<{ productId: string; title: string }> = [];
   let lastEvaluatedKey: Record<string, unknown> | undefined;
 
-  do {
-    const result = await client.send(
-      new QueryCommand({
-        TableName: tableName,
-        IndexName: 'GSI2',
-        KeyConditionExpression: 'GSI2PK = :pk',
-        ExpressionAttributeValues: {
-          ':pk': `TENANT#${tenantId}#SUPPLIER#${supplierId}`,
-        },
-        ProjectionExpression: 'productId, title',
-        ExclusiveStartKey: lastEvaluatedKey as Record<string, unknown> | undefined,
-      })
-    );
+  // NOTE (G07 / known gap): the title-similarity secondary check queries a
+  // per-supplier index (GSI2). The Products table currently defines ONLY GSI1
+  // (see infrastructure/lib/product-api-stack.ts), so this query would raise a
+  // ValidationException at runtime. Until a GSI2 (GSI2PK = TENANT#{t}#SUPPLIER#{s})
+  // is added to the Products table, we degrade safely: skip the title-similarity
+  // check and fall back to the (now-correct) exact-SKU check only. This keeps
+  // imports working rather than failing the whole batch on a missing index.
+  // Tracked in the Gap Register as G19.
+  try {
+    do {
+      const result = await client.send(
+        new QueryCommand({
+          TableName: tableName,
+          IndexName: 'GSI2',
+          KeyConditionExpression: 'GSI2PK = :pk',
+          ExpressionAttributeValues: {
+            ':pk': `TENANT#${tenantId}#SUPPLIER#${supplierId}`,
+          },
+          ProjectionExpression: 'productId, title',
+          ExclusiveStartKey: lastEvaluatedKey as Record<string, unknown> | undefined,
+        })
+      );
 
-    if (result.Items) {
-      for (const item of result.Items) {
-        if (item['productId'] && item['title']) {
-          results.push({
-            productId: item['productId'] as string,
-            title: item['title'] as string,
-          });
+      if (result.Items) {
+        for (const item of result.Items) {
+          if (item['productId'] && item['title']) {
+            results.push({
+              productId: item['productId'] as string,
+              title: item['title'] as string,
+            });
+          }
         }
       }
-    }
 
-    lastEvaluatedKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (lastEvaluatedKey);
+      lastEvaluatedKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+    } while (lastEvaluatedKey);
+  } catch (err) {
+    // Missing index (GSI2 not provisioned) or other query failure: degrade to
+    // SKU-only duplicate detection rather than failing the import.
+    const name = err instanceof Error ? err.name : '';
+    if (name === 'ValidationException' || name === 'ResourceNotFoundException') {
+      return [];
+    }
+    throw err;
+  }
 
   return results;
 }

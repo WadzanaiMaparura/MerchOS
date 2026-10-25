@@ -28,9 +28,16 @@ export interface AdminAuthState {
   accessToken: string | null;
   /**
    * Authenticate with email + password.
-   * Admin auth always requires TOTP — returns MfaChallengeResult.
+   *
+   * Returns the MFA challenge when the operator has TOTP enrolled (the
+   * expected path — admin access is MFA-gated). Returns `null` when Cognito
+   * established a session with no second factor, which means the operator has
+   * no TOTP device enrolled yet. The caller must treat the `null` case as
+   * "MFA enrollment required" rather than a completed admin login, because the
+   * shared Cognito pool is `Mfa.OPTIONAL` and cannot by itself guarantee a
+   * second factor for operators.
    */
-  login: (email: string, password: string) => Promise<MfaChallengeResult>;
+  login: (email: string, password: string) => Promise<MfaChallengeResult | null>;
   /**
    * Complete the TOTP MFA challenge with a 6-digit code.
    * Resolves on success, throws on invalid code.
@@ -74,17 +81,21 @@ export function useAdminAuth(): AdminAuthState {
     : null;
 
   /**
-   * Typed login that always returns MfaChallengeResult.
-   * Admin Cognito Pool mandates TOTP MFA, so the underlying call will always
-   * return a challenge. The cast here aligns with that constraint.
+   * Admin login.
+   *
+   * The shared Cognito pool is `Mfa.OPTIONAL`, so a valid password can resolve
+   * two ways:
+   *  - a TOTP challenge is returned  -> operator has MFA; caller sends them to
+   *    /mfa to complete the second factor (the normal, MFA-gated path);
+   *  - no challenge (session established) -> operator has NO TOTP enrolled.
+   *    We return `null` so the caller can route to MFA enrollment instead of
+   *    silently admitting an operator who never passed a second factor.
+   *
+   * Invalid credentials still reject from `baseLogin`, as before.
    */
-  const login = async (email: string, password: string): Promise<MfaChallengeResult> => {
+  const login = async (email: string, password: string): Promise<MfaChallengeResult | null> => {
     const result = await baseLogin(email, password);
-    if (!result) {
-      // Should not happen for admin pool (MFA is mandatory), but guard anyway.
-      throw new Error('MFA challenge was not returned. Ensure the Admin Cognito Pool has mandatory TOTP configured.');
-    }
-    return result;
+    return result ?? null;
   };
 
   return {

@@ -4,7 +4,7 @@
  * with standardized error handling.
  */
 
-import { resetPassword, confirmResetPassword } from '@aws-amplify/auth';
+import { resetPassword, confirmResetPassword } from 'aws-amplify/auth';
 
 /**
  * Initiate a password reset flow by sending a verification code to the user's email.

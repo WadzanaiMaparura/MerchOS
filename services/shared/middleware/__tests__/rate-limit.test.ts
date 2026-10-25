@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mockClient } from 'aws-sdk-client-mock';
 import { DynamoDBDocumentClient, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 
-// Mock powertools logger
-vi.mock('../powertools', () => ({
+// Mock the logger module (rate-limit imports logger from ../logger)
+vi.mock('../logger', () => ({
   logger: {
     warn: vi.fn(),
     error: vi.fn(),
@@ -13,7 +13,7 @@ vi.mock('../powertools', () => ({
 }));
 
 import { rateLimitMiddleware, _resetClientForTesting } from '../rate-limit';
-import { logger } from '../powertools';
+import { logger } from '../logger';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
 

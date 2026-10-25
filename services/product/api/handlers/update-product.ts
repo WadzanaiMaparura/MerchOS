@@ -6,16 +6,21 @@
  */
 
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
-import { ProductService } from '../../service';
-import { extractTenantContext } from '../../../shared/middleware/tenant-context-types';
+import { ProductService, getProductService } from '../../service';
+import { extractTenantContext } from '../../../shared/middleware/tenant-context';
 import { mapErrorToResponse } from '../error-mapper';
 import { updateProductSchema } from '../schemas';
 
-let productService: ProductService;
+let productService: ProductService | undefined;
 
-/** Inject the ProductService instance (called during Lambda init or test setup). */
+/** Inject the ProductService instance (test seam; overrides the production factory). */
 export function setProductService(service: ProductService): void {
   productService = service;
+}
+
+/** Resolve the ProductService: test-injected instance if present, else the production factory. */
+function resolveProductService(): ProductService {
+  return productService ?? getProductService();
 }
 
 export async function handler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
@@ -70,7 +75,7 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
 
   // 6. Delegate to service — path productId is authoritative, body cannot override
   try {
-    const product = await productService.updateProduct(tenantContext.tenantId, productId, permitted);
+    const product = await resolveProductService().updateProduct(tenantContext.tenantId, productId, permitted);
     return {
       statusCode: 200,
       body: JSON.stringify({ product }),

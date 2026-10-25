@@ -24,6 +24,7 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as kms from 'aws-cdk-lib/aws-kms';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
+import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources';
 import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
 import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
@@ -510,26 +511,50 @@ export class SupplierIntelligenceStack extends cdk.Stack {
       importJobsTableReadWrite,
     ], { timeout: cdk.Duration.seconds(300), memorySize: 512 });
 
+    // Products table ARN — reconstructed deterministically from the fixed
+    // naming convention (merch-os-products-{env}), the same approach used by
+    // the Inventory API stack. This lets us scope the DuplicateDetector and
+    // ProductPersister grants to the Products table + GSI1 instead of '*'.
+    const productsTableArn = `arn:aws:dynamodb:${this.region}:${this.account}:table/merch-os-products-${env}`;
+    const productsGsi1Arn = `${productsTableArn}/index/GSI1`;
+
     const duplicateDetectorFn = createFn('DuplicateDetector', path.join(processorsPath, 'duplicate-detector.ts'), [
       importJobsTableReadWrite,
-      // Also needs read access to the Products table (resolved at runtime via env var)
+      // Read access to the Products table + GSI1 (SKU lookups for dedupe).
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['dynamodb:Query', 'dynamodb:GetItem'],
-        resources: ['*'], // Products table ARN unknown at synth time — tighten in 12.3
+        resources: [productsTableArn, productsGsi1Arn],
       }),
     ], { timeout: cdk.Duration.seconds(300), memorySize: 512 });
 
     const productPersisterFn = createFn('ProductPersister', path.join(processorsPath, 'product-persister.ts'), [
       importJobsTableReadWrite,
       eventBusPutEvents,
-      // Products table write — tightened in 12.3 when table ARN is available
+      // Write access to the Products table (batch-writes imported products).
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:BatchWriteItem'],
-        resources: ['*'],
+        resources: [productsTableArn],
       }),
     ], { timeout: cdk.Duration.seconds(300), memorySize: 512 });
+
+    // -----------------------------------------------------------------------
+    // Products table name — imported from the Product API stack via SSM,
+    // following the same cross-stack pattern used for Foundation/Auth values.
+    //
+    // The ProductPersister writes Product records and the DuplicateDetector
+    // reads the Products table; both resolve the table name from the
+    // PRODUCTS_TABLE_NAME environment variable at runtime.
+    // -----------------------------------------------------------------------
+
+    const productsTableName = ssm.StringParameter.valueForStringParameter(
+      this,
+      `${ssmPrefix}/product-api/table-name`,
+    );
+
+    productPersisterFn.addEnvironment('PRODUCTS_TABLE_NAME', productsTableName);
+    duplicateDetectorFn.addEnvironment('PRODUCTS_TABLE_NAME', productsTableName);
 
     // -----------------------------------------------------------------------
     // Expose all Lambda functions as a map for task 12.3 (API Gateway wiring)
@@ -770,6 +795,16 @@ export class SupplierIntelligenceStack extends cdk.Stack {
     importQueueConsumerFn.addEnvironment(
       'IMPORT_STATE_MACHINE_ARN',
       this.importStateMachine.stateMachineArn,
+    );
+
+    // Connect the FIFO Import Queue to the consumer Lambda. The handler returns
+    // an SQSBatchResponse, so reportBatchItemFailures must be enabled so that
+    // only failed messages are retried (and eventually routed to the DLQ).
+    importQueueConsumerFn.addEventSource(
+      new lambdaEventSources.SqsEventSource(this.importQueue, {
+        batchSize: 1,
+        reportBatchItemFailures: true,
+      }),
     );
 
     // -----------------------------------------------------------------------

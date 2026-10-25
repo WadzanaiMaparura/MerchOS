@@ -7,11 +7,12 @@ import { ErrorHandlingProvider } from './components/ErrorHandlingProvider';
 
 /**
  * Configure Amplify Auth against the Seller (tenant) Cognito Pool.
- * Called once at module evaluation time (client-side only via 'use client'),
- * BEFORE any AuthProvider authentication operation (login/register/session) can
- * run. Uses the shared defaultCognitoConfig, which reads the seller
- * NEXT_PUBLIC_COGNITO_* environment variables ΓÇö no Cognito identifiers are
- * hardcoded here. Mirrors the admin-dashboard pattern.
+ * Must run once, at module-evaluation time (client-side only via 'use client'),
+ * BEFORE any AuthProvider authentication operation (login/register/session)
+ * runs — otherwise Amplify's signIn/signUp throw
+ * "AuthUserPoolException: Auth UserPool not configured."
+ *
+ * Reads the NEXT_PUBLIC_COGNITO_* env vars via defaultCognitoConfig.
  */
 configureCognitoAuth();
 

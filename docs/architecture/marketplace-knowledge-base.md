@@ -29,6 +29,21 @@ This document is the authoritative reference for marketplace-specific product re
 
 This knowledge base captures the complete field-level requirements for each marketplace platform that MerchOS exports to. It serves as the source material for populating the Schema Registry and defining validation rules in the Validation Engine.
 
+> ⚠️ **Verification caveat — read before deriving production validation rules.**
+> The content in this knowledge base is **largely unverified** and must be treated as **provisional** until confirmed against authoritative platform sources. Each field/section carries a verification classification:
+>
+> | Classification | Meaning | Safe for production validation? |
+> |----------------|---------|---------------------------------|
+> | `VERIFIED_FROM_TEMPLATE` | Confirmed against an actual obtained platform template/export file | Yes |
+> | `OFFICIAL_REQUIREMENT` / `OFFICIAL_RECOMMENDATION` | From published platform API/docs | Yes, with version check |
+> | `INFERENCE` | Inferred from seller-center templates or competitive analysis | **No — verify first** |
+> | `EXAMPLE_ONLY` | Illustrative, not a real schema | **No — verify first** |
+> | `REQUIRES_SELLER_ACCOUNT_VERIFICATION` | Needs confirmation via a live seller account | **No — verify first** |
+>
+> **Current state:** Only **Takealot Bulk Offers** and the **Makro duvet-cover loadsheet** are `VERIFIED_FROM_TEMPLATE`. Amazon category schemas are `EXAMPLE_ONLY`; most other verticals/fields are `INFERENCE` or `REQUIRES_SELLER_ACCOUNT_VERIFICATION`.
+>
+> **Consequence (ties to the Implementation Roadmap):** per blueprint §13, adapter implementation for a platform **must not begin** until the relevant Schema Registry entries are verified against real platform templates. Building validation/export logic on `INFERENCE`/`EXAMPLE_ONLY` data risks rework and seller-facing rejections. See [Section 8 Verification Log](#8-verification-log) for the authoritative per-field status.
+
 ### 1.2 Platforms
 
 | Platform | Region | Export Method | Category System |

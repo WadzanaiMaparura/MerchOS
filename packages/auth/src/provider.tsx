@@ -12,8 +12,11 @@ import {
   signOut,
   fetchAuthSession,
   confirmSignIn,
-} from '@aws-amplify/auth';
-import type { AuthContextValue, AuthUser, MfaChallengeResult } from '@merch-os/types';
+  setUpTOTP,
+  verifyTOTPSetup,
+  updateMFAPreference,
+} from 'aws-amplify/auth';
+import type { AuthContextValue, AuthUser, MfaChallengeResult, TotpSetupDetails } from '@merch-os/types';
 import type { SellerRole } from '@merch-os/types';
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
@@ -244,6 +247,32 @@ export function AuthProvider({ children }: AuthProviderProps): React.ReactElemen
     return Promise.race([refreshPromise, timeoutPromise]);
   }, []);
 
+  /**
+   * Begin TOTP enrollment for the signed-in user.
+   * Returns the base32 shared secret (manual entry) and an otpauth:// URI to
+   * render as a QR code. Issuer is fixed to "MerchOS"; the account label uses
+   * the user's email when known so the authenticator entry is identifiable.
+   */
+  const setUpTotp = useCallback(async (): Promise<TotpSetupDetails> => {
+    const totpSetupDetails = await setUpTOTP();
+    const accountName = user?.email ?? 'account';
+    const setupUri = totpSetupDetails.getSetupUri('MerchOS', accountName);
+    return {
+      sharedSecret: totpSetupDetails.sharedSecret,
+      setupUri: setupUri.toString(),
+    };
+  }, [user]);
+
+  /**
+   * Complete TOTP enrollment: verify the authenticator code, then mark TOTP as
+   * the preferred second factor so subsequent logins challenge for it.
+   * Rejects on an invalid/expired code.
+   */
+  const verifyTotp = useCallback(async (code: string): Promise<void> => {
+    await verifyTOTPSetup({ code });
+    await updateMFAPreference({ totp: 'PREFERRED' });
+  }, []);
+
   const contextValue = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -252,10 +281,12 @@ export function AuthProvider({ children }: AuthProviderProps): React.ReactElemen
       accessToken,
       login,
       completeMfa,
+      setUpTotp,
+      verifyTotp,
       logout,
       refreshSession,
     }),
-    [user, isAuthenticated, isLoading, accessToken, login, completeMfa, logout, refreshSession]
+    [user, isAuthenticated, isLoading, accessToken, login, completeMfa, setUpTotp, verifyTotp, logout, refreshSession]
   );
 
   return (

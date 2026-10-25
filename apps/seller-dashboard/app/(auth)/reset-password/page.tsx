@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { resetPassword, confirmResetPassword } from '@aws-amplify/auth';
+import { resetPassword, confirmResetPassword } from 'aws-amplify/auth';
 import { Form, FormField, Input } from '@merch-os/ui';
 
 /**

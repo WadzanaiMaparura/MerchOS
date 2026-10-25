@@ -209,7 +209,7 @@ async function baseHandler(event: CreateSupplierEvent): Promise<APIGatewayProxyR
 export const handler = middy(baseHandler)
   .use(
     rbacMiddleware({
-      resource: 'supplier',
+      resource: 'suppliers',
       action: 'create',
     }),
   )

@@ -47,6 +47,13 @@ const UsersIcon = (
   </svg>
 );
 
+const BuildingIcon = (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5" aria-hidden="true">
+    <path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4" />
+    <path d="M9 9v.01M9 12v.01M9 15v.01M9 18v.01" />
+  </svg>
+);
+
 const ShieldIcon = (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5" aria-hidden="true">
     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
@@ -105,6 +112,7 @@ const registry = new PermissionRegistry(defaultPermissionConfig);
 const ADMIN_NAV_ITEMS: NavigationItem[] = [
   { id: 'health', label: 'Health', href: '/health', requiredResource: 'infrastructure' },
   { id: 'tenants', label: 'Tenants', href: '/tenants', requiredResource: 'tenants' },
+  { id: 'users', label: 'Users', href: '/users', requiredResource: 'users' },
   { id: 'compliance', label: 'Compliance', href: '/compliance', requiredResource: 'compliance' },
   { id: 'taxonomy', label: 'Taxonomy', href: '/taxonomy', requiredResource: 'taxonomy' },
   { id: 'audit-log', label: 'Audit Log', href: '/audit-log', requiredResource: 'audit-log' },
@@ -115,7 +123,8 @@ const ADMIN_NAV_ITEMS: NavigationItem[] = [
 /** Icon map for admin nav items */
 const NAV_ICONS: Record<string, React.ReactNode> = {
   health: ActivityIcon,
-  tenants: UsersIcon,
+  tenants: BuildingIcon,
+  users: UsersIcon,
   compliance: ShieldIcon,
   taxonomy: TreeIcon,
   'audit-log': FileTextIcon,

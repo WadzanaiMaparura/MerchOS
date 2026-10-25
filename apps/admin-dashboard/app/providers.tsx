@@ -3,6 +3,8 @@
 import React, { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, configureCognitoAuth } from '@merch-os/auth';
+import { ToastProvider } from '@merch-os/ui';
+import { ApiClientProvider } from './ApiClientProvider';
 
 /**
  * Configure Amplify Auth against the Admin Cognito Pool.
@@ -51,7 +53,11 @@ export function Providers({ children }: ProvidersProps) {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        {children}
+        <ApiClientProvider>
+          <ToastProvider>
+            {children}
+          </ToastProvider>
+        </ApiClientProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

@@ -1,0 +1,9 @@
+{
+  "name": "image-intelligence-sharp-layer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lambda layer providing the Sharp image-processing library (linux-x64 native binary) for the Image Intelligence Engine.",
+  "dependencies": {
+    "sharp": "0.33.5"
+  }
+}

@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" font-family="Segoe UI, Arial, sans-serif">
+  <defs>
+    <style>
+      .bg    { fill:#ffffff; }
+      .title { fill:#1f2340; font-size:30px; font-weight:700; }
+      .sub   { fill:#6b7280; font-size:15px; }
+      .grp   { fill:#ffffff; stroke:#9b9b9b; stroke-width:1; }
+      .plat  { fill:#fcfce3; stroke:#cfcf7a; stroke-width:1.2; }
+      .box   { fill:#eef0fb; stroke:#8a7fe0; stroke-width:1; }
+      .store { fill:#eef0fb; stroke:#8a7fe0; stroke-width:1; }
+      .gtitle{ fill:#444; font-size:12px; text-anchor:middle; font-weight:600; }
+      .flbl  { fill:#8a8a8a; font-size:10px; text-anchor:middle; }
+      .btxt  { fill:#333; font-size:10.5px; text-anchor:middle; }
+      .line  { stroke:#8a8a8a; stroke-width:1.4; fill:none; }
+      .dash  { stroke:#8a8a8a; stroke-width:1.4; fill:none; stroke-dasharray:4 3; }
+    </style>
+    <marker id="arrow" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#8a8a8a"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1280" height="720"/>
+
+  <!-- Title -->
+  <text class="title" x="48" y="52">MerchOS — Platform Architecture</text>
+  <text class="sub" x="48" y="76">Serverless multi-tenant marketplace product management on AWS</text>
+  <line x1="48" y1="90" x2="1232" y2="90" stroke="#e5e7eb" stroke-width="1"/>
+
+  <!-- ============ PLATFORM USERS ============ -->
+  <rect class="grp" x="440" y="104" width="400" height="56" rx="4"/>
+  <text class="gtitle" x="640" y="121">Platform Users</text>
+  <rect class="box" x="462" y="128" width="108" height="24" rx="3"/><text class="btxt" x="516" y="144">Seller</text>
+  <rect class="box" x="586" y="128" width="108" height="24" rx="3"/><text class="btxt" x="640" y="144">Support</text>
+  <rect class="box" x="710" y="128" width="108" height="24" rx="3"/><text class="btxt" x="764" y="144">Admin</text>
+
+  <!-- ============ MERCHOS PLATFORM ============ -->
+  <rect class="plat" x="40" y="188" width="1200" height="400" rx="5"/>
+  <text class="gtitle" x="640" y="206" font-size="13">MerchOS Platform (AWS)</text>
+
+  <!-- Frontend -->
+  <text class="flbl" x="640" y="224">Frontend — Next.js 14 on Amplify</text>
+  <rect class="box" x="540" y="230" width="100" height="34" rx="3"/><text class="btxt" x="590" y="244">Seller</text><text class="btxt" x="590" y="257">Dashboard</text>
+  <rect class="box" x="648" y="230" width="100" height="34" rx="3"/><text class="btxt" x="698" y="244">Admin</text><text class="btxt" x="698" y="257">Dashboard</text>
+
+  <!-- API Gateway -->
+  <rect class="box" x="560" y="284" width="168" height="36" rx="3"/><text class="btxt" x="644" y="299">API Gateway (HTTP APIs)</text><text class="btxt" x="644" y="312">+ Cognito JWT Authorizer</text>
+
+  <!-- Intelligence Layer -->
+  <rect class="grp" x="60" y="344" width="548" height="104" rx="4"/>
+  <text class="gtitle" x="334" y="360">Intelligence Layer</text>
+  <rect class="box" x="72" y="368" width="102" height="40" rx="3"/><text class="btxt" x="123" y="384">Product Intel</text><text class="btxt" x="123" y="397">(Bedrock·Claude 3)</text>
+  <rect class="box" x="180" y="368" width="102" height="40" rx="3"/><text class="btxt" x="231" y="382">Supplier Intel</text><text class="btxt" x="231" y="393" font-size="8.5">CSV·PDF·ZIP·img·</text><text class="btxt" x="231" y="403" font-size="8.5">URL·WhatsApp·OCR</text>
+  <rect class="box" x="288" y="368" width="106" height="40" rx="3"/><text class="btxt" x="341" y="384">Image Pipeline</text><text class="btxt" x="341" y="397">(Rekognition·Sharp)</text>
+  <rect class="box" x="400" y="368" width="94" height="40" rx="3"/><text class="btxt" x="447" y="384">Marketplace</text><text class="btxt" x="447" y="397">Adapters</text>
+  <rect class="box" x="500" y="368" width="96" height="40" rx="3"/><text class="btxt" x="548" y="384">Validation</text><text class="btxt" x="548" y="397">Engine</text>
+  <text class="flbl" x="334" y="438">Image Pipeline: Rekognition + Sharp baseline (hero image · per-channel resize) · Bedrock Nova Canvas (image-to-image) enhances weak photos</text>
+
+  <!-- Core Business Layer -->
+  <rect class="grp" x="672" y="344" width="548" height="104" rx="4"/>
+  <text class="gtitle" x="946" y="362">Core Business Layer</text>
+  <rect class="box" x="688" y="372" width="124" height="44" rx="3"/><text class="btxt" x="750" y="390">Product Service</text><text class="btxt" x="750" y="404">(canonical + lifecycle)</text>
+  <rect class="box" x="822" y="372" width="112" height="44" rx="3"/><text class="btxt" x="878" y="397">Inventory Service</text>
+  <rect class="box" x="944" y="372" width="112" height="44" rx="3"/><text class="btxt" x="1000" y="390">Export /</text><text class="btxt" x="1000" y="404">Publishing</text>
+  <rect class="box" x="1066" y="372" width="138" height="44" rx="3"/><text class="btxt" x="1135" y="397">Auth &amp; RBAC</text>
+
+  <!-- Data Layer -->
+  <rect class="grp" x="60" y="464" width="548" height="108" rx="4"/>
+  <text class="gtitle" x="334" y="482">Data Layer</text>
+  <g>
+    <ellipse class="store" cx="150" cy="506" rx="46" ry="9"/>
+    <path class="store" d="M104,506 v30 a46,9 0 0 0 92,0 v-30"/>
+    <ellipse class="store" cx="150" cy="506" rx="46" ry="9" fill="#eef0fb"/>
+    <text class="btxt" x="150" y="526">DynamoDB</text>
+  </g>
+  <g>
+    <ellipse class="store" cx="290" cy="506" rx="46" ry="9"/>
+    <path class="store" d="M244,506 v30 a46,9 0 0 0 92,0 v-30"/>
+    <ellipse class="store" cx="290" cy="506" rx="46" ry="9" fill="#eef0fb"/>
+    <text class="btxt" x="290" y="526">Amazon S3</text>
+  </g>
+  <rect class="box" x="400" y="496" width="140" height="40" rx="3"/><text class="btxt" x="470" y="520">Cognito User Pool</text>
+
+  <!-- Orchestration -->
+  <rect class="grp" x="672" y="464" width="548" height="108" rx="4"/>
+  <text class="gtitle" x="946" y="482">Orchestration</text>
+  <rect class="box" x="688" y="494" width="140" height="44" rx="3"/><text class="btxt" x="758" y="520">SQS FIFO + DLQ</text>
+  <rect class="box" x="840" y="494" width="150" height="44" rx="3"/><text class="btxt" x="915" y="514">Step Functions</text><text class="btxt" x="915" y="528">(ingestion workflow)</text>
+  <rect class="box" x="1002" y="494" width="200" height="44" rx="3"/><text class="btxt" x="1102" y="520">EventBridge</text>
+
+  <!-- ============ EXTERNAL SYSTEMS ============ -->
+  <rect class="grp" x="40" y="612" width="1200" height="78" rx="4"/>
+  <text class="gtitle" x="640" y="630">External Systems</text>
+  <rect class="box" x="70" y="644" width="150" height="30" rx="3"/><text class="btxt" x="145" y="663">WooCommerce</text>
+  <rect class="box" x="238" y="644" width="150" height="30" rx="3"/><text class="btxt" x="313" y="663">Amazon</text>
+  <rect class="box" x="406" y="644" width="150" height="30" rx="3"/><text class="btxt" x="481" y="663">Takealot</text>
+  <rect class="box" x="574" y="644" width="150" height="30" rx="3"/><text class="btxt" x="649" y="663">Shopify</text>
+  <rect class="box" x="742" y="644" width="150" height="30" rx="3"/><text class="btxt" x="817" y="663">Makro</text>
+  <rect class="box" x="910" y="644" width="300" height="30" rx="3"/><text class="btxt" x="1060" y="663">Suppliers (CSV · PDF · image · URL · WhatsApp)</text>
+  <text class="flbl" x="1060" y="686">URL crawl also sources existing product images online</text>
+
+  <!-- ============ CONNECTORS ============ -->
+  <!-- users -> frontend -->
+  <path class="line" d="M516,152 V170 H590 V230" marker-end="url(#arrow)"/>
+  <path class="line" d="M640,152 V200 H644 V284 M640,170 H698 V230" marker-end="url(#arrow)"/>
+  <path class="line" d="M764,152 V170 H698" />
+  <!-- frontend -> gateway -->
+  <path class="line" d="M644,264 V284" marker-end="url(#arrow)"/>
+  <!-- gateway -> intelligence & core -->
+  <path class="line" d="M580,302 H334 V344" marker-end="url(#arrow)"/>
+  <path class="line" d="M728,302 H946 V344" marker-end="url(#arrow)"/>
+  <!-- gateway -> cognito (dashed) -->
+  <path class="dash" d="M560,314 H470 V496" marker-end="url(#arrow)"/>
+  <!-- intelligence -> data -->
+  <path class="line" d="M231,408 V456 V464" marker-end="url(#arrow)"/>
+  <!-- core -> orchestration -->
+  <path class="line" d="M878,416 V440 H758 V494" marker-end="url(#arrow)"/>
+  <!-- SQS/SFN -> product service -->
+  <path class="line" d="M915,494 V452 H750 V416" marker-end="url(#arrow)"/>
+  <!-- suppliers -> supplier intel -->
+  <path class="line" d="M1060,644 V604 H231 V408" marker-end="url(#arrow)"/>
+  <!-- export -> external -->
+  <path class="line" d="M1000,416 V588 H481 V644" marker-end="url(#arrow)"/>
+</svg>

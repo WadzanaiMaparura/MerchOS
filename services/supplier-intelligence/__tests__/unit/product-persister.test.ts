@@ -170,7 +170,7 @@ describe('persistProducts', () => {
     expect(batchCalls).toHaveLength(1);
   });
 
-  it('sets lifecycleState to DRAFT on every written product', async () => {
+  it("sets lifecycleState to 'draft' (canonical lowercase) on every written product", async () => {
     const params = makeBaseParams();
 
     await persistProducts(params);
@@ -180,7 +180,9 @@ describe('persistProducts', () => {
 
     expect(requestItems).toHaveLength(1);
     const item = requestItems[0]!.PutRequest!.Item!;
-    expect(item['lifecycleState']).toBe('DRAFT');
+    // Must match the persisted CanonicalProduct lifecycle subset used by
+    // ProductService/repository (lowercase), not the uppercase pipeline state.
+    expect(item['lifecycleState']).toBe('draft');
   });
 
   it('attaches importMetadata with all required fields', async () => {
@@ -197,7 +199,9 @@ describe('persistProducts', () => {
 
     const batchCalls = ddbMock.commandCalls(BatchWriteCommand);
     const item = batchCalls[0]!.args[0].input.RequestItems!['products-test']![0]!.PutRequest!.Item!;
-    const meta = item['importMetadata'] as ImportMetadata;
+    // Canonical shape: importMetadata lives inside content.attributes.
+    const content = item['content'] as { attributes: Record<string, unknown> };
+    const meta = content.attributes['importMetadata'] as ImportMetadata;
 
     expect(meta.sourceImportJobId).toBe('job-001');
     expect(meta.sourceSupplierId).toBe('sup-001');
@@ -220,11 +224,48 @@ describe('persistProducts', () => {
 
     const batchCalls = ddbMock.commandCalls(BatchWriteCommand);
     const item = batchCalls[0]!.args[0].input.RequestItems!['products-test']![0]!.PutRequest!.Item!;
-    const meta = item['importMetadata'] as ImportMetadata;
+    const content = item['content'] as { attributes: Record<string, unknown> };
+    const meta = content.attributes['importMetadata'] as ImportMetadata;
 
     expect(meta.flaggedForReview).toBe(true);
     expect(meta.duplicateOf).toBe('existing-product-id');
     expect(meta.ocrConfidence).toBe(0.65);
+  });
+
+  it('writes the canonical product shape (nested content.sku + unified GSI1)', async () => {
+    const params = makeBaseParams({
+      products: [
+        makeProduct({
+          productId: 'prod-canon',
+          record: {
+            title: 'Canonical Widget',
+            sku: 'SKU-CANON',
+            description: 'desc',
+            brand: 'Acme',
+          } as ProductToPersist['record'],
+        }),
+      ],
+    });
+
+    await persistProducts(params);
+
+    const batchCalls = ddbMock.commandCalls(BatchWriteCommand);
+    const item = batchCalls[0]!.args[0].input.RequestItems!['products-test']![0]!.PutRequest!.Item!;
+    const content = item['content'] as { sku: string; title: string; brand: string; longDescription: string | null };
+
+    // SKU is nested under content (NOT a flat top-level field), matching CanonicalProduct.
+    expect(content.sku).toBe('SKU-CANON');
+    expect(content.title).toBe('Canonical Widget');
+    expect(content.brand).toBe('Acme');
+    expect(content.longDescription).toBe('desc');
+    expect(item['sku']).toBeUndefined();
+
+    // Unified GSI1 layout — identical to ProductRepository.toItem.
+    expect(item['GSI1PK']).toBe('TENANT#tenant-abc#SKU');
+    expect(item['GSI1SK']).toBe('SKU#SKU-CANON');
+
+    // Canonical lowercase lifecycle subset.
+    expect(item['lifecycleState']).toBe('draft');
   });
 
   it('uses PK=TENANT#{tenantId} and SK=PRODUCT#{productId} format', async () => {
@@ -476,17 +517,25 @@ describe('persistProducts', () => {
 
     const batchCalls = ddbMock.commandCalls(BatchWriteCommand);
     const item = batchCalls[0]!.args[0].input.RequestItems!['products-test']![0]!.PutRequest!.Item!;
+    // Canonical shape: descriptive fields live under content; price under commercial;
+    // source category is carried as a canonical attribute.
+    const content = item['content'] as {
+      title: string;
+      sku: string;
+      longDescription: string | null;
+      brand: string;
+      attributes: Record<string, unknown>;
+    };
 
-    expect(item['title']).toBe('Running Shoes');
-    expect(item['sku']).toBe('RS-100');
-    expect(item['description']).toBe('Great shoes');
-    expect(item['brand']).toBe('Nike');
-    expect(item['category']).toBe('Footwear');
-    expect(item['supplierId']).toBe('sup-001');
+    expect(content.title).toBe('Running Shoes');
+    expect(content.sku).toBe('RS-100');
+    expect(content.longDescription).toBe('Great shoes');
+    expect(content.brand).toBe('Nike');
+    expect(content.attributes['category']).toBe('Footwear');
     expect(item['tenantId']).toBe('tenant-abc');
   });
 
-  it('sets GSI keys for SKU and supplier lookup', async () => {
+  it('sets the unified canonical GSI1 keys for SKU lookup', async () => {
     const record = { title: 'Blue Shirt', sku: 'SHIRT-42', description: 'Nice shirt' };
     const params = makeBaseParams({
       products: [makeProduct({ record, productId: 'prod-shirt' })],
@@ -497,8 +546,13 @@ describe('persistProducts', () => {
     const batchCalls = ddbMock.commandCalls(BatchWriteCommand);
     const item = batchCalls[0]!.args[0].input.RequestItems!['products-test']![0]!.PutRequest!.Item!;
 
-    expect(item['GSI1PK']).toBe('TENANT#tenant-abc#SKU#SHIRT-42');
-    expect(item['GSI2PK']).toBe('TENANT#tenant-abc#SUPPLIER#sup-001');
+    // Unified layout — identical to ProductRepository.toItem so the API's
+    // findBySku and the import detector resolve to the same records.
+    expect(item['GSI1PK']).toBe('TENANT#tenant-abc#SKU');
+    expect(item['GSI1SK']).toBe('SKU#SHIRT-42');
+    // The old per-supplier GSI2 attributes are no longer written (the Products
+    // table has no GSI2); nothing should depend on them.
+    expect(item['GSI2PK']).toBeUndefined();
   });
 
   // -------------------------------------------------------------------------

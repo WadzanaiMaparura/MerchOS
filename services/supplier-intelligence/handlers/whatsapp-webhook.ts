@@ -148,6 +148,19 @@ export function verifyHmacSignature(rawBody: string, signatureHeader: string, ap
   }
 }
 
+/**
+ * Constant-time comparison of two UTF-8 strings. Returns false on any length
+ * mismatch without leaking timing information about matching-prefix length.
+ */
+export function timingSafeStringEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, 'utf8');
+  const bufB = Buffer.from(b, 'utf8');
+  if (bufA.length !== bufB.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
 // ---------------------------------------------------------------------------
 // Payload Extraction
 // ---------------------------------------------------------------------------
@@ -281,9 +294,18 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     };
   }
 
-  // Step 1: Validate HMAC signature
-  const rawBody = event.body ?? '';
-  const signatureHeader = event.headers['x-hub-signature-256'] ?? '';
+  // Step 1: Validate HMAC signature.
+  // API Gateway (HTTP API v2) may base64-encode the body depending on content
+  // type. WhatsApp signs the raw bytes, so we MUST decode before computing the
+  // HMAC — otherwise signature verification fails for legitimate requests (and
+  // any comparison would be over the wrong bytes).
+  const rawBody = event.isBase64Encoded && event.body
+    ? Buffer.from(event.body, 'base64').toString('utf8')
+    : event.body ?? '';
+  // Header lookup is case-insensitive-safe: HTTP API lowercases header keys,
+  // but fall back to the canonical casing defensively.
+  const signatureHeader =
+    event.headers['x-hub-signature-256'] ?? event.headers['X-Hub-Signature-256'] ?? '';
 
   if (!verifyHmacSignature(rawBody, signatureHeader, appSecret)) {
     logger.warn('Invalid HMAC signature on WhatsApp webhook');
@@ -470,7 +492,7 @@ function handleVerificationChallenge(event: APIGatewayProxyEventV2): APIGatewayP
   const challenge = event.queryStringParameters?.['hub.challenge'];
   const verifyToken = process.env['WHATSAPP_VERIFY_TOKEN'];
 
-  if (mode === 'subscribe' && token === verifyToken) {
+  if (mode === 'subscribe' && verifyToken && token && timingSafeStringEqual(token, verifyToken)) {
     logger.info('WhatsApp webhook verification successful');
     return {
       statusCode: 200,
@@ -479,7 +501,10 @@ function handleVerificationChallenge(event: APIGatewayProxyEventV2): APIGatewayP
     };
   }
 
-  logger.warn('WhatsApp webhook verification failed', { mode, tokenMatch: token === verifyToken });
+  logger.warn('WhatsApp webhook verification failed', {
+    mode,
+    tokenMatch: !!(verifyToken && token && timingSafeStringEqual(token, verifyToken)),
+  });
   return {
     statusCode: 403,
     headers: { 'Content-Type': 'application/json' },

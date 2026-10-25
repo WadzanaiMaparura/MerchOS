@@ -83,9 +83,24 @@ export {
   useProductSearch,
   useProductExport,
   useProductUpload,
-  useImageUpload,
-  useSetHeroImage,
 } from './hooks/useProducts';
+
+// Image Intelligence Engine hooks (async image pipeline)
+export {
+  imageKeys,
+  useRequestUploadUrl,
+  useStartImageProcessing,
+  useImageJob,
+  useImageSignedUrl,
+} from './hooks/useImageIntelligence';
+export type {
+  ImageJobStatus,
+  ImageJob,
+  ImageVariant,
+  ImageModeration,
+  UploadUrlResponse,
+  SignedUrlResponse,
+} from './hooks/useImageIntelligence';
 
 // Admin Health hooks
 export {
@@ -104,6 +119,27 @@ export {
   useActivateTenant,
 } from './hooks/useAdminTenants';
 export type { TenantListParams } from './hooks/useAdminTenants';
+
+// Admin Users hooks (Category 2 auth endpoints — ADR-005)
+export {
+  adminUserKeys,
+  useAdminUsers,
+  useInviteUser,
+  useUpdateUserRole,
+  useDisableUser,
+  useDeleteUser,
+} from './hooks/useAdminUsers';
+export type {
+  AdminUserSummary,
+  ListUsersResponse,
+  ListUsersParams,
+  InviteUserPayload,
+  InviteUserResponse,
+  UpdateUserRolePayload,
+  UpdateUserRoleResponse,
+  DisableUserPayload,
+  DeleteUserPayload,
+} from './hooks/useAdminUsers';
 
 // Admin Compliance hooks
 export {

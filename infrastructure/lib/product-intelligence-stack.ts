@@ -69,6 +69,13 @@ export class ProductIntelligenceStack extends cdk.Stack {
       `${ssmPrefix}/eventbridge/bus-arn`,
     );
 
+    // Bus name is required by the handler code, which passes it as the
+    // EventBusName on PutEvents. Foundation exports it alongside the ARN.
+    const eventBusName = ssm.StringParameter.valueForStringParameter(
+      this,
+      `${ssmPrefix}/eventbridge/bus-name`,
+    );
+
     // Reconstitute the KMS key from imported ARN
     const platformKey = kms.Key.fromKeyArn(this, 'ImportedPlatformKey', platformKeyArn);
 
@@ -133,7 +140,13 @@ export class ProductIntelligenceStack extends cdk.Stack {
 
     const commonEnv: Record<string, string> = {
       ENVIRONMENT: env,
+      // Handler code reads PRODUCT_INTELLIGENCE_TABLE; keep TABLE_NAME too for
+      // compatibility/observability. Both point at the same table.
+      PRODUCT_INTELLIGENCE_TABLE: this.table.tableName,
       TABLE_NAME: this.table.tableName,
+      // Handler code reads EVENT_BUS_NAME and passes it as PutEvents EventBusName.
+      // Keep EVENT_BUS_ARN as well for IAM/reference parity.
+      EVENT_BUS_NAME: eventBusName,
       EVENT_BUS_ARN: eventBusArn,
       POWERTOOLS_SERVICE_NAME: 'product-intelligence',
       LOG_LEVEL: env === 'production' ? 'WARN' : 'DEBUG',
@@ -278,7 +291,12 @@ export class ProductIntelligenceStack extends cdk.Stack {
       'Generate',
       path.join(handlersPath, 'generate.ts'),
       [dynamoReadWritePolicy, bedrockInvokePolicy, eventBusPutEventsPolicy, kmsPolicy],
-      { timeout: cdk.Duration.seconds(60), memorySize: 512 },
+      // Timeout aligned to the API Gateway HTTP API integration hard cap (29s).
+      // A longer Lambda timeout (was 60s) only wastes compute and risks orphan
+      // writes AFTER the client has already received a 504. Long/batch
+      // generations must use the async batch endpoint (300s), not this one.
+      // See Gap Register G11 for the async-job roadmap.
+      { timeout: cdk.Duration.seconds(29), memorySize: 512 },
     );
 
     // POST /intelligence/batch — needs DynamoDB R/W, Bedrock, EventBridge, KMS

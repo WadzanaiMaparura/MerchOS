@@ -2,15 +2,22 @@
 
 import React, { useCallback, useMemo, useState } from 'react';
 import { useRole } from '@merch-os/auth';
-import { useImageUpload, useSetHeroImage } from '@merch-os/api-client';
+import {
+  useRequestUploadUrl,
+  useStartImageProcessing,
+  useImageJob,
+  type ImageJob,
+  type ImageVariant,
+} from '@merch-os/api-client';
 import { FileUpload, ModerationBadge, Badge, Alert } from '@merch-os/ui';
-import type { ImageReference, ModerationStatus, ChannelId } from '@merch-os/types';
+import type { ImageReference, ChannelId } from '@merch-os/types';
+import { VariantThumbnail } from './VariantThumbnail';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const MAX_IMAGES = 15;
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
-const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
 
 const CHANNEL_LABELS: Record<ChannelId, string> = {
   takealot: 'Takealot',
@@ -21,42 +28,52 @@ const CHANNEL_LABELS: Record<ChannelId, string> = {
   custom: 'Custom',
 };
 
+/** Maps an Image_Job status to a human sentence for the ARIA live region. */
+const STATUS_MESSAGE: Record<ImageJob['status'], string> = {
+  QUEUED: 'Image queued for processing…',
+  PROCESSING: 'Processing image (moderation, hero, variants)…',
+  COMPLETED: 'Image processing complete.',
+  FAILED: 'Image processing failed.',
+  REJECTED: 'Image rejected by content moderation.',
+};
+
 // ─── Props ───────────────────────────────────────────────────────────────────
 
 export interface ProductImageGalleryProps {
   /** The product ID these images belong to */
   productId: string;
-  /** The list of images on the product */
+  /** Existing processed images on the product (canonical content.imageRefs). */
   images: ImageReference[];
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
 /**
- * ProductImageGallery — Reusable component for managing product images.
+ * ProductImageGallery — manages product images via the Image Intelligence Engine.
  *
- * Features:
- * - Upload images (JPEG, PNG, WebP up to 10 MB) for editor+ roles
- * - Display moderation status badge (APPROVED, REJECTED, PENDING)
- * - Hero image designation (only APPROVED images)
- * - Upscale indicator showing triggering channel
- * - Enforces max 15 images per product
- * - Error messages for upload failures
+ * Async flow (Phase 7, Option 1):
+ *   1. request a presigned upload URL
+ *   2. PUT the file bytes directly to S3
+ *   3. start the processing workflow → imageJobId
+ *   4. poll the Image_Job until terminal, surfacing status + moderation outcome
+ *   5. render per-channel variants served via CloudFront signed URLs
  *
- * Validates: Requirements 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7
+ * Validates: Requirements 1.*, 2.4, 3.4, 4.*, 7.1
  */
 export function ProductImageGallery({ productId, images }: ProductImageGalleryProps) {
   const role = useRole();
   const canUpload = role === 'editor' || role === 'admin' || role === 'owner';
   const isAtLimit = images.length >= MAX_IMAGES;
 
-  const imageUpload = useImageUpload();
-  const setHeroImage = useSetHeroImage();
+  const requestUploadUrl = useRequestUploadUrl();
+  const startProcessing = useStartImageProcessing();
 
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [heroError, setHeroError] = useState<string | null>(null);
+  const [activeJobId, setActiveJobId] = useState<string | undefined>(undefined);
+  const [isUploading, setIsUploading] = useState(false);
 
-  // Sort images: hero first, then by uploadedAt descending
+  const { data: job } = useImageJob(activeJobId);
+
   const sortedImages = useMemo(() => {
     return [...images].sort((a, b) => {
       if (a.isHero && !b.isHero) return -1;
@@ -65,63 +82,65 @@ export function ProductImageGallery({ productId, images }: ProductImageGalleryPr
     });
   }, [images]);
 
+  // ─── Upload → process (async pipeline) ─────────────────────────────────────
+
   const handleFilesSelected = useCallback(
-    (files: File[]) => {
+    async (files: File[]) => {
       setUploadError(null);
 
       if (isAtLimit) {
-        setUploadError(`Maximum of ${MAX_IMAGES} images reached. Remove an image before uploading more.`);
+        setUploadError(
+          `Maximum of ${MAX_IMAGES} images reached. Remove an image before uploading more.`,
+        );
         return;
       }
 
       const file = files[0];
       if (!file) return;
 
-      imageUpload.mutate(
-        { productId, file },
-        {
-          onError: (error) => {
-            const message = error.message || 'Upload failed due to a network error. Please try again.';
-            setUploadError(message);
-          },
-          onSuccess: () => {
-            setUploadError(null);
-          },
+      setIsUploading(true);
+      try {
+        // 1. Presigned S3 PUT URL.
+        const presign = await requestUploadUrl.mutateAsync({
+          productId,
+          fileName: file.name,
+          contentType: file.type,
+          fileSizeBytes: file.size,
+        });
+
+        // 2. PUT the file bytes directly to S3 (bypasses our API entirely).
+        const put = await fetch(presign.uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': file.type },
+          body: file,
+        });
+        if (!put.ok) {
+          throw new Error(`Upload to storage failed (${put.status})`);
         }
-      );
-    },
-    [productId, imageUpload, isAtLimit]
-  );
 
-  const handleSetHero = useCallback(
-    (image: ImageReference) => {
-      setHeroError(null);
+        // 3. Start the processing workflow for the uploaded source key.
+        const started = await startProcessing.mutateAsync({
+          productId,
+          sourceKeys: [presign.s3Key],
+        });
 
-      if (image.moderationStatus !== 'APPROVED') {
-        setHeroError('Only images with APPROVED moderation status can be set as the hero image.');
-        return;
+        // 4. Poll the job for status/moderation/variants.
+        setActiveJobId(started.imageJobId);
+      } catch (err: unknown) {
+        const message =
+          err && typeof err === 'object' && 'message' in err
+            ? (err as { message: string }).message
+            : 'Upload failed. Please try again.';
+        setUploadError(message);
+      } finally {
+        setIsUploading(false);
       }
-
-      setHeroImage.mutate(
-        { productId, imageId: image.imageId },
-        {
-          onError: (error) => {
-            setHeroError(error.message || 'Failed to set hero image. Please try again.');
-          },
-          onSuccess: () => {
-            setHeroError(null);
-          },
-        }
-      );
     },
-    [productId, setHeroImage]
+    [productId, isAtLimit, requestUploadUrl, startProcessing],
   );
 
-  // Determine which channels triggered upscale for a given image
-  const getUpscaleChannels = useCallback((image: ImageReference): ChannelId[] => {
-    if (!image.isUpscaled) return [];
-    return Object.keys(image.channelKeys) as ChannelId[];
-  }, []);
+  const jobInFlight =
+    isUploading || (job != null && (job.status === 'QUEUED' || job.status === 'PROCESSING'));
 
   return (
     <section aria-labelledby="image-gallery-heading" className="flex flex-col gap-4">
@@ -129,21 +148,13 @@ export function ProductImageGallery({ productId, images }: ProductImageGalleryPr
         Images ({images.length}/{MAX_IMAGES})
       </h2>
 
-      {/* Upload error */}
       {uploadError && (
         <Alert variant="error" dismissible onDismiss={() => setUploadError(null)}>
           {uploadError}
         </Alert>
       )}
 
-      {/* Hero designation error */}
-      {heroError && (
-        <Alert variant="error" dismissible onDismiss={() => setHeroError(null)}>
-          {heroError}
-        </Alert>
-      )}
-
-      {/* File Upload area (editor+ only) */}
+      {/* Upload area (editor+ only) */}
       {canUpload && (
         <div className="max-w-md">
           <FileUpload
@@ -152,11 +163,11 @@ export function ProductImageGallery({ productId, images }: ProductImageGalleryPr
             maxSizeBytes={MAX_FILE_SIZE_BYTES}
             multiple={false}
             onFilesSelected={handleFilesSelected}
-            disabled={isAtLimit || imageUpload.isPending}
+            disabled={isAtLimit || jobInFlight}
             hint={
               isAtLimit
                 ? `Limit of ${MAX_IMAGES} images reached`
-                : 'JPEG, PNG, or WebP up to 10 MB'
+                : 'JPEG, PNG, WebP, or HEIC up to 10 MB'
             }
             error={
               isAtLimit
@@ -165,17 +176,24 @@ export function ProductImageGallery({ productId, images }: ProductImageGalleryPr
             }
             aria-label="Upload product image"
           />
-          {imageUpload.isPending && (
-            <p className="mt-2 text-sm text-gray-500" aria-live="polite">
-              Uploading image…
-            </p>
-          )}
         </div>
       )}
 
-      {/* Image Gallery Grid */}
+      {/* Processing status — announced to assistive tech */}
+      {job && (
+        <div aria-live="polite">
+          <ImageJobStatus job={job} />
+        </div>
+      )}
+      {isUploading && !job && (
+        <p className="text-sm text-gray-500" aria-live="polite">
+          Uploading image…
+        </p>
+      )}
+
+      {/* Existing processed images */}
       {sortedImages.length === 0 ? (
-        <p className="text-sm text-gray-500">No images uploaded yet.</p>
+        <p className="text-sm text-gray-500">No images processed yet.</p>
       ) : (
         <div
           className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
@@ -183,14 +201,7 @@ export function ProductImageGallery({ productId, images }: ProductImageGalleryPr
           aria-label="Product images"
         >
           {sortedImages.map((image) => (
-            <ImageThumbnail
-              key={image.imageId}
-              image={image}
-              canUpload={canUpload}
-              upscaleChannels={getUpscaleChannels(image)}
-              onSetHero={handleSetHero}
-              isSettingHero={setHeroImage.isPending}
-            />
+            <ExistingImageThumbnail key={image.imageId} image={image} />
           ))}
         </div>
       )}
@@ -198,112 +209,127 @@ export function ProductImageGallery({ productId, images }: ProductImageGalleryPr
   );
 }
 
-// ─── ImageThumbnail Sub-component ────────────────────────────────────────────
+// ─── ImageJobStatus ──────────────────────────────────────────────────────────
 
-interface ImageThumbnailProps {
-  image: ImageReference;
-  canUpload: boolean;
-  upscaleChannels: ChannelId[];
-  onSetHero: (image: ImageReference) => void;
-  isSettingHero: boolean;
+/**
+ * Renders the current Image_Job status, including moderation rejection reasons
+ * and whether AI enhancement was applied.
+ */
+export function ImageJobStatus({ job }: { job: ImageJob }) {
+  const message = STATUS_MESSAGE[job.status];
+
+  if (job.status === 'REJECTED') {
+    return (
+      <Alert variant="error" title="Image rejected by moderation">
+        {job.moderation?.rejectedLabels?.length
+          ? `Rejected for: ${job.moderation.rejectedLabels.join(', ')}.`
+          : 'This image violates marketplace content policies.'}
+      </Alert>
+    );
+  }
+
+  if (job.status === 'FAILED') {
+    return (
+      <Alert variant="error" title="Image processing failed">
+        {job.error?.message ?? 'Processing failed. Please try again.'}
+      </Alert>
+    );
+  }
+
+  if (job.status === 'COMPLETED') {
+    return (
+      <div className="flex flex-col gap-2">
+        <p className="text-sm text-green-700">{message}</p>
+        {job.reviewRecommended && (
+          <Alert variant="warning">
+            This image was flagged for manual review (low background-removal confidence).
+          </Alert>
+        )}
+        {job.enhancement?.applied && (
+          <p className="text-xs text-gray-500">AI enhancement applied to improve a weak photo.</p>
+        )}
+        {job.variants.length > 0 && <VariantGallery variants={job.variants} />}
+      </div>
+    );
+  }
+
+  // QUEUED / PROCESSING
+  return (
+    <p className="flex items-center gap-2 text-sm text-gray-600">
+      <span className="h-3 w-3 animate-pulse rounded-full bg-blue-500" aria-hidden="true" />
+      {message}
+    </p>
+  );
 }
 
-function ImageThumbnail({
-  image,
-  canUpload,
-  upscaleChannels,
-  onSetHero,
-  isSettingHero,
-}: ImageThumbnailProps) {
-  // Construct the image URL from the s3Key (assuming a CDN prefix)
-  const imageUrl = `/api/assets/${image.s3Key}`;
+// ─── VariantGallery ──────────────────────────────────────────────────────────
+
+/** Renders freshly processed per-channel variants, each via a signed URL. */
+function VariantGallery({ variants }: { variants: ImageVariant[] }) {
+  return (
+    <div className="mt-2">
+      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">
+        Channel variants
+      </p>
+      <div
+        className="grid grid-cols-2 gap-3 sm:grid-cols-3"
+        role="list"
+        aria-label="Processed channel variants"
+      >
+        {variants.map((variant) => (
+          <VariantThumbnail key={`${variant.channel}-${variant.s3Key}`} variant={variant} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── ExistingImageThumbnail ──────────────────────────────────────────────────
+
+/** A previously-processed image already on the product's content.imageRefs. */
+function ExistingImageThumbnail({ image }: { image: ImageReference }) {
+  const upscaleChannels = image.isUpscaled
+    ? (Object.keys(image.channelKeys) as ChannelId[])
+    : [];
 
   return (
     <div
       role="listitem"
       className={[
-        'relative flex flex-col rounded-lg border bg-white shadow-sm overflow-hidden',
-        image.isHero ? 'ring-2 ring-blue-500 border-blue-300' : 'border-gray-200',
+        'relative flex flex-col overflow-hidden rounded-lg border bg-white shadow-sm',
+        image.isHero ? 'border-blue-300 ring-2 ring-blue-500' : 'border-gray-200',
       ].join(' ')}
     >
-      {/* Image */}
       <div className="relative aspect-square bg-gray-100">
-        <img
-          src={imageUrl}
-          alt={image.isHero ? 'Hero product image' : 'Product image'}
-          className="h-full w-full object-cover"
-          loading="lazy"
+        {/* Images are served via signed URLs; the thumbnail resolves its own. */}
+        <VariantThumbnail
+          variant={{
+            channel: 'custom',
+            s3Key: image.s3Key,
+            width: 0,
+            height: 0,
+            upscaled: image.isUpscaled,
+          }}
+          imageIdOverride={image.imageId}
+          altText={image.isHero ? 'Hero product image' : 'Product image'}
         />
-
-        {/* Moderation Status Badge - overlaid */}
-        <div className="absolute top-2 left-2">
+        <div className="absolute left-2 top-2">
           <ModerationBadge status={image.moderationStatus} />
         </div>
-
-        {/* Hero indicator */}
         {image.isHero && (
-          <div className="absolute top-2 right-2">
-            <Badge variant="info" className="text-[10px]">
-              Hero
-            </Badge>
+          <div className="absolute right-2 top-2">
+            <Badge variant="info" className="text-[10px]">Hero</Badge>
           </div>
         )}
-
-        {/* Upscale indicator */}
         {upscaleChannels.length > 0 && (
           <div className="absolute bottom-2 left-2">
             <Badge variant="neutral" className="text-[10px]">
-              <span className="flex items-center gap-1">
-                <UpscaleIcon />
-                {upscaleChannels.map((ch) => CHANNEL_LABELS[ch]).join(', ')}
-              </span>
+              Upscaled: {upscaleChannels.map((ch) => CHANNEL_LABELS[ch]).join(', ')}
             </Badge>
           </div>
         )}
       </div>
-
-      {/* Actions */}
-      {canUpload && !image.isHero && (
-        <div className="p-2">
-          <button
-            type="button"
-            onClick={() => onSetHero(image)}
-            disabled={isSettingHero}
-            className="w-full rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
-            aria-label={`Set as hero image${image.moderationStatus !== 'APPROVED' ? ' (only approved images allowed)' : ''}`}
-          >
-            Set as Hero
-          </button>
-        </div>
-      )}
-
-      {/* Hero label for current hero */}
-      {image.isHero && (
-        <div className="p-2 text-center">
-          <span className="text-xs font-medium text-blue-700">Current Hero</span>
-        </div>
-      )}
     </div>
-  );
-}
-
-// ─── Upscale Icon ────────────────────────────────────────────────────────────
-
-function UpscaleIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      className="h-3 w-3"
-      viewBox="0 0 20 20"
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path
-        fillRule="evenodd"
-        d="M5.293 7.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L6.707 7.707a1 1 0 01-1.414 0z"
-        clipRule="evenodd"
-      />
-    </svg>
   );
 }
 
