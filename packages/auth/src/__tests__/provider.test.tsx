@@ -18,12 +18,18 @@ const signInMock = vi.fn();
 const confirmSignInMock = vi.fn();
 const signOutMock = vi.fn();
 const fetchAuthSessionMock = vi.fn();
+const setUpTOTPMock = vi.fn();
+const verifyTOTPSetupMock = vi.fn();
+const updateMFAPreferenceMock = vi.fn();
 
 vi.mock('aws-amplify/auth', () => ({
   signIn: (...args: unknown[]) => signInMock(...args),
   confirmSignIn: (...args: unknown[]) => confirmSignInMock(...args),
   signOut: (...args: unknown[]) => signOutMock(...args),
   fetchAuthSession: (...args: unknown[]) => fetchAuthSessionMock(...args),
+  setUpTOTP: (...args: unknown[]) => setUpTOTPMock(...args),
+  verifyTOTPSetup: (...args: unknown[]) => verifyTOTPSetupMock(...args),
+  updateMFAPreference: (...args: unknown[]) => updateMFAPreferenceMock(...args),
 }));
 
 import { AuthProvider } from '../provider';
@@ -201,5 +207,68 @@ describe('AuthProvider.completeMfa', () => {
 
     // Still unauthenticated; no session fetch for user hydration beyond mount.
     expect(screen.getByTestId('authed').textContent).toBe('false');
+  });
+});
+
+describe('AuthProvider TOTP enrollment', () => {
+  /** Capture the context so we can call setUpTotp/verifyTotp directly. */
+  function captureCtx() {
+    let ctx: ReturnType<typeof useAuth> | undefined;
+    function Capture() {
+      ctx = useAuth();
+      return null;
+    }
+    render(
+      <AuthProvider>
+        <Capture />
+      </AuthProvider>
+    );
+    return () => ctx!;
+  }
+
+  it('setUpTotp returns the shared secret and an otpauth setup URI', async () => {
+    const getSetupUri = vi.fn(
+      (issuer: string, account: string) =>
+        new URL(`otpauth://totp/${issuer}:${account}?secret=JBSWY3DPEHPK3PXP&issuer=${issuer}`)
+    );
+    setUpTOTPMock.mockResolvedValue({ sharedSecret: 'JBSWY3DPEHPK3PXP', getSetupUri });
+
+    const getCtx = captureCtx();
+    await waitFor(() => expect(getCtx()).toBeTruthy());
+
+    const details = await getCtx().setUpTotp();
+
+    expect(setUpTOTPMock).toHaveBeenCalledTimes(1);
+    expect(getSetupUri).toHaveBeenCalledWith('MerchOS', expect.any(String));
+    expect(details.sharedSecret).toBe('JBSWY3DPEHPK3PXP');
+    expect(details.setupUri).toMatch(/^otpauth:\/\/totp\/MerchOS:/);
+    expect(details.setupUri).toContain('secret=JBSWY3DPEHPK3PXP');
+  });
+
+  it('verifyTotp verifies the code then marks TOTP as preferred', async () => {
+    verifyTOTPSetupMock.mockResolvedValue(undefined);
+    updateMFAPreferenceMock.mockResolvedValue(undefined);
+
+    const getCtx = captureCtx();
+    await waitFor(() => expect(getCtx()).toBeTruthy());
+
+    await getCtx().verifyTotp('654321');
+
+    expect(verifyTOTPSetupMock).toHaveBeenCalledWith({ code: '654321' });
+    expect(updateMFAPreferenceMock).toHaveBeenCalledWith({ totp: 'PREFERRED' });
+    // Order matters: verify must succeed before we flip the preference.
+    expect(verifyTOTPSetupMock.mock.invocationCallOrder[0]).toBeLessThan(
+      updateMFAPreferenceMock.mock.invocationCallOrder[0]
+    );
+  });
+
+  it('verifyTotp rejects on an invalid code and does not change preference', async () => {
+    verifyTOTPSetupMock.mockRejectedValue(new Error('CodeMismatchException'));
+
+    const getCtx = captureCtx();
+    await waitFor(() => expect(getCtx()).toBeTruthy());
+
+    await expect(getCtx().verifyTotp('000000')).rejects.toThrow('CodeMismatchException');
+    expect(updateMFAPreferenceMock).not.toHaveBeenCalled();
   });
 });
