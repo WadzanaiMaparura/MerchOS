@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, configureCognitoAuth } from '@merch-os/auth';
+import { ToastProvider } from '@merch-os/ui';
 import { ErrorHandlingProvider } from './components/ErrorHandlingProvider';
 
 /**
@@ -49,9 +50,11 @@ export function Providers({ children }: ProvidersProps) {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <ErrorHandlingProvider>
-          {children}
-        </ErrorHandlingProvider>
+        <ToastProvider>
+          <ErrorHandlingProvider>
+            {children}
+          </ErrorHandlingProvider>
+        </ToastProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

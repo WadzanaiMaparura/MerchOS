@@ -12,7 +12,7 @@ import {
   signOut,
   fetchAuthSession,
   confirmSignIn,
-} from '@aws-amplify/auth';
+} from 'aws-amplify/auth';
 import type { AuthContextValue, AuthUser, MfaChallengeResult } from '@merch-os/types';
 import type { SellerRole } from '@merch-os/types';
 

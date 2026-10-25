@@ -3,13 +3,17 @@
  * Uses @aws-amplify/auth v6 with SRP + PKCE flow.
  */
 
-// Configure via @aws-amplify/core's shared Amplify singleton — the same
-// singleton that @aws-amplify/auth's signIn/signUp read. (The aggregated
-// `aws-amplify` package is only a convenience re-export of this singleton and
-// is intentionally NOT used, to avoid pulling a second, version-mismatched
-// copy of @aws-amplify/core into the bundle.)
-import { Amplify } from '@aws-amplify/core';
-import { signUp as amplifySignUp, confirmSignUp as amplifyConfirmSignUp } from '@aws-amplify/auth';
+// Configure and call Amplify Auth exclusively through the aggregated
+// `aws-amplify` package. `aws-amplify` (Amplify.configure) and
+// `aws-amplify/auth` (signIn/signUp/etc.) are guaranteed by Amplify to share
+// the SAME internal @aws-amplify/core singleton. Importing the scoped
+// @aws-amplify/core and @aws-amplify/auth packages directly can bind two
+// separate Core module instances under a bundler (Next.js + transpilePackages),
+// so Amplify.configure() writes to one instance while signIn() reads an empty
+// one — surfacing as "AuthUserPoolException: Auth UserPool not configured."
+// Routing everything through the aggregate package eliminates that split.
+import { Amplify } from 'aws-amplify';
+import { signUp as amplifySignUp, confirmSignUp as amplifyConfirmSignUp } from 'aws-amplify/auth';
 
 export interface CognitoConfig {
   userPoolId: string;

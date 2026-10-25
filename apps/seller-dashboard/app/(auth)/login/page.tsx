@@ -102,10 +102,13 @@ export default function LoginPage() {
         // parameters, secret blocks, tokens or cookies. Remove once the login
         // failure root cause is confirmed.
         const diagError = err as { name?: unknown; message?: unknown; code?: unknown };
+        const diagName = typeof diagError?.name === 'string' ? diagError.name : 'UnknownError';
+        const diagMessage = typeof diagError?.message === 'string' ? diagError.message : '';
+        const diagCode = typeof diagError?.code === 'string' ? diagError.code : '';
         console.error('[MerchOS Auth Diagnostic]', {
-          name: typeof diagError?.name === 'string' ? diagError.name : undefined,
-          message: typeof diagError?.message === 'string' ? diagError.message : undefined,
-          code: typeof diagError?.code === 'string' ? diagError.code : undefined,
+          name: diagName,
+          message: diagMessage,
+          code: diagCode,
         });
 
         // Record failed attempt timestamp
@@ -122,8 +125,15 @@ export default function LoginPage() {
             'Your account has been temporarily locked due to too many failed login attempts. Please try again in 15 minutes.'
           );
         } else {
-          // Generic error message — does not reveal whether email exists (Requirement 1.3)
-          setError('Invalid email or password. Please try again.');
+          // TEMPORARY DIAGNOSTIC: surface the real exception name/message/code
+          // ON SCREEN so the underlying failure can be read without DevTools.
+          // Revert to the generic "Invalid email or password." message before
+          // this ships to production (Requirement 1.3 — no email enumeration).
+          setError(
+            `[DIAGNOSTIC] ${diagName}` +
+              (diagCode ? ` (code: ${diagCode})` : '') +
+              (diagMessage ? ` — ${diagMessage}` : '')
+          );
         }
       } finally {
         setIsSubmitting(false);
