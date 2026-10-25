@@ -85,9 +85,10 @@ export default function LoginPage() {
       try {
         const result = await login(data.email, data.password);
 
-        // If MFA challenge is returned, handle accordingly
+        // If an MFA challenge is returned, continue to the TOTP/SMS entry page.
+        // The pending challenge is held in the shared AuthProvider, so the MFA
+        // page can resolve it via completeMfa().
         if (result && 'challengeType' in result) {
-          // MFA flow — for now redirect to MFA page (future task)
           router.push('/login/mfa');
           return;
         }
