@@ -1,13 +1,19 @@
 /**
  * MFA Setup Lambda handler for POST /auth/mfa/setup.
  *
- * Implements a two-step TOTP MFA setup flow:
- * 1. Associate: Empty body → returns secret code for authenticator app QR code
- * 2. Verify: { verificationCode, session } → verifies TOTP and enables MFA
+ * Implements a two-step self-service TOTP MFA setup flow for the authenticated
+ * caller. Both steps are driven by the caller's own access token (taken from
+ * the Authorization header) — not an admin API and not a challenge session,
+ * because the user is already signed in:
+ * 1. Associate: empty body → AssociateSoftwareToken(AccessToken) → returns the
+ *    secret code for the authenticator-app QR.
+ * 2. Verify: { verificationCode } → VerifySoftwareToken(AccessToken, UserCode)
+ *    then SetUserMFAPreference(AccessToken, ...) to make TOTP the preferred
+ *    second factor.
  *
- * This is a protected endpoint — user must be authenticated via JWT authorizer.
+ * This is a protected endpoint — the JWT authorizer validates the token first.
  *
- * Requirements: NFR-2 (Admin pool: TOTP MFA required)
+ * Requirements: NFR-2 (operator TOTP MFA)
  */
 
 import middy from '@middy/core';
@@ -18,7 +24,7 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda
 import {
   AssociateSoftwareTokenCommand,
   VerifySoftwareTokenCommand,
-  AdminSetUserMFAPreferenceCommand,
+  SetUserMFAPreferenceCommand,
   InvalidParameterException,
   NotAuthorizedException,
   EnableSoftwareTokenMFAException,
@@ -33,16 +39,11 @@ import { logger, tracer, metrics } from '../../shared/middleware/powertools';
 // ---------------------------------------------------------------------------
 
 interface MfaSetupEvent extends APIGatewayProxyEventV2 {
-  body: {
-    verificationCode?: string;
-    session?: string;
-  } | null;
-}
-
-interface JwtClaims {
-  sub: string;
-  email?: string;
-  [key: string]: unknown;
+  body:
+    | {
+        verificationCode?: string;
+      }
+    | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -53,31 +54,16 @@ interface JwtClaims {
  * Core MFA setup handler logic.
  *
  * Two flows based on request body content:
- * - No body or empty body: Associate a new TOTP software token (returns secretCode)
- * - Body with verificationCode + session: Verify TOTP code and enable MFA
+ * - No body or empty body: associate a new TOTP software token (returns secretCode)
+ * - Body with verificationCode: verify the TOTP code and enable MFA
  */
 async function baseHandler(event: MfaSetupEvent): Promise<APIGatewayProxyResultV2> {
-  const userPoolId = process.env['COGNITO_TENANT_POOL_ID'];
+  // Both steps act on the caller's own session via the access token.
+  const authHeader = event.headers?.['authorization'] ?? event.headers?.['Authorization'];
+  const accessToken = authHeader?.replace(/^Bearer\s+/i, '');
 
-  if (!userPoolId) {
-    logger.error('Missing COGNITO_TENANT_POOL_ID environment variable');
-    return {
-      statusCode: 500,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        error: { code: 'INTERNAL_ERROR', message: 'Service misconfigured' },
-      }),
-    };
-  }
-
-  // Extract userId from JWT claims (API Gateway JWT authorizer)
-  const requestContext = event.requestContext as Record<string, unknown>;
-  const authorizer = requestContext['authorizer'] as Record<string, unknown> | undefined;
-  const jwt = authorizer?.['jwt'] as Record<string, unknown> | undefined;
-  const claims = jwt?.['claims'] as JwtClaims | undefined;
-
-  if (!claims?.sub) {
-    logger.error('No JWT claims found in authorizer context');
+  if (!accessToken) {
+    logger.error('No access token found in Authorization header');
     return {
       statusCode: 401,
       headers: { 'Content-Type': 'application/json' },
@@ -87,31 +73,23 @@ async function baseHandler(event: MfaSetupEvent): Promise<APIGatewayProxyResultV
     };
   }
 
-  const userId = claims.sub;
-
-  // Parse the request body — determine which step we're in
+  // Parse the request body — determine which step we're in.
   const body = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
   const verificationCode = body?.verificationCode;
-  const session = body?.session;
 
   const cognitoClient = getCognitoClient();
 
   // -------------------------------------------------------------------------
-  // Step 2: Verify TOTP code and enable MFA
+  // Step 2: Verify the TOTP code and enable MFA
   // -------------------------------------------------------------------------
-  if (verificationCode && session) {
-    return handleVerifyAndEnable(cognitoClient, {
-      userPoolId,
-      userId,
-      verificationCode,
-      session,
-    });
+  if (verificationCode) {
+    return handleVerifyAndEnable(cognitoClient, { accessToken, verificationCode });
   }
 
   // -------------------------------------------------------------------------
-  // Step 1: Associate software token — return secret for QR code
+  // Step 1: Associate software token — return the secret for the QR code
   // -------------------------------------------------------------------------
-  return handleAssociate(cognitoClient, { userId });
+  return handleAssociate(cognitoClient, { accessToken });
 }
 
 // ---------------------------------------------------------------------------
@@ -119,26 +97,27 @@ async function baseHandler(event: MfaSetupEvent): Promise<APIGatewayProxyResultV
 // ---------------------------------------------------------------------------
 
 interface AssociateParams {
-  userId: string;
+  accessToken: string;
 }
 
 async function handleAssociate(
   cognitoClient: ReturnType<typeof getCognitoClient>,
   params: AssociateParams
 ): Promise<APIGatewayProxyResultV2> {
-  const { userId } = params;
+  const { accessToken } = params;
 
   try {
+    // Associating against the caller's access token binds the new TOTP secret
+    // to the signed-in user — no challenge Session is involved for a
+    // self-service enrollment.
     const command = new AssociateSoftwareTokenCommand({
-      // When called without a session, Cognito uses the access token context.
-      // We pass no AccessToken here — the user's session drives it.
-      // For admin-initiated flows we don't need AccessToken if we pass Session from a challenge.
+      AccessToken: accessToken,
     });
 
     const response = await cognitoClient.send(command);
 
     if (!response.SecretCode) {
-      logger.error('Cognito did not return a secret code', { userId });
+      logger.error('Cognito did not return a secret code');
       return {
         statusCode: 500,
         headers: { 'Content-Type': 'application/json' },
@@ -148,19 +127,18 @@ async function handleAssociate(
       };
     }
 
-    logger.info('MFA secret code generated', { userId });
+    logger.info('MFA secret code generated');
 
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         secretCode: response.SecretCode,
-        session: response.Session,
       }),
     };
   } catch (error) {
     if (error instanceof NotAuthorizedException) {
-      logger.warn('Not authorized to associate software token', { userId });
+      logger.warn('Not authorized to associate software token');
       return {
         statusCode: 401,
         headers: { 'Content-Type': 'application/json' },
@@ -171,7 +149,6 @@ async function handleAssociate(
     }
 
     logger.error('Failed to associate software token', {
-      userId,
       error: error instanceof Error ? error.message : String(error),
     });
 
@@ -190,22 +167,20 @@ async function handleAssociate(
 // ---------------------------------------------------------------------------
 
 interface VerifyParams {
-  userPoolId: string;
-  userId: string;
+  accessToken: string;
   verificationCode: string;
-  session: string;
 }
 
 async function handleVerifyAndEnable(
   cognitoClient: ReturnType<typeof getCognitoClient>,
   params: VerifyParams
 ): Promise<APIGatewayProxyResultV2> {
-  const { userPoolId, userId, verificationCode, session } = params;
+  const { accessToken, verificationCode } = params;
 
   try {
-    // Verify the TOTP code with Cognito
+    // Verify the TOTP code against the caller's just-associated token.
     const verifyCommand = new VerifySoftwareTokenCommand({
-      Session: session,
+      AccessToken: accessToken,
       UserCode: verificationCode,
       FriendlyDeviceName: 'MerchOS Authenticator',
     });
@@ -213,7 +188,7 @@ async function handleVerifyAndEnable(
     const verifyResponse = await cognitoClient.send(verifyCommand);
 
     if (verifyResponse.Status !== 'SUCCESS') {
-      logger.warn('TOTP verification failed', { userId, status: verifyResponse.Status });
+      logger.warn('TOTP verification failed', { status: verifyResponse.Status });
       return {
         statusCode: 400,
         headers: { 'Content-Type': 'application/json' },
@@ -223,10 +198,10 @@ async function handleVerifyAndEnable(
       };
     }
 
-    // Enable TOTP MFA as preferred for this user
-    const mfaPreferenceCommand = new AdminSetUserMFAPreferenceCommand({
-      UserPoolId: userPoolId,
-      Username: userId,
+    // Make TOTP the preferred second factor for the caller (self-service — no
+    // admin privilege required since we act on the user's own access token).
+    const mfaPreferenceCommand = new SetUserMFAPreferenceCommand({
+      AccessToken: accessToken,
       SoftwareTokenMfaSettings: {
         Enabled: true,
         PreferredMfa: true,
@@ -235,7 +210,7 @@ async function handleVerifyAndEnable(
 
     await cognitoClient.send(mfaPreferenceCommand);
 
-    logger.info('MFA enabled successfully', { userId });
+    logger.info('MFA enabled successfully');
 
     return {
       statusCode: 200,
@@ -247,7 +222,7 @@ async function handleVerifyAndEnable(
     };
   } catch (error) {
     if (error instanceof CodeMismatchException) {
-      logger.warn('Invalid TOTP code provided', { userId });
+      logger.warn('Invalid TOTP code provided');
       return {
         statusCode: 400,
         headers: { 'Content-Type': 'application/json' },
@@ -258,7 +233,7 @@ async function handleVerifyAndEnable(
     }
 
     if (error instanceof EnableSoftwareTokenMFAException) {
-      logger.warn('Failed to enable software token MFA', { userId });
+      logger.warn('Failed to enable software token MFA');
       return {
         statusCode: 400,
         headers: { 'Content-Type': 'application/json' },
@@ -269,29 +244,28 @@ async function handleVerifyAndEnable(
     }
 
     if (error instanceof NotAuthorizedException) {
-      logger.warn('Not authorized to verify software token', { userId });
+      logger.warn('Not authorized to verify software token');
       return {
         statusCode: 401,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          error: { code: 'UNAUTHORIZED', message: 'Session expired, please restart MFA setup' },
+          error: { code: 'UNAUTHORIZED', message: 'Not authorized — please sign in again and restart MFA setup' },
         }),
       };
     }
 
     if (error instanceof InvalidParameterException) {
-      logger.warn('Invalid parameter for MFA verification', { userId });
+      logger.warn('Invalid parameter for MFA verification');
       return {
         statusCode: 400,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          error: { code: 'INVALID_PARAMETER', message: 'Invalid session or verification code' },
+          error: { code: 'INVALID_PARAMETER', message: 'Invalid verification code' },
         }),
       };
     }
 
     logger.error('Unexpected error during MFA verification', {
-      userId,
       error: error instanceof Error ? error.message : String(error),
     });
 

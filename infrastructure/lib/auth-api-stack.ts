@@ -261,7 +261,7 @@ export class AuthApiStack extends cdk.Stack {
         actions: [
           'cognito-idp:AssociateSoftwareToken',
           'cognito-idp:VerifySoftwareToken',
-          'cognito-idp:AdminSetUserMFAPreference',
+          'cognito-idp:SetUserMFAPreference',
         ],
         resources: [props.userPool.userPoolArn],
       }),
