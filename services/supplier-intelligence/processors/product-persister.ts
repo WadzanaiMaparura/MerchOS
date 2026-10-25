@@ -21,6 +21,7 @@ import {
   BatchWriteCommand,
   type BatchWriteCommandInput,
 } from '@aws-sdk/lib-dynamodb';
+import type { CanonicalProduct } from '@merch-os/types';
 import type { ImportMetadata, ImportJobResults, SourceType } from '../types/supplier.types';
 import type { ValidatedRecord } from '../types/validation.types';
 import { updateImportJobStatus } from '../utils/import-job-status';
@@ -137,7 +138,25 @@ export interface PersistProductsResult {
 // ---------------------------------------------------------------------------
 
 /**
- * Build a DynamoDB item for a product record in DRAFT state.
+ * Build a DynamoDB item for an imported product in the **canonical** shape.
+ *
+ * This is the single authoritative Products write shape (G07): it MUST match
+ * what the Product API writes via `ProductRepository`/`ProductService`, so that
+ * imported products and API-created products share one data model and one index
+ * layout. In particular:
+ *
+ * - SKU lives at `content.sku` (nested), NOT a flat top-level `sku`.
+ * - GSI1 uses the canonical SKU-uniqueness layout:
+ *     GSI1PK = `TENANT#{tenantId}#SKU`, GSI1SK = `SKU#{sku}`
+ *   (identical to `ProductRepository.toItem`), so the API's `findBySku` and the
+ *   import duplicate-detector resolve to the same records.
+ * - `importMetadata` is carried inside `content.attributes.importMetadata`
+ *   (per ImportMetadata docs), keeping it within the canonical model.
+ * - `lifecycleState` is the lowercase canonical subset value `'draft'`.
+ *
+ * The flat `ValidatedRecord.record` (a `Partial<Product>` DTO with top-level
+ * title/sku/brand/description/category/images/price) is mapped into the
+ * canonical content/commercial domains here.
  */
 function buildProductItem(
   tenantId: string,
@@ -146,27 +165,88 @@ function buildProductItem(
   importMetadata: ImportMetadata,
 ): Record<string, unknown> {
   const now = new Date().toISOString();
-  return {
-    PK: `TENANT#${tenantId}`,
-    SK: `PRODUCT#${productId}`,
-    // GSI keys for query patterns used by duplicate-detector and list operations
-    GSI1PK: `TENANT#${tenantId}#SKU#${record.sku ?? ''}`,
-    GSI1SK: `PRODUCT#CREATED#${now}`,
-    GSI2PK: `TENANT#${tenantId}#SUPPLIER#${importMetadata.sourceSupplierId}`,
-    GSI2SK: `PRODUCT#CREATED#${now}`,
-    // Identity
+
+  const sku = (record.sku ?? '').trim();
+  // record is Partial<Product> (flat DTO). Pull the fields the validation
+  // engine/parsers actually populate: title, sku, description, brand,
+  // category, images, price.
+  const flat = record as Record<string, unknown>;
+  const title = (flat['title'] as string | undefined) ?? '';
+  const brand = (flat['brand'] as string | undefined) ?? '';
+  const description = (flat['description'] as string | undefined) ?? null;
+  const category = flat['category'] as string | undefined;
+  const price = typeof flat['price'] === 'number' ? (flat['price'] as number) : null;
+
+  // Preserve any seller/parser-supplied attributes, then attach import provenance
+  // and (optionally) the source category as a canonical attribute.
+  const existingAttributes =
+    (flat['attributes'] as Record<string, string | number | boolean> | undefined) ?? {};
+  const attributes: Record<string, unknown> = {
+    ...existingAttributes,
+    ...(category ? { category } : {}),
+    importMetadata,
+  };
+
+  const product: CanonicalProduct = {
     productId,
     tenantId,
-    supplierId: importMetadata.sourceSupplierId,
-    // Core product fields from the validated record
-    ...record,
-    // Lifecycle state — always DRAFT on initial import
-    lifecycleState: 'DRAFT',
-    // Import provenance
-    importMetadata,
-    // Timestamps
+    content: {
+      title,
+      shortDescription: null,
+      longDescription: description,
+      bulletPoints: [],
+      brand,
+      manufacturer: null,
+      sku,
+      barcode: null,
+      mpn: null,
+      weight: null,
+      weightUnit: null,
+      length: null,
+      width: null,
+      height: null,
+      dimensionUnit: null,
+      materials: [],
+      // importMetadata is stored inside attributes per the ImportMetadata contract.
+      attributes: attributes as Record<string, string | number | boolean>,
+      imageRefs: [],
+      variants: [],
+    },
+    commercial: {
+      sellingPrice: price,
+      rrp: null,
+      salePrice: null,
+      currency: 'ZAR',
+      stockQuantity: 0,
+      lowStockThreshold: null,
+      fulfilmentMethod: null,
+      leadtimeDays: null,
+      handlingTimeDays: null,
+      listingStatus: 'draft',
+      saleStartDate: null,
+      saleEndDate: null,
+    },
+    platformSpecific: {
+      platformIdentifiers: {},
+      categoryMappings: {},
+      metadata: {},
+      exportHistory: {},
+    },
+    // Lowercase canonical lifecycle subset — matches ProductService/repository.
+    lifecycleState: 'draft',
     createdAt: now,
     updatedAt: now,
+  };
+
+  return {
+    // Keys — identical layout to ProductRepository.toItem (unified data model).
+    PK: `TENANT#${tenantId}`,
+    SK: `PRODUCT#${productId}`,
+    GSI1PK: `TENANT#${tenantId}#SKU`,
+    GSI1SK: `SKU#${sku}`,
+    // Canonical product body (includes content.sku, content.attributes.importMetadata,
+    // commercial, platformSpecific, lifecycleState, createdAt/updatedAt).
+    ...product,
   };
 }
 

@@ -21,11 +21,12 @@ import {
 
 import { injectLambdaContext } from '@aws-lambda-powertools/logger/middleware';
 import { captureLambdaHandler } from '@aws-lambda-powertools/tracer/middleware';
+import { logMetrics } from '@aws-lambda-powertools/metrics/middleware';
 
 import { rbacMiddleware } from '../../shared/middleware/rbac';
 import { tenantContextMiddleware } from '../../shared/middleware/tenant-context';
 import { rateLimitMiddleware } from '../../shared/middleware/rate-limit';
-import { logger, tracer } from '../../shared/middleware/powertools';
+import { logger, tracer, metrics, MetricUnit } from '../../shared/middleware/powertools';
 
 import { generateRequestSchema } from '../schemas/generate.schema';
 import type { GenerateRequestInput } from '../schemas/generate.schema';
@@ -610,7 +611,9 @@ async function baseHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayPro
         timestamp: result.createdAt,
       });
     } catch (error) {
-      // Token recording failure should not block the response
+      // Token recording failure should not block the response, but it MUST be
+      // observable — unrecorded usage silently drifts billing/quota from reality.
+      metrics.addMetric('TokenRecordFailure', MetricUnit.Count, 1);
       logger.error('Failed to record token usage', {
         error: error instanceof Error ? error.message : String(error),
         tenantId,
@@ -622,7 +625,9 @@ async function baseHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayPro
   try {
     await storeResult(tenantId, result);
   } catch (error) {
-    // Storage failure should not block the response
+    // Storage failure should not block the response, but it MUST be observable —
+    // a successful generation that was never persisted is lost work + audit gap.
+    metrics.addMetric('ResultStoreFailure', MetricUnit.Count, 1);
     logger.error('Failed to store generation result', {
       error: error instanceof Error ? error.message : String(error),
       tenantId,
@@ -635,7 +640,9 @@ async function baseHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayPro
     try {
       await emitLowConfidenceEvent(tenantId, result.resultId, result.type, result.confidenceScore);
     } catch (error) {
-      // Event emission failure should not block the response
+      // Event emission failure should not block the response, but it MUST be
+      // observable — a missed low-confidence event means no downstream review.
+      metrics.addMetric('LowConfidenceEventFailure', MetricUnit.Count, 1);
       logger.error('Failed to emit low-confidence event', {
         error: error instanceof Error ? error.message : String(error),
         tenantId,
@@ -667,6 +674,7 @@ async function baseHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayPro
 export const handler = middy(baseHandler)
   .use(injectLambdaContext(logger, { clearState: true }))
   .use(captureLambdaHandler(tracer))
+  .use(logMetrics(metrics, { captureColdStartMetric: true }))
   .use(tenantContextMiddleware())
   .use(
     rbacMiddleware({

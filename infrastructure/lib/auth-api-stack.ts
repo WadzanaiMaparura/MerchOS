@@ -110,6 +110,16 @@ export class AuthApiStack extends cdk.Stack {
 
     const handlersPath = path.join(__dirname, '../../services/auth/handlers');
 
+    // AWS Powertools Lambda layer — provides logger/tracer/metrics at runtime so
+    // they can be externalized from the esbuild bundle. The tracer pulls in
+    // aws-xray-sdk-core, whose dynamic './aws-xray' require cannot be bundled by
+    // esbuild; externalizing (as the product-intelligence stack does) avoids it.
+    const powertoolsLayer = lambda.LayerVersion.fromLayerVersionArn(
+      this,
+      'PowertoolsLayer',
+      `arn:aws:lambda:${this.region}:094274105915:layer:AWSLambdaPowertoolsTypeScriptV2:latest`,
+    );
+
     const commonLambdaEnv: Record<string, string> = {
       COGNITO_USER_POOL_ID: props.userPool.userPoolId,
       COGNITO_SELLER_CLIENT_ID: props.sellerDashboardClient.userPoolClientId,
@@ -127,12 +137,18 @@ export class AuthApiStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
       environment: commonLambdaEnv,
+      layers: [powertoolsLayer],
       bundling: {
         minify: true,
         sourceMap: true,
         target: 'node20',
         format: lambdaNodejs.OutputFormat.ESM,
         mainFields: ['module', 'main'],
+        externalModules: [
+          '@aws-lambda-powertools/logger',
+          '@aws-lambda-powertools/tracer',
+          '@aws-lambda-powertools/metrics',
+        ],
       },
     };
 

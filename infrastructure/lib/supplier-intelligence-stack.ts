@@ -511,24 +511,31 @@ export class SupplierIntelligenceStack extends cdk.Stack {
       importJobsTableReadWrite,
     ], { timeout: cdk.Duration.seconds(300), memorySize: 512 });
 
+    // Products table ARN — reconstructed deterministically from the fixed
+    // naming convention (merch-os-products-{env}), the same approach used by
+    // the Inventory API stack. This lets us scope the DuplicateDetector and
+    // ProductPersister grants to the Products table + GSI1 instead of '*'.
+    const productsTableArn = `arn:aws:dynamodb:${this.region}:${this.account}:table/merch-os-products-${env}`;
+    const productsGsi1Arn = `${productsTableArn}/index/GSI1`;
+
     const duplicateDetectorFn = createFn('DuplicateDetector', path.join(processorsPath, 'duplicate-detector.ts'), [
       importJobsTableReadWrite,
-      // Also needs read access to the Products table (resolved at runtime via env var)
+      // Read access to the Products table + GSI1 (SKU lookups for dedupe).
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['dynamodb:Query', 'dynamodb:GetItem'],
-        resources: ['*'], // Products table ARN unknown at synth time — tighten in 12.3
+        resources: [productsTableArn, productsGsi1Arn],
       }),
     ], { timeout: cdk.Duration.seconds(300), memorySize: 512 });
 
     const productPersisterFn = createFn('ProductPersister', path.join(processorsPath, 'product-persister.ts'), [
       importJobsTableReadWrite,
       eventBusPutEvents,
-      // Products table write — tightened in 12.3 when table ARN is available
+      // Write access to the Products table (batch-writes imported products).
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:BatchWriteItem'],
-        resources: ['*'],
+        resources: [productsTableArn],
       }),
     ], { timeout: cdk.Duration.seconds(300), memorySize: 512 });
 
