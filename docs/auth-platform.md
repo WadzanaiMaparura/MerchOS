@@ -82,41 +82,46 @@ All tables use KMS encryption and TTL for automatic record cleanup.
 
 ## Authentication Flows
 
-### Login Flow
+> **Placement (ADR-005):** Identity operations — login, MFA challenge, MFA
+> enrollment, token refresh, logout, password reset, email verification, change
+> password — run **client-side** via the `aws-amplify` library directly against
+> Cognito. They are **not** API endpoints. Only privileged/admin operations
+> (invite, list/role/disable/delete user) are served by the auth API behind the
+> ADR-001 authorization pipeline. See
+> `docs/architecture/adr/ADR-005-auth-operation-placement.md`.
 
-1. Client submits email + password to `POST /auth/login`
-2. Lambda calls Cognito `InitiateAuth` with SRP flow
-3. If MFA required, returns challenge (TOTP/SMS) + session token
-4. Client submits MFA code, Lambda responds with tokens
-5. On success: returns accessToken, idToken, refreshToken
-6. Session record created in DynamoDB
-7. `auth.session.created` event emitted to EventBridge
+### Login Flow (client-side, `aws-amplify`)
 
-### MFA Setup Flow
+1. The dashboard calls `signIn({ username, password })` (SRP flow) via the
+   shared `@merch-os/auth` provider.
+2. If MFA is required, Amplify returns a TOTP/SMS challenge; the dashboard
+   collects the code and calls `confirmSignIn`.
+3. On success Amplify holds the Cognito tokens (access/id/refresh); the provider
+   hydrates user/role from the id-token claims.
 
-1. Authenticated user calls `POST /auth/mfa/setup`
-2. Lambda calls `AssociateSoftwareToken` → returns secret key
-3. User scans QR code in authenticator app
-4. User submits verification code
-5. Lambda calls `VerifySoftwareToken` to confirm
-6. MFA enabled for the user account
+### MFA Setup Flow (client-side, `aws-amplify`)
 
-### Token Refresh Flow
+1. The admin enrollment page calls `setUpTOTP()` → shared secret + `otpauth://`
+   setup URI (rendered as a QR code).
+2. The operator scans it and submits the 6-digit code.
+3. The page calls `verifyTOTPSetup({ code })`, then
+   `updateMFAPreference({ totp: 'PREFERRED' })` so the next login challenges for
+   TOTP.
 
-1. Frontend `session-manager` detects token approaching expiry (55-min mark)
-2. Calls `POST /auth/refresh` with refreshToken
-3. Lambda calls Cognito `InitiateAuth` (REFRESH_TOKEN_AUTH)
-4. Returns new accessToken + idToken (refresh token rotated by Cognito)
-5. If refresh fails (expired/revoked), user redirected to login
+### Token Refresh Flow (client-side, `aws-amplify`)
 
-### Logout Flow
+1. The frontend `session-manager` detects the token approaching expiry (55-min
+   mark) and calls `fetchAuthSession({ forceRefresh: true })`.
+2. Amplify refreshes against Cognito and returns new access/id tokens (refresh
+   token rotated by Cognito).
+3. If refresh fails (expired/revoked), the user is redirected to login.
 
-1. Client calls `POST /auth/logout` with Bearer token
-2. Lambda calls Cognito `GlobalSignOut` (invalidates all tokens)
-3. Lambda calls `RevokeToken` on the refresh token
-4. Session record marked as revoked in DynamoDB
-5. `auth.session.revoked` event emitted
-6. Client clears all local session storage
+### Logout Flow (client-side, `aws-amplify`)
+
+1. The provider calls `signOut({ global: true })`, invalidating the Cognito
+   session.
+2. Local/session storage for Cognito/Amplify keys is cleared and the user is
+   redirected to login.
 
 ## Multi-Tenant Isolation
 
@@ -161,22 +166,30 @@ Role resolution: extracted from `cognito:groups` claim in JWT.
 
 ## API Endpoints
 
+Per ADR-005, the auth API serves **only privileged/admin operations** (all
+require the JWT authorizer and pass through the ADR-001 authorization pipeline).
+Identity operations are handled client-side via `aws-amplify` and have no API
+endpoint.
+
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | /auth/login | None | Authenticate with email + password |
-| POST | /auth/refresh | None | Refresh access token |
-| POST | /auth/logout | Bearer | Sign out (global or single session) |
-| POST | /auth/forgot-password | None | Request password reset code |
-| POST | /auth/reset-password | None | Confirm password reset with code |
-| POST | /auth/verify-email | None | Verify email with 6-digit code |
 | POST | /auth/invite | Bearer (admin/owner) | Invite user to tenant |
-| GET | /auth/session | Bearer | Get current session info |
-| POST | /auth/change-password | Bearer | Change password (authenticated) |
-| POST | /auth/mfa/setup | Bearer | Set up TOTP MFA |
 | GET | /auth/users | Bearer (admin/owner) | List tenant users |
 | PUT | /auth/users/:id/role | Bearer (owner) | Update user role |
 | DELETE | /auth/users/:id | Bearer (admin/owner) | Delete user account |
 | POST | /auth/users/:id/disable | Bearer (admin/owner) | Disable user account |
+
+### Client-side identity operations (via `aws-amplify`, not API endpoints)
+
+| Operation | Amplify call |
+|-----------|--------------|
+| Login / MFA challenge | `signIn`, `confirmSignIn` |
+| Logout | `signOut` |
+| Token refresh | `fetchAuthSession({ forceRefresh: true })` |
+| Password reset | `resetPassword`, `confirmResetPassword` |
+| Change password | `updatePassword` |
+| Email verification | `confirmSignUp` |
+| MFA enrollment | `setUpTOTP`, `verifyTOTPSetup`, `updateMFAPreference` |
 
 ## Deployment Guide
 

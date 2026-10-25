@@ -45,7 +45,9 @@ aws cognito-idp admin-set-user-mfa-preference \
   --region eu-west-1
 ```
 
-After disabling, the user can log in and re-enroll MFA via `POST /auth/mfa/setup`.
+After disabling, the user can log in and re-enroll MFA through the dashboard's
+MFA setup page (client-side `setUpTOTP` / `verifyTOTPSetup` via `aws-amplify`,
+per ADR-005).
 
 ### Rate Limited (429 Too Many Requests)
 

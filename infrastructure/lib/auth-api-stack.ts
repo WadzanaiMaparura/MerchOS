@@ -185,92 +185,13 @@ export class AuthApiStack extends cdk.Stack {
     // Lambda Functions — Auth Handlers
     // -----------------------------------------------------------------------
 
-    // 1. Login
-    const loginFn = createLambda('Login', path.join(handlersPath, 'login.ts'), [
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ['dynamodb:UpdateItem'],
-        resources: [this.rateLimitsTable.tableArn],
-      }),
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ['kms:Decrypt'],
-        resources: [props.platformKey.keyArn],
-      }),
-    ]);
+    // NOTE: Identity operations (login, refresh, logout, forgot/reset password,
+    // verify email, change password, MFA setup, session) are intentionally NOT
+    // served by this API. Per ADR-005 they run client-side via the aws-amplify
+    // library directly against Cognito. Only privileged/admin operations that
+    // require the ADR-001 authorization pipeline or Cognito Admin APIs live here.
 
-    // 2. Refresh
-    const refreshFn = createLambda('Refresh', path.join(handlersPath, 'refresh.ts'), [
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ['cognito-idp:AdminInitiateAuth'],
-        resources: [props.userPool.userPoolArn],
-      }),
-    ]);
-
-    // 3. Logout
-    const logoutFn = createLambda('Logout', path.join(handlersPath, 'logout.ts'), [
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ['cognito-idp:GlobalSignOut'],
-        resources: [props.userPool.userPoolArn],
-      }),
-    ]);
-
-    // 4. Forgot Password
-    const forgotPasswordFn = createLambda('ForgotPassword', path.join(handlersPath, 'forgot-password.ts'), [
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ['cognito-idp:ForgotPassword'],
-        resources: [props.userPool.userPoolArn],
-      }),
-    ]);
-
-    // 5. Reset Password
-    const resetPasswordFn = createLambda('ResetPassword', path.join(handlersPath, 'reset-password.ts'), [
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ['cognito-idp:ConfirmForgotPassword'],
-        resources: [props.userPool.userPoolArn],
-      }),
-    ]);
-
-    // 6. Verify Email
-    const verifyEmailFn = createLambda('VerifyEmail', path.join(handlersPath, 'verify-email.ts'), [
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ['cognito-idp:ConfirmSignUp'],
-        resources: [props.userPool.userPoolArn],
-      }),
-    ]);
-
-
-    // 7. Change Password
-    const changePasswordFn = createLambda('ChangePassword', path.join(handlersPath, 'change-password.ts'), [
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ['cognito-idp:ChangePassword'],
-        resources: [props.userPool.userPoolArn],
-      }),
-    ]);
-
-    // 8. MFA Setup
-    const mfaSetupFn = createLambda('MfaSetup', path.join(handlersPath, 'mfa-setup.ts'), [
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: [
-          'cognito-idp:AssociateSoftwareToken',
-          'cognito-idp:VerifySoftwareToken',
-          'cognito-idp:SetUserMFAPreference',
-        ],
-        resources: [props.userPool.userPoolArn],
-      }),
-    ]);
-
-    // 9. Session (no Cognito permissions — reads JWT claims only)
-    const sessionFn = createLambda('Session', path.join(handlersPath, 'session.ts'), []);
-
-    // 10. Invite User
+    // 1. Invite User
     const inviteUserFn = createLambda('InviteUser', path.join(handlersPath, 'invite-user.ts'), [
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
@@ -288,7 +209,7 @@ export class AuthApiStack extends cdk.Stack {
       }),
     ]);
 
-    // 11. List Users
+    // 2. List Users
     const listUsersFn = createLambda('ListUsers', path.join(handlersPath, 'list-users.ts'), [
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
@@ -297,7 +218,7 @@ export class AuthApiStack extends cdk.Stack {
       }),
     ]);
 
-    // 12. Update Role
+    // 3. Update Role
     const updateRoleFn = createLambda('UpdateRole', path.join(handlersPath, 'update-role.ts'), [
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
@@ -311,7 +232,7 @@ export class AuthApiStack extends cdk.Stack {
       }),
     ]);
 
-    // 13. Disable User
+    // 4. Disable User
     const disableUserFn = createLambda('DisableUser', path.join(handlersPath, 'disable-user.ts'), [
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
@@ -320,7 +241,7 @@ export class AuthApiStack extends cdk.Stack {
       }),
     ]);
 
-    // 14. Delete User
+    // 5. Delete User
     const deleteUserFn = createLambda('DeleteUser', path.join(handlersPath, 'delete-user.ts'), [
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
@@ -336,7 +257,7 @@ export class AuthApiStack extends cdk.Stack {
       resources: [props.eventBus.eventBusArn],
     });
 
-    [logoutFn, inviteUserFn, disableUserFn, deleteUserFn, updateRoleFn].forEach((fn) => {
+    [inviteUserFn, disableUserFn, deleteUserFn, updateRoleFn].forEach((fn) => {
       fn.role!.addToPrincipalPolicy(eventBusPolicy);
     });
 
@@ -345,66 +266,9 @@ export class AuthApiStack extends cdk.Stack {
     // Route Integrations
     // -----------------------------------------------------------------------
 
-    // Unauthenticated routes (no authorizer)
-    this.httpApi.addRoutes({
-      path: '/auth/login',
-      methods: [HttpMethod.POST],
-      integration: new HttpLambdaIntegration('LoginIntegration', loginFn),
-    });
-
-    this.httpApi.addRoutes({
-      path: '/auth/refresh',
-      methods: [HttpMethod.POST],
-      integration: new HttpLambdaIntegration('RefreshIntegration', refreshFn),
-    });
-
-    this.httpApi.addRoutes({
-      path: '/auth/forgot-password',
-      methods: [HttpMethod.POST],
-      integration: new HttpLambdaIntegration('ForgotPasswordIntegration', forgotPasswordFn),
-    });
-
-    this.httpApi.addRoutes({
-      path: '/auth/reset-password',
-      methods: [HttpMethod.POST],
-      integration: new HttpLambdaIntegration('ResetPasswordIntegration', resetPasswordFn),
-    });
-
-    this.httpApi.addRoutes({
-      path: '/auth/verify-email',
-      methods: [HttpMethod.POST],
-      integration: new HttpLambdaIntegration('VerifyEmailIntegration', verifyEmailFn),
-    });
-
-    // Authenticated routes (JWT authorizer)
-    this.httpApi.addRoutes({
-      path: '/auth/logout',
-      methods: [HttpMethod.POST],
-      integration: new HttpLambdaIntegration('LogoutIntegration', logoutFn),
-      authorizer: jwtAuthorizer,
-    });
-
-    this.httpApi.addRoutes({
-      path: '/auth/change-password',
-      methods: [HttpMethod.POST],
-      integration: new HttpLambdaIntegration('ChangePasswordIntegration', changePasswordFn),
-      authorizer: jwtAuthorizer,
-    });
-
-    this.httpApi.addRoutes({
-      path: '/auth/mfa/setup',
-      methods: [HttpMethod.POST],
-      integration: new HttpLambdaIntegration('MfaSetupIntegration', mfaSetupFn),
-      authorizer: jwtAuthorizer,
-    });
-
-    this.httpApi.addRoutes({
-      path: '/auth/session',
-      methods: [HttpMethod.GET],
-      integration: new HttpLambdaIntegration('SessionIntegration', sessionFn),
-      authorizer: jwtAuthorizer,
-    });
-
+    // All routes below are privileged/admin operations (ADR-005) and require the
+    // JWT authorizer. Identity operations are handled client-side via aws-amplify
+    // and have no routes here.
     this.httpApi.addRoutes({
       path: '/auth/invite',
       methods: [HttpMethod.POST],

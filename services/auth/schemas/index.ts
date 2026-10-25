@@ -22,84 +22,18 @@ export const emailValidator = z
   .email('Invalid email address');
 
 /**
- * Password validator — enforces MerchOS password policy:
- * - Minimum 12 characters
- * - At least one uppercase letter
- * - At least one lowercase letter
- * - At least one digit
- * - At least one symbol
- */
-export const passwordValidator = z
-  .string()
-  .min(12, 'Password must be at least 12 characters')
-  .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
-  .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
-  .regex(/[0-9]/, 'Password must contain at least one digit')
-  .regex(
-    /[^A-Za-z0-9]/,
-    'Password must contain at least one symbol'
-  );
-
-/**
  * Seller role enum — matches the SellerRole type from @merch-os/types.
  */
 export const sellerRoleSchema = z.enum(['viewer', 'editor', 'admin', 'owner']);
 
 // ---------------------------------------------------------------------------
-// Auth Request Schemas
+// Category 2 — privileged / admin operations (ADR-005).
+//
+// Identity operations (login, refresh, logout, password reset, email verify,
+// change-password, MFA setup) are handled client-side via the aws-amplify
+// library and have no server-side schema here. See
+// docs/architecture/adr/ADR-005-auth-operation-placement.md.
 // ---------------------------------------------------------------------------
-
-/**
- * POST /auth/login
- */
-export const loginSchema = z.object({
-  email: emailValidator,
-  password: z.string().min(1, 'Password is required'),
-});
-export type LoginInput = z.infer<typeof loginSchema>;
-
-/**
- * POST /auth/refresh
- */
-export const refreshSchema = z.object({
-  refreshToken: z.string().min(1, 'Refresh token is required'),
-});
-export type RefreshInput = z.infer<typeof refreshSchema>;
-
-/**
- * POST /auth/logout
- */
-export const logoutSchema = z.object({
-  global: z.boolean().optional(),
-});
-export type LogoutInput = z.infer<typeof logoutSchema>;
-
-/**
- * POST /auth/forgot-password
- */
-export const forgotPasswordSchema = z.object({
-  email: emailValidator,
-});
-export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
-
-/**
- * POST /auth/reset-password
- */
-export const resetPasswordSchema = z.object({
-  email: emailValidator,
-  code: z.string().min(1, 'Verification code is required'),
-  newPassword: passwordValidator,
-});
-export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
-
-/**
- * POST /auth/verify-email
- */
-export const verifyEmailSchema = z.object({
-  email: emailValidator,
-  code: z.string().min(1, 'Verification code is required'),
-});
-export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
 
 /**
  * POST /auth/invite
@@ -110,24 +44,6 @@ export const inviteUserSchema = z.object({
   tenantId: z.string().min(1, 'Tenant ID is required'),
 });
 export type InviteUserInput = z.infer<typeof inviteUserSchema>;
-
-/**
- * POST /auth/change-password
- */
-export const changePasswordSchema = z.object({
-  previousPassword: z.string().min(1, 'Previous password is required'),
-  proposedPassword: passwordValidator,
-});
-export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
-
-/**
- * POST /auth/mfa/setup (verify step)
- */
-export const mfaVerifySchema = z.object({
-  verificationCode: z.string().min(1, 'Verification code is required'),
-  session: z.string().min(1, 'Session is required'),
-});
-export type MfaVerifyInput = z.infer<typeof mfaVerifySchema>;
 
 /**
  * PUT /auth/users/:id/role
