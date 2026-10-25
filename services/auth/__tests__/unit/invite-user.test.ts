@@ -42,6 +42,14 @@ vi.mock('../../../shared/middleware/tenant-context', () => ({
   tenantContextMiddleware: () => ({ before: vi.fn() }),
 }));
 
+// Access-token enforcement is covered by its own unit test and by the
+// session/profile-status/complete-profile handler tests that run the real
+// middleware. Mock it to a no-op here so these business-logic tests are not
+// coupled to token_use fixtures.
+vi.mock('../../../shared/middleware/access-token', () => ({
+  accessTokenMiddleware: () => ({ before: vi.fn() }),
+}));
+
 const mockEmitAuthEvent = vi.fn().mockResolvedValue({});
 vi.mock('../../utils/event-emitter', () => ({
   emitAuthEvent: (...args: unknown[]) => mockEmitAuthEvent(...args),
@@ -84,14 +92,14 @@ describe('invite-user handler', () => {
     ddbMock.reset();
     resetCognitoClient();
     mockEmitAuthEvent.mockClear();
-    process.env['COGNITO_TENANT_POOL_ID'] = 'us-east-1_testPoolId';
+    process.env['COGNITO_USER_POOL_ID'] = 'us-east-1_testPoolId';
     process.env['INVITATIONS_TABLE'] = 'merch-os-invitations-dev';
     process.env['EVENT_BUS_NAME'] = 'merch-os-events-dev';
     process.env['AWS_REGION'] = 'eu-west-1';
   });
 
   afterEach(() => {
-    delete process.env['COGNITO_TENANT_POOL_ID'];
+    delete process.env['COGNITO_USER_POOL_ID'];
     delete process.env['INVITATIONS_TABLE'];
     delete process.env['EVENT_BUS_NAME'];
     delete process.env['AWS_REGION'];
@@ -215,7 +223,7 @@ describe('invite-user handler', () => {
   });
 
   it('returns 500 when env vars missing', async () => {
-    delete process.env['COGNITO_TENANT_POOL_ID'];
+    delete process.env['COGNITO_USER_POOL_ID'];
     delete process.env['INVITATIONS_TABLE'];
 
     const { handler } = await import('../../handlers/invite-user');

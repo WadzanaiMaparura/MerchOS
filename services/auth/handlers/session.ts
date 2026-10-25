@@ -18,6 +18,7 @@ import { logMetrics } from '@aws-lambda-powertools/metrics/middleware';
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 
 import { logger, tracer, metrics } from '../../shared/middleware/powertools';
+import { accessTokenMiddleware } from '../../shared/middleware/access-token';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -116,4 +117,5 @@ async function baseHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayPro
 export const handler = middy(baseHandler)
   .use(injectLambdaContext(logger, { clearState: true }))
   .use(captureLambdaHandler(tracer))
-  .use(logMetrics(metrics, { captureColdStartMetric: true }));
+  .use(logMetrics(metrics, { captureColdStartMetric: true }))
+  .use(accessTokenMiddleware());

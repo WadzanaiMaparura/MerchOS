@@ -26,6 +26,7 @@ import { inviteUserSchema } from '../schemas';
 import { getCognitoClient } from '../utils/cognito-client';
 import { emitAuthEvent } from '../utils/event-emitter';
 import { inputValidationMiddleware } from '../../shared/middleware/input-validation';
+import { accessTokenMiddleware } from '../../shared/middleware/access-token';
 import { rbacMiddleware } from '../../shared/middleware/rbac';
 import { tenantContextMiddleware } from '../../shared/middleware/tenant-context';
 import { logger } from '../../shared/middleware/powertools';
@@ -75,7 +76,7 @@ function getDynamoDocClient(): DynamoDBDocumentClient {
 async function baseHandler(event: InviteUserEvent): Promise<APIGatewayProxyResultV2> {
   const { email, role, tenantId } = event.body;
 
-  const userPoolId = process.env['COGNITO_TENANT_POOL_ID'];
+  const userPoolId = process.env['COGNITO_USER_POOL_ID'];
   const invitationsTable = process.env['INVITATIONS_TABLE'];
   const eventBusName = process.env['EVENT_BUS_NAME'];
 
@@ -231,6 +232,7 @@ async function baseHandler(event: InviteUserEvent): Promise<APIGatewayProxyResul
 // ---------------------------------------------------------------------------
 
 export const handler = middy(baseHandler)
+  .use(accessTokenMiddleware())
   .use(
     rbacMiddleware({
       resource: 'users',

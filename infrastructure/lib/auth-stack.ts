@@ -290,7 +290,8 @@ export class AuthStack extends cdk.Stack {
       role: postConfirmationRole as unknown as iam.IRole,
     });
 
-    // PreTokenGeneration trigger — enriches tokens with group/role claims.
+    // PreTokenGeneration trigger (V2) — enriches tokens with tenant/role/email
+    // claims across the id and access tokens.
     // The handler reads custom:tenantId and custom:role directly from the event
     // payload (event.request.userAttributes) and does not call any Cognito API,
     // so no cognito-idp permissions are granted. Referencing the pool ARN here
@@ -329,7 +330,16 @@ export class AuthStack extends cdk.Stack {
     // Wire triggers to the UserPool (same stack — no circular dependency)
     this.userPool.addTrigger(cognito.UserPoolOperation.PRE_SIGN_UP, preSignUpFn);
     this.userPool.addTrigger(cognito.UserPoolOperation.POST_CONFIRMATION, postConfirmationFn);
-    this.userPool.addTrigger(cognito.UserPoolOperation.PRE_TOKEN_GENERATION, preTokenGenerationFn);
+    // Wire PreTokenGeneration using the V2 configuration so the handler can
+    // populate claimsAndScopeOverrideDetails (separate id/access token claim
+    // sets). The API's HttpJwtAuthorizer validates the ACCESS token, so the
+    // Stage 1 identity claims (tenantId/role/email/email_verified) must be
+    // injected into the access token — only the V2 contract exposes that.
+    this.userPool.addTrigger(
+      cognito.UserPoolOperation.PRE_TOKEN_GENERATION_CONFIG,
+      preTokenGenerationFn,
+      cognito.LambdaVersion.V2_0,
+    );
     this.userPool.addTrigger(cognito.UserPoolOperation.CUSTOM_MESSAGE, customMessageFn);
 
     // -----------------------------------------------------------------------

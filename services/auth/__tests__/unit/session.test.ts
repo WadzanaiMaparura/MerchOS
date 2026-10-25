@@ -37,6 +37,13 @@ vi.mock('@aws-lambda-powertools/metrics/middleware', () => ({
 // ---------------------------------------------------------------------------
 
 function buildSessionEvent(claims?: Record<string, unknown> | null) {
+  // Default to an access token so the central accessTokenMiddleware (which runs
+  // for real in this suite) lets requests through; individual tests can
+  // override token_use to exercise rejection.
+  const effectiveClaims =
+    claims && typeof claims === 'object'
+      ? { token_use: 'access', ...claims }
+      : claims;
   const base: Record<string, unknown> = {
     version: '2.0',
     routeKey: 'GET /auth/session',
@@ -47,7 +54,7 @@ function buildSessionEvent(claims?: Record<string, unknown> | null) {
       requestId: 'test-request-id',
       authorizer:
         claims !== null
-          ? { jwt: { claims } }
+          ? { jwt: { claims: effectiveClaims } }
           : undefined,
     },
     isBase64Encoded: false,
@@ -82,6 +89,46 @@ describe('session handler', () => {
       role: 'admin',
       expiresAt: 1700000000,
     });
+  });
+
+  it('returns 401 for an ID token (token_use "id") — central access-token enforcement', async () => {
+    const { handler } = await import('../../handlers/session');
+
+    const event = buildSessionEvent({
+      token_use: 'id',
+      sub: 'user-id-123',
+      email: 'user@example.com',
+      'custom:tenantId': 'tenant-abc',
+      'custom:role': 'admin',
+      exp: '1700000000',
+    });
+
+    const result = (await handler(event as any, {} as any)) as any;
+
+    expect(result.statusCode).toBe(401);
+    const body = JSON.parse(result.body);
+    expect(body.error.code).toBe('UNAUTHORIZED');
+    expect(body.error.message).toBe('No valid session found');
+  });
+
+  it('returns 401 when token_use is absent — central access-token enforcement', async () => {
+    const { handler } = await import('../../handlers/session');
+
+    // Explicitly strip the default token_use the builder would add.
+    const claims: Record<string, unknown> = {
+      sub: 'user-id-123',
+      email: 'user@example.com',
+      exp: '1700000000',
+    };
+    const event = buildSessionEvent(claims);
+    (event as any).requestContext.authorizer.jwt.claims = claims;
+
+    const result = (await handler(event as any, {} as any)) as any;
+
+    expect(result.statusCode).toBe(401);
+    const body = JSON.parse(result.body);
+    expect(body.error.code).toBe('UNAUTHORIZED');
+    expect(body.error.message).toBe('No valid session found');
   });
 
   it('returns 401 when no authorizer context exists', async () => {

@@ -22,6 +22,7 @@ import { updateRoleSchema } from '../schemas';
 import { getCognitoClient } from '../utils/cognito-client';
 import { emitAuthEvent } from '../utils/event-emitter';
 import { inputValidationMiddleware } from '../../shared/middleware/input-validation';
+import { accessTokenMiddleware } from '../../shared/middleware/access-token';
 import { rbacMiddleware } from '../../shared/middleware/rbac';
 import { tenantContextMiddleware } from '../../shared/middleware/tenant-context';
 import { logger } from '../../shared/middleware/powertools';
@@ -55,10 +56,10 @@ const SELLER_ROLE_GROUPS = new Set(['viewer', 'editor', 'admin', 'owner']);
  * 7. Emit auth.user.role-changed event
  */
 async function baseHandler(event: UpdateRoleEvent): Promise<APIGatewayProxyResultV2> {
-  const userPoolId = process.env['COGNITO_TENANT_POOL_ID'];
+  const userPoolId = process.env['COGNITO_USER_POOL_ID'];
 
   if (!userPoolId) {
-    logger.error('Missing required environment variable COGNITO_TENANT_POOL_ID');
+    logger.error('Missing required environment variable COGNITO_USER_POOL_ID');
     return {
       statusCode: 500,
       headers: { 'Content-Type': 'application/json' },
@@ -203,6 +204,7 @@ async function baseHandler(event: UpdateRoleEvent): Promise<APIGatewayProxyResul
 // ---------------------------------------------------------------------------
 
 export const handler = middy(baseHandler)
+  .use(accessTokenMiddleware())
   .use(
     rbacMiddleware({
       resource: 'users',

@@ -63,3 +63,16 @@ export type {
   PlanLimits,
   Invoice,
 } from './billing.types';
+
+// Registration-lifecycle types (tenant/owner/consent + pending registration)
+export type {
+  RegistrationTenantStatus,
+  TenantMetadataRecord,
+  OwnerProfileRecord,
+  ConsentStatus,
+  ConsentChannel,
+  ConsentRecord,
+  PendingRegistrationRecord,
+  ProfileStatusState,
+  ProfileStatusResponse,
+} from './registration.types';

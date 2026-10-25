@@ -18,6 +18,7 @@ import {
 
 import { getCognitoClient } from '../utils/cognito-client';
 import { emitAuthEvent } from '../utils/event-emitter';
+import { accessTokenMiddleware } from '../../shared/middleware/access-token';
 import { rbacMiddleware } from '../../shared/middleware/rbac';
 import { tenantContextMiddleware } from '../../shared/middleware/tenant-context';
 import { logger } from '../../shared/middleware/powertools';
@@ -35,10 +36,10 @@ import { logger } from '../../shared/middleware/powertools';
  * 4. Emit auth.user.deleted event
  */
 async function baseHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
-  const userPoolId = process.env['COGNITO_TENANT_POOL_ID'];
+  const userPoolId = process.env['COGNITO_USER_POOL_ID'];
 
   if (!userPoolId) {
-    logger.error('Missing required environment variable COGNITO_TENANT_POOL_ID');
+    logger.error('Missing required environment variable COGNITO_USER_POOL_ID');
     return {
       statusCode: 500,
       headers: { 'Content-Type': 'application/json' },
@@ -156,6 +157,7 @@ async function baseHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayPro
 // ---------------------------------------------------------------------------
 
 export const handler = middy(baseHandler)
+  .use(accessTokenMiddleware())
   .use(
     rbacMiddleware({
       resource: 'users',

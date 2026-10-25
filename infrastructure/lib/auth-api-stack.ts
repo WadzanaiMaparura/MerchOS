@@ -67,6 +67,19 @@ export class AuthApiStack extends cdk.Stack {
     const invitationsTable = props.invitationsTable;
     const sessionsTable = props.sessionsTable;
 
+    // Tenants table — owned by the independent TenantStack. Referenced by NAME
+    // and ARN via SSM parameters (deploy-time string lookup) to avoid a
+    // cross-stack construct dependency / CloudFormation cycle. The table is
+    // already deployed; these parameters are published by TenantStack.
+    const tenantsTableName = ssm.StringParameter.valueForStringParameter(
+      this,
+      `${ssmPrefix}/dynamodb/tenants-table`,
+    );
+    const tenantsTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `${ssmPrefix}/dynamodb/tenants-table-arn`,
+    );
+
     this.rateLimitsTable = new dynamodb.Table(this, 'RateLimitsTable', {
       tableName: `merch-os-rate-limits-${env}`,
       partitionKey: { name: 'PK', type: dynamodb.AttributeType.STRING },
@@ -133,6 +146,16 @@ export class AuthApiStack extends cdk.Stack {
         target: 'node20',
         format: lambdaNodejs.OutputFormat.ESM,
         mainFields: ['module', 'main'],
+        // ESM output: esbuild replaces CommonJS `require` with a stub that
+        // throws "Dynamic require of \"x\" is not supported" at runtime. Some
+        // transitive CJS dependencies (e.g. lodash's Node `util` type probe via
+        // the AWS SDK / powertools graph) perform a dynamic `require('util')`
+        // during module initialisation, which crashed every handler on cold
+        // start. Provide a real `require` via Node's createRequire so those
+        // dynamic requires resolve against the Lambda runtime's built-ins.
+        // (CDK's `banner` is a string applied as esbuild's JS banner.)
+        banner:
+          "import{createRequire as __createRequire}from'node:module';const require=__createRequire(import.meta.url);",
       },
     };
 
@@ -169,25 +192,14 @@ export class AuthApiStack extends cdk.Stack {
     // Lambda Functions — Auth Handlers
     // -----------------------------------------------------------------------
 
-    // 1. Login
-    const loginFn = createLambda('Login', path.join(handlersPath, 'login.ts'), [
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ['cognito-idp:AdminInitiateAuth'],
-        resources: [props.userPool.userPoolArn],
-      }),
-    ]);
+    // NOTE: The server-side POST /auth/login and POST /auth/refresh endpoints
+    // were removed. The seller frontend authenticates directly with Cognito via
+    // Amplify SRP (USER_SRP_AUTH + PKCE) and refreshes sessions via Amplify
+    // (fetchAuthSession forceRefresh), so these Lambdas were unused surface.
+    // The rate-limits table and its KMS grants remain for the ForgotPassword
+    // handler, which still applies rateLimitMiddleware.
 
-    // 2. Refresh
-    const refreshFn = createLambda('Refresh', path.join(handlersPath, 'refresh.ts'), [
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ['cognito-idp:AdminInitiateAuth'],
-        resources: [props.userPool.userPoolArn],
-      }),
-    ]);
-
-    // 3. Logout
+    // Logout
     const logoutFn = createLambda('Logout', path.join(handlersPath, 'logout.ts'), [
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
@@ -197,11 +209,27 @@ export class AuthApiStack extends cdk.Stack {
     ]);
 
     // 4. Forgot Password
+    // The forgot-password handler calls Cognito ForgotPassword AND applies
+    // rateLimitMiddleware, which writes an atomic counter (UpdateItem) to the
+    // customer-managed-KMS-encrypted rate-limits table. The role needs
+    // ForgotPassword plus least-privilege write access to that table and the
+    // KMS actions a write to a CMK-encrypted table requires (Decrypt +
+    // GenerateDataKey), scoped to the specific table and platform key.
     const forgotPasswordFn = createLambda('ForgotPassword', path.join(handlersPath, 'forgot-password.ts'), [
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['cognito-idp:ForgotPassword'],
         resources: [props.userPool.userPoolArn],
+      }),
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['dynamodb:UpdateItem'],
+        resources: [this.rateLimitsTable.tableArn],
+      }),
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['kms:Decrypt', 'kms:GenerateDataKey'],
+        resources: [props.platformKey.keyArn],
       }),
     ]);
 
@@ -308,6 +336,55 @@ export class AuthApiStack extends cdk.Stack {
       }),
     ]);
 
+    // 15. Profile Status (authenticated recovery read)
+    // Reads tenant metadata + owner profile from the tenants table and an
+    // invitation record from the invitations table (to classify invited users).
+    const profileStatusFn = createLambda('ProfileStatus', path.join(handlersPath, 'profile-status.ts'), [
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['dynamodb:GetItem'],
+        resources: [tenantsTableArn, invitationsTable.tableArn],
+      }),
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['kms:Decrypt'],
+        resources: [props.platformKey.keyArn],
+      }),
+    ]);
+    // TENANTS_TABLE is only needed by the two registration-recovery handlers,
+    // so it is set per-function here (not in commonLambdaEnv) to avoid adding
+    // it to the 14 unrelated auth functions.
+    profileStatusFn.addEnvironment('TENANTS_TABLE', tenantsTableName);
+
+    // 16. Complete Profile (authenticated recovery write)
+    // Atomic TransactWriteItems to create tenant metadata + owner profile +
+    // consent; GetItem for idempotency/verification reads and invited-user
+    // safeguard. Writes are scoped to the tenants table; invitations table is
+    // read-only here.
+    const completeProfileFn = createLambda('CompleteProfile', path.join(handlersPath, 'complete-profile.ts'), [
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['dynamodb:GetItem', 'dynamodb:TransactWriteItems'],
+        resources: [tenantsTableArn],
+      }),
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['dynamodb:GetItem'],
+        resources: [invitationsTable.tableArn],
+      }),
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['kms:Decrypt', 'kms:GenerateDataKey'],
+        resources: [props.platformKey.keyArn],
+      }),
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['events:PutEvents'],
+        resources: [props.eventBus.eventBusArn],
+      }),
+    ]);
+    completeProfileFn.addEnvironment('TENANTS_TABLE', tenantsTableName);
+
     // Grant EventBridge PutEvents to all handlers that emit events
     const eventBusPolicy = new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
@@ -325,18 +402,9 @@ export class AuthApiStack extends cdk.Stack {
     // -----------------------------------------------------------------------
 
     // Unauthenticated routes (no authorizer)
-    this.httpApi.addRoutes({
-      path: '/auth/login',
-      methods: [HttpMethod.POST],
-      integration: new HttpLambdaIntegration('LoginIntegration', loginFn),
-    });
-
-    this.httpApi.addRoutes({
-      path: '/auth/refresh',
-      methods: [HttpMethod.POST],
-      integration: new HttpLambdaIntegration('RefreshIntegration', refreshFn),
-    });
-
+    // NOTE: POST /auth/login and POST /auth/refresh were removed — the seller
+    // frontend authenticates and refreshes directly with Cognito via Amplify
+    // SRP, so these server-side endpoints were unused.
     this.httpApi.addRoutes({
       path: '/auth/forgot-password',
       methods: [HttpMethod.POST],
@@ -416,6 +484,21 @@ export class AuthApiStack extends cdk.Stack {
       path: '/auth/users/{id}',
       methods: [HttpMethod.DELETE],
       integration: new HttpLambdaIntegration('DeleteUserIntegration', deleteUserFn),
+      authorizer: jwtAuthorizer,
+    });
+
+    // Registration recovery (authenticated — JWT authorizer)
+    this.httpApi.addRoutes({
+      path: '/auth/profile-status',
+      methods: [HttpMethod.GET],
+      integration: new HttpLambdaIntegration('ProfileStatusIntegration', profileStatusFn),
+      authorizer: jwtAuthorizer,
+    });
+
+    this.httpApi.addRoutes({
+      path: '/auth/complete-profile',
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration('CompleteProfileIntegration', completeProfileFn),
       authorizer: jwtAuthorizer,
     });
 

@@ -38,6 +38,12 @@ vi.mock('../../../shared/middleware/tenant-context', () => ({
   tenantContextMiddleware: () => ({ before: vi.fn() }),
 }));
 
+// Access-token enforcement is covered by its own unit test and the handler
+// tests that run the real middleware; mock to no-op here.
+vi.mock('../../../shared/middleware/access-token', () => ({
+  accessTokenMiddleware: () => ({ before: vi.fn() }),
+}));
+
 // ---------------------------------------------------------------------------
 // Setup
 // ---------------------------------------------------------------------------
@@ -67,12 +73,12 @@ describe('list-users handler', () => {
   beforeEach(() => {
     cognitoMock.reset();
     resetCognitoClient();
-    process.env['COGNITO_TENANT_POOL_ID'] = 'us-east-1_testPoolId';
+    process.env['COGNITO_USER_POOL_ID'] = 'us-east-1_testPoolId';
     process.env['AWS_REGION'] = 'eu-west-1';
   });
 
   afterEach(() => {
-    delete process.env['COGNITO_TENANT_POOL_ID'];
+    delete process.env['COGNITO_USER_POOL_ID'];
     delete process.env['AWS_REGION'];
   });
 
@@ -116,6 +122,41 @@ describe('list-users handler', () => {
       tenantId: 'tenant-1',
       status: 'CONFIRMED',
     });
+  });
+
+  it('reads COGNITO_USER_POOL_ID and passes it as UserPoolId to Cognito', async () => {
+    // Regression guard for the pool-id env-var mismatch: the handler must read
+    // the key the AuthApi stack provides (COGNITO_USER_POOL_ID) and must not be
+    // satisfied by the legacy COGNITO_TENANT_POOL_ID name.
+    delete process.env['COGNITO_USER_POOL_ID'];
+    process.env['COGNITO_TENANT_POOL_ID'] = 'us-east-1_wrongLegacyKey';
+    process.env['COGNITO_USER_POOL_ID'] = 'eu-west-1_correctPool';
+    cognitoMock.on(ListUsersInGroupCommand).resolves({ Users: [] });
+
+    const { handler } = await import('../../handlers/list-users');
+    const event = buildEvent({ tenantId: 'tenant-1', limit: 20 });
+    const result = (await handler(event as any, {} as any)) as any;
+
+    expect(result.statusCode).toBe(200);
+    const calls = cognitoMock.commandCalls(ListUsersInGroupCommand);
+    expect(calls.length).toBe(1);
+    expect(calls[0]?.args[0].input.UserPoolId).toBe('eu-west-1_correctPool');
+
+    delete process.env['COGNITO_TENANT_POOL_ID'];
+  });
+
+  it('returns 500 when only the legacy COGNITO_TENANT_POOL_ID is set (wrong key)', async () => {
+    delete process.env['COGNITO_USER_POOL_ID'];
+    process.env['COGNITO_TENANT_POOL_ID'] = 'us-east-1_legacyOnly';
+
+    const { handler } = await import('../../handlers/list-users');
+    const event = buildEvent({ tenantId: 'tenant-1', limit: 20 });
+    const result = (await handler(event as any, {} as any)) as any;
+
+    expect(result.statusCode).toBe(500);
+    expect(cognitoMock.commandCalls(ListUsersInGroupCommand).length).toBe(0);
+
+    delete process.env['COGNITO_TENANT_POOL_ID'];
   });
 
   it('returns nextToken when Cognito returns NextToken', async () => {
@@ -170,7 +211,7 @@ describe('list-users handler', () => {
   });
 
   it('returns 500 when env var missing', async () => {
-    delete process.env['COGNITO_TENANT_POOL_ID'];
+    delete process.env['COGNITO_USER_POOL_ID'];
 
     const { handler } = await import('../../handlers/list-users');
     const event = buildEvent({ tenantId: 'tenant-1', limit: 20 });

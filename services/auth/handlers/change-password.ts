@@ -20,6 +20,7 @@ import {
 import { changePasswordSchema } from '../schemas';
 import { getCognitoClient } from '../utils/cognito-client';
 import { inputValidationMiddleware } from '../../shared/middleware/input-validation';
+import { accessTokenMiddleware } from '../../shared/middleware/access-token';
 import { logger } from '../../shared/middleware/powertools';
 
 // ---------------------------------------------------------------------------
@@ -149,9 +150,11 @@ async function baseHandler(event: ChangePasswordEvent): Promise<APIGatewayProxyR
 // Middleware Stack
 // ---------------------------------------------------------------------------
 
-export const handler = middy(baseHandler).use(
-  inputValidationMiddleware({
-    schema: changePasswordSchema,
-    source: 'body',
-  }),
-);
+export const handler = middy(baseHandler)
+  .use(accessTokenMiddleware())
+  .use(
+    inputValidationMiddleware({
+      schema: changePasswordSchema,
+      source: 'body',
+    }),
+  );

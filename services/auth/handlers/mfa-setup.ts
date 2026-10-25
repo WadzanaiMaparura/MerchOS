@@ -27,6 +27,7 @@ import {
 
 import { getCognitoClient } from '../utils/cognito-client';
 import { logger, tracer, metrics } from '../../shared/middleware/powertools';
+import { accessTokenMiddleware } from '../../shared/middleware/access-token';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -57,10 +58,10 @@ interface JwtClaims {
  * - Body with verificationCode + session: Verify TOTP code and enable MFA
  */
 async function baseHandler(event: MfaSetupEvent): Promise<APIGatewayProxyResultV2> {
-  const userPoolId = process.env['COGNITO_TENANT_POOL_ID'];
+  const userPoolId = process.env['COGNITO_USER_POOL_ID'];
 
   if (!userPoolId) {
-    logger.error('Missing COGNITO_TENANT_POOL_ID environment variable');
+    logger.error('Missing COGNITO_USER_POOL_ID environment variable');
     return {
       statusCode: 500,
       headers: { 'Content-Type': 'application/json' },
@@ -312,4 +313,5 @@ async function handleVerifyAndEnable(
 export const handler = middy(baseHandler)
   .use(injectLambdaContext(logger, { clearState: true }))
   .use(captureLambdaHandler(tracer))
-  .use(logMetrics(metrics, { captureColdStartMetric: true }));
+  .use(logMetrics(metrics, { captureColdStartMetric: true }))
+  .use(accessTokenMiddleware());

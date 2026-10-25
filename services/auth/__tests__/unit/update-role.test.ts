@@ -42,6 +42,12 @@ vi.mock('../../../shared/middleware/tenant-context', () => ({
   tenantContextMiddleware: () => ({ before: vi.fn() }),
 }));
 
+// Access-token enforcement is covered by its own unit test and the handler
+// tests that run the real middleware; mock to no-op here.
+vi.mock('../../../shared/middleware/access-token', () => ({
+  accessTokenMiddleware: () => ({ before: vi.fn() }),
+}));
+
 const mockEmitAuthEvent = vi.fn().mockResolvedValue({});
 vi.mock('../../utils/event-emitter', () => ({
   emitAuthEvent: (...args: unknown[]) => mockEmitAuthEvent(...args),
@@ -89,13 +95,13 @@ describe('update-role handler', () => {
     cognitoMock.reset();
     resetCognitoClient();
     mockEmitAuthEvent.mockClear();
-    process.env['COGNITO_TENANT_POOL_ID'] = 'us-east-1_testPoolId';
+    process.env['COGNITO_USER_POOL_ID'] = 'us-east-1_testPoolId';
     process.env['EVENT_BUS_NAME'] = 'merch-os-events-dev';
     process.env['AWS_REGION'] = 'eu-west-1';
   });
 
   afterEach(() => {
-    delete process.env['COGNITO_TENANT_POOL_ID'];
+    delete process.env['COGNITO_USER_POOL_ID'];
     delete process.env['EVENT_BUS_NAME'];
     delete process.env['AWS_REGION'];
   });

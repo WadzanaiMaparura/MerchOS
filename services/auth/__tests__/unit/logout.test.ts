@@ -31,6 +31,12 @@ vi.mock('../../../shared/middleware/input-validation', () => ({
   inputValidationMiddleware: () => ({ before: vi.fn() }),
 }));
 
+// Access-token enforcement is covered by its own unit test and the handler
+// tests that run the real middleware; mock to no-op here.
+vi.mock('../../../shared/middleware/access-token', () => ({
+  accessTokenMiddleware: () => ({ before: vi.fn() }),
+}));
+
 const mockEmitAuthEvent = vi.fn().mockResolvedValue({});
 vi.mock('../../utils/event-emitter', () => ({
   emitAuthEvent: (...args: unknown[]) => mockEmitAuthEvent(...args),
