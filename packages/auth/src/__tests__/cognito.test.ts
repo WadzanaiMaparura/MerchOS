@@ -14,7 +14,7 @@ vi.mock('@aws-amplify/core', () => ({
   Amplify: { configure: vi.fn() },
 }));
 
-import { cognitoSignUp } from '../cognito';
+import { cognitoSignUp, cognitoConfirmSignUp } from '../cognito';
 
 describe('cognitoSignUp', () => {
   beforeEach(() => {
@@ -60,5 +60,76 @@ describe('cognitoSignUp', () => {
     });
 
     expect(result).toEqual({ isSignUpComplete: true, userId: 'user-456' });
+  });
+
+  it('passes registrationId to Amplify as options.clientMetadata.registrationId', async () => {
+    await cognitoSignUp({
+      email: 'seller@example.com',
+      password: 'Sup3rSecret!pw12',
+      registrationId: 'reg-abc',
+    });
+
+    const arg = signUpMock.mock.calls[0][0] as {
+      options: {
+        userAttributes: Record<string, string>;
+        clientMetadata?: Record<string, string>;
+      };
+    };
+    expect(arg.options.clientMetadata).toEqual({ registrationId: 'reg-abc' });
+    // Profile fields must never become Cognito user attributes.
+    expect(Object.keys(arg.options.userAttributes)).toEqual(['email']);
+  });
+
+  it('omits clientMetadata entirely when no registrationId is given', async () => {
+    await cognitoSignUp({ email: 'seller@example.com', password: 'Sup3rSecret!pw12' });
+
+    const arg = signUpMock.mock.calls[0][0] as {
+      options: { clientMetadata?: Record<string, string> };
+    };
+    expect(arg.options.clientMetadata).toBeUndefined();
+  });
+});
+
+describe('cognitoConfirmSignUp', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    confirmSignUpMock.mockResolvedValue({ isSignUpComplete: true });
+  });
+
+  it('passes registrationId to Amplify as options.clientMetadata.registrationId', async () => {
+    await cognitoConfirmSignUp('seller@example.com', '123456', 'reg-abc');
+
+    expect(confirmSignUpMock).toHaveBeenCalledTimes(1);
+    const arg = confirmSignUpMock.mock.calls[0][0] as {
+      username: string;
+      confirmationCode: string;
+      options?: { clientMetadata?: Record<string, string> };
+    };
+    expect(arg.username).toBe('seller@example.com');
+    expect(arg.confirmationCode).toBe('123456');
+    expect(arg.options?.clientMetadata).toEqual({ registrationId: 'reg-abc' });
+  });
+
+  it('uses the SAME registrationId as the sign-up call (round-trip)', async () => {
+    const regId = 'reg-roundtrip-xyz';
+    await cognitoSignUp({ email: 'a@b.com', password: 'Sup3rSecret!pw12', registrationId: regId });
+    await cognitoConfirmSignUp('a@b.com', '000000', regId);
+
+    const signUpArg = signUpMock.mock.calls[0][0] as {
+      options: { clientMetadata?: Record<string, string> };
+    };
+    const confirmArg = confirmSignUpMock.mock.calls[0][0] as {
+      options?: { clientMetadata?: Record<string, string> };
+    };
+    expect(signUpArg.options.clientMetadata?.registrationId).toBe(regId);
+    expect(confirmArg.options?.clientMetadata?.registrationId).toBe(regId);
+  });
+
+  it('omits clientMetadata when no registrationId is given', async () => {
+    await cognitoConfirmSignUp('seller@example.com', '123456');
+    const arg = confirmSignUpMock.mock.calls[0][0] as {
+      options?: { clientMetadata?: Record<string, string> };
+    };
+    expect(arg.options).toBeUndefined();
   });
 });
