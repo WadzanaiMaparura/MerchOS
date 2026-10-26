@@ -14,9 +14,12 @@ applications:
         files:
           - '**/*'
       cache:
+        # node_modules is intentionally NOT cached: a stale dependency cache
+        # could retain pre-consolidation @aws-amplify/* packages and resurface
+        # the dual-Core-singleton "Auth UserPool not configured" bug. `npm ci`
+        # rebuilds node_modules from the lockfile each build. Only the Next.js
+        # content-keyed build cache is retained for speed.
         paths:
-          - ../../node_modules/**/*
-          - node_modules/**/*
           - .next/cache/**/*
   - appRoot: apps/admin-dashboard
     frontend:
@@ -32,7 +35,6 @@ applications:
         files:
           - '**/*'
       cache:
+        # See seller-dashboard note: node_modules deliberately not cached.
         paths:
-          - ../../node_modules/**/*
-          - node_modules/**/*
           - .next/cache/**/*
