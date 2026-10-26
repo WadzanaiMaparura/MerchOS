@@ -114,10 +114,27 @@ export class AuthStack extends cdk.Stack {
       },
       accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
       mfa: cognito.Mfa.OPTIONAL,
+      // Both TOTP and email OTP are AVAILABLE second factors. Which one a given
+      // user uses is enforced at the application layer (ADR-005 split):
+      //  - Admins: TOTP only (strong; no email fallback — see admin MFA runbook).
+      //  - Sellers: email OTP (low onboarding friction).
+      // Email MFA requires the PLUS/ESSENTIALS feature plan (pool is PLUS) and an
+      // SES email-sending configuration (below).
       mfaSecondFactor: {
         otp: true,
         sms: false,
+        email: true,
       },
+      // Send Cognito email (MFA OTP, verification, etc.) via the verified SES
+      // identity instead of the test-only COGNITO_DEFAULT sender. In the SES
+      // sandbox only verified recipient addresses receive mail; production
+      // access (sandbox exit) is required before unverified sellers can receive
+      // OTPs. See docs: SES sandbox exit request.
+      email: cognito.UserPoolEmail.withSES({
+        fromEmail: 'admin@merchos.co.za',
+        fromName: 'MerchOS',
+        sesRegion: 'eu-west-1',
+      }),
       advancedSecurityMode: cognito.AdvancedSecurityMode.ENFORCED,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });

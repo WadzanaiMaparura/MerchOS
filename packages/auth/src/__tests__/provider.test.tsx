@@ -117,6 +117,22 @@ describe('AuthProvider.login', () => {
     expect(result).toEqual({ challengeType: 'SMS', session: 'seller@example.com' });
   });
 
+  it('returns an EMAIL challenge when Cognito requires one (seller email OTP)', async () => {
+    signInMock.mockResolvedValue({
+      isSignedIn: false,
+      nextStep: { signInStep: 'CONFIRM_SIGN_IN_WITH_EMAIL_CODE' },
+    });
+
+    let result: MfaChallengeResult | void | 'unset' = 'unset';
+    await renderHarness((r) => (result = r));
+    await act(async () => {
+      screen.getByText('login').click();
+    });
+
+    await waitFor(() => expect(result).toBeTruthy());
+    expect(result).toEqual({ challengeType: 'EMAIL', session: 'seller@example.com' });
+  });
+
   it('completes sign-in with no MFA and hydrates user + token from claims', async () => {
     signInMock.mockResolvedValue({
       isSignedIn: true,
@@ -270,5 +286,35 @@ describe('AuthProvider TOTP enrollment', () => {
 
     await expect(getCtx().verifyTotp('000000')).rejects.toThrow('CodeMismatchException');
     expect(updateMFAPreferenceMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('AuthProvider email MFA enrollment (seller)', () => {
+  function captureCtx() {
+    let ctx: ReturnType<typeof useAuth> | undefined;
+    function Capture() {
+      ctx = useAuth();
+      return null;
+    }
+    render(
+      <AuthProvider>
+        <Capture />
+      </AuthProvider>
+    );
+    return () => ctx!;
+  }
+
+  it('enableEmailMfa sets email as the preferred factor (no QR/secret step)', async () => {
+    updateMFAPreferenceMock.mockResolvedValue(undefined);
+
+    const getCtx = captureCtx();
+    await waitFor(() => expect(getCtx()).toBeTruthy());
+
+    await getCtx().enableEmailMfa();
+
+    expect(updateMFAPreferenceMock).toHaveBeenCalledWith({ email: 'PREFERRED' });
+    // No TOTP enrollment side-effects for the seller email path.
+    expect(setUpTOTPMock).not.toHaveBeenCalled();
+    expect(verifyTOTPSetupMock).not.toHaveBeenCalled();
   });
 });
