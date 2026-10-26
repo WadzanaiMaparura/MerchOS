@@ -112,7 +112,15 @@ export class AuthStack extends cdk.Stack {
         requireSymbols: true,
         tempPasswordValidity: cdk.Duration.days(7),
       },
-      accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
+      // Cognito forbids email-OTP MFA when verified_email is the ONLY account
+      // recovery mechanism (a user who loses email access would lose both their
+      // second factor AND recovery). EMAIL_AND_PHONE_WITHOUT_MFA declares phone
+      // as an additional recovery mechanism, which satisfies that constraint and
+      // unblocks email MFA. NOTE: this is a recovery-config declaration only — it
+      // does NOT enable SMS as a login factor, require phone numbers, or set up
+      // SNS. Phone recovery is nominal until phone collection + SNS are wired;
+      // operational recovery remains admin-initiated reset.
+      accountRecovery: cognito.AccountRecovery.EMAIL_AND_PHONE_WITHOUT_MFA,
       mfa: cognito.Mfa.OPTIONAL,
       // Both TOTP and email OTP are AVAILABLE second factors. Which one a given
       // user uses is enforced at the application layer (ADR-005 split):
