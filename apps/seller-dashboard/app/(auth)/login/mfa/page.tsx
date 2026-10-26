@@ -1,13 +1,14 @@
 'use client';
 
 /**
- * Seller MFA Page — 6-digit TOTP / SMS code entry.
+ * Seller MFA Page — 6-digit email OTP code entry.
  *
- * Reached only when login() returns an MFA challenge (TOTP or SMS). The
- * pending sign-in is held in the shared AuthProvider (Amplify's in-memory
- * challenge state), so completeMfa(code) resolves the same challenge that
- * the login page started. On success the session is established and the
- * user is redirected to the dashboard.
+ * Sellers use email OTP as their second factor (ADR-005 split: sellers =
+ * low-friction email, admins = TOTP). Reached only when login() returns an
+ * MFA challenge. The pending sign-in is held in the shared AuthProvider
+ * (Amplify's in-memory challenge state), so completeMfa(code) resolves the
+ * same challenge that the login page started. On success the session is
+ * established and the user is redirected to the dashboard.
  *
  * If a user lands here without a pending challenge (e.g. a direct URL hit
  * or a page reload that cleared Amplify's in-memory state), completeMfa
@@ -74,9 +75,10 @@ export default function SellerMfaPage() {
     <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-md space-y-8">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900">Two-Factor Authentication</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Verify it&apos;s you</h1>
           <p className="mt-2 text-sm text-gray-600">
-            Enter the 6-digit code from your authenticator app
+            We emailed you a 6-digit verification code. Enter it below to finish
+            signing in.
           </p>
         </div>
 
@@ -125,7 +127,8 @@ export default function SellerMfaPage() {
         </Form>
 
         <p className="text-center text-xs text-gray-500">
-          Open your authenticator app (e.g., Google Authenticator, Authy) to retrieve your code.
+          Didn&apos;t get it? Check your spam folder, or wait a moment and the code
+          may still be on its way.
         </p>
       </div>
     </main>

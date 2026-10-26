@@ -35,7 +35,7 @@ const LOCKOUT_WINDOW_MS = 15 * 60 * 1000;
  */
 export default function LoginPage() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, enableEmailMfa } = useAuth();
 
   const [error, setError] = useState<string | null>(null);
   const [isLocked, setIsLocked] = useState(false);
@@ -85,12 +85,26 @@ export default function LoginPage() {
       try {
         const result = await login(data.email, data.password);
 
-        // If an MFA challenge is returned, continue to the TOTP/SMS entry page.
-        // The pending challenge is held in the shared AuthProvider, so the MFA
-        // page can resolve it via completeMfa().
+        // If an MFA challenge is returned (email OTP for sellers), continue to
+        // the code-entry page. The pending challenge is held in the shared
+        // AuthProvider, so the MFA page resolves it via completeMfa().
         if (result && 'challengeType' in result) {
           router.push('/login/mfa');
           return;
+        }
+
+        // No challenge means this seller has no second factor enrolled yet
+        // (typically the first login after email verification). The seller's
+        // email is already verified, so enable email OTP as the preferred
+        // factor now — subsequent logins will then challenge via an emailed
+        // code. Best-effort: a failure here must not block an otherwise
+        // successful login.
+        try {
+          await enableEmailMfa();
+        } catch {
+          // Non-blocking — login already succeeded; the preference can be set
+          // on a later login. (Also expected to fail harmlessly if the pool
+          // does not yet have email MFA enabled in a given environment.)
         }
 
         // Successful authentication — redirect to dashboard
@@ -117,7 +131,7 @@ export default function LoginPage() {
         setIsSubmitting(false);
       }
     },
-    [login, router, failedAttempts, isAccountLocked]
+    [login, enableEmailMfa, router, failedAttempts, isAccountLocked]
   );
 
   return (

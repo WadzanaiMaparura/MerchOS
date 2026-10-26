@@ -24,7 +24,7 @@ export interface AuthState {
 
 /** MFA challenge result returned when login requires a second factor. */
 export interface MfaChallengeResult {
-  challengeType: 'TOTP' | 'SMS';
+  challengeType: 'TOTP' | 'SMS' | 'EMAIL';
   session: string;
 }
 
@@ -57,6 +57,14 @@ export interface AuthContextValue extends AuthState {
    * then mark TOTP as the preferred second factor. Rejects on an invalid code.
    */
   verifyTotp: (code: string) => Promise<void>;
+  /**
+   * Enable email OTP as the signed-in user's preferred second factor. Used by
+   * the low-friction seller flow: the user's email is already verified at
+   * registration, so no QR/secret step is needed — this just sets the Cognito
+   * MFA preference so subsequent logins challenge via an emailed code. Requires
+   * an active session.
+   */
+  enableEmailMfa: () => Promise<void>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<string>; // returns new access token
 }

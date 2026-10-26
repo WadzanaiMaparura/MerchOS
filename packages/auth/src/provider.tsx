@@ -154,6 +154,14 @@ export function AuthProvider({ children }: AuthProviderProps): React.ReactElemen
       };
     }
 
+    if (result.nextStep.signInStep === 'CONFIRM_SIGN_IN_WITH_EMAIL_CODE') {
+      pendingSignInRef.current = email;
+      return {
+        challengeType: 'EMAIL',
+        session: email,
+      };
+    }
+
     // Auth completed — load session
     if (result.isSignedIn) {
       const session = await fetchAuthSession();
@@ -273,6 +281,16 @@ export function AuthProvider({ children }: AuthProviderProps): React.ReactElemen
     await updateMFAPreference({ totp: 'PREFERRED' });
   }, []);
 
+  /**
+   * Enable email OTP as the signed-in user's preferred second factor.
+   * The seller's email is already verified at registration, so there is no
+   * QR/secret enrollment step — we simply set the Cognito MFA preference so
+   * subsequent logins issue a CONFIRM_SIGN_IN_WITH_EMAIL_CODE challenge.
+   */
+  const enableEmailMfa = useCallback(async (): Promise<void> => {
+    await updateMFAPreference({ email: 'PREFERRED' });
+  }, []);
+
   const contextValue = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -283,10 +301,11 @@ export function AuthProvider({ children }: AuthProviderProps): React.ReactElemen
       completeMfa,
       setUpTotp,
       verifyTotp,
+      enableEmailMfa,
       logout,
       refreshSession,
     }),
-    [user, isAuthenticated, isLoading, accessToken, login, completeMfa, setUpTotp, verifyTotp, logout, refreshSession]
+    [user, isAuthenticated, isLoading, accessToken, login, completeMfa, setUpTotp, verifyTotp, enableEmailMfa, logout, refreshSession]
   );
 
   return (

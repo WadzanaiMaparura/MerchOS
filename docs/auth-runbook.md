@@ -383,3 +383,55 @@ fields @timestamp, status
         sum(case when status = 'accepted' then 1 else 0 end) as accepted
 | extend acceptRate = (accepted / total) * 100
 ```
+
+---
+
+## MFA: factor policy & recovery (ADR-005 split)
+
+MerchOS uses a **split MFA policy**, enforced at the application layer (the pool
+is `Mfa.OPTIONAL`; both TOTP and email OTP are *available* factors):
+
+- **Admin operators → TOTP only.** No email fallback by design — allowing an
+  admin to authenticate with an emailed code would collapse two-factor down to
+  "controls the inbox," and an admin's blast radius is the whole platform. The
+  admin dashboard forces TOTP enrollment via `/mfa/setup` on first login.
+- **Sellers → email OTP.** Low onboarding friction. Enabled automatically on a
+  seller's first successful login (their email is already verified at
+  registration), so subsequent logins issue an emailed 6-digit code challenge.
+
+### Admin lost-device recovery (TOTP reset)
+
+When an operator loses their authenticator device, **do NOT** add an email
+fallback. Recovery is an out-of-band, admin-initiated reset: a trusted operator
+(or anyone with AWS access) clears the user's TOTP preference so they re-enroll a
+fresh device on next login.
+
+```bash
+# 1. Clear the user's MFA preference (removes TOTP as a configured factor).
+aws cognito-idp admin-set-user-mfa-preference \
+  --user-pool-id <POOL_ID> \
+  --username <operator-email> \
+  --software-token-mfa-settings Enabled=false,PreferredMfa=false \
+  --profile <profile> --region eu-west-1
+
+# 2. (Optional) Confirm the preference is cleared.
+aws cognito-idp admin-get-user \
+  --user-pool-id <POOL_ID> --username <operator-email> \
+  --profile <profile> --region eu-west-1 \
+  --query "UserMFASettingList"
+```
+
+On the operator's next login, the admin dashboard detects no enrolled factor and
+routes them through `/mfa/setup` to enroll a new authenticator. The attacker
+never gets to *choose* a weaker factor — a trusted human performs the reset
+deliberately.
+
+### Seller email-MFA notes
+
+- Email OTP delivery goes through **Amazon SES** (not the Cognito default sender).
+  In the SES **sandbox**, only verified recipient addresses receive mail — real
+  (unverified) sellers cannot receive codes until the account exits the sandbox
+  (production-access request). See the SES sandbox-exit guide.
+- Email OTP is intentionally the weakest of the factors (the code rides the same
+  email channel as the account) — acceptable for sellers, deliberately excluded
+  for admins.
