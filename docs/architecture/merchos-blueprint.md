@@ -39,6 +39,19 @@ Amazon Cognito is the **sole Identity Provider** for the MerchOS platform. All u
 
 The platform uses a **single Cognito User Pool** containing all platform users regardless of their Platform Role. Admins, Support staff, and Sellers all reside in the same User Pool. This design simplifies user management, provides a single authentication endpoint, and enables role assignment through Cognito Groups without requiring separate authentication infrastructure per role.
 
+#### Email delivery & MFA (Amazon SES)
+
+Cognito sends all account email — MFA one-time passwords, address verification, and admin-initiated messages — through **Amazon SES** (configured via `UserPoolEmail.withSES`, sender `MerchOS <admin@merchos.co.za>`, region `eu-west-1`). SES is the email transport only; it is not an identity provider.
+
+Multi-factor authentication follows a **split model** (ADR-005):
+
+- **Sellers** use **email OTP** as their second factor — low onboarding friction, since the seller's email is already verified at registration. Cognito emails a 6-digit code via SES on each login.
+- **Admins** use **TOTP** (authenticator app) only — no email fallback, to avoid an MFA-downgrade path on privileged accounts.
+
+Which factor applies is enforced at the application layer; the pool enables both TOTP and email OTP as available second factors.
+
+> **Note (as-built):** SES currently operates in the **sandbox** — only verified recipient addresses receive mail. Production access (sandbox exit) is required before unverified sellers can receive OTPs. Cognito Threat Protection is set to **AUDIT** (detects and logs risk without blocking); restoring **ENFORCED** requires wiring Amplify advanced-security user-context collection in the SPAs.
+
 ### 1.3 App Client Configuration
 
 The User Pool is configured with **three App Clients**, one per authentication surface. All clients issue JWTs containing the claims required for downstream authorization (`sub`, `custom:tenantId`, and `cognito:groups`); they differ only in flow and secret configuration.
@@ -1110,6 +1123,7 @@ graph TB
 
     subgraph Auth["Identity & Access"]
         Cognito[Amazon Cognito<br/><i>Single User Pool</i>]
+        SES[Amazon SES<br/><i>Email delivery</i>]
     end
 
     subgraph Gateway["API Layer"]
@@ -1141,6 +1155,7 @@ graph TB
     SP -->|Authenticate| Cognito
     Cognito -->|Issue JWT| AP
     Cognito -->|Issue JWT| SP
+    Cognito -->|MFA OTP & verification email| SES
 
     AP -->|Bearer JWT| APIGW
     SP -->|Bearer JWT| APIGW

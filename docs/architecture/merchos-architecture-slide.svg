@@ -78,7 +78,8 @@
     <ellipse class="store" cx="290" cy="506" rx="46" ry="9" fill="#eef0fb"/>
     <text class="btxt" x="290" y="526">Amazon S3</text>
   </g>
-  <rect class="box" x="400" y="496" width="140" height="40" rx="3"/><text class="btxt" x="470" y="520">Cognito User Pool</text>
+  <rect class="box" x="392" y="496" width="108" height="40" rx="3"/><text class="btxt" x="446" y="514">Cognito</text><text class="btxt" x="446" y="527">User Pool</text>
+  <rect class="box" x="508" y="496" width="90" height="40" rx="3"/><text class="btxt" x="553" y="514">Amazon SES</text><text class="btxt" x="553" y="527" font-size="8.5">(MFA OTP · email)</text>
 
   <!-- Orchestration -->
   <rect class="grp" x="672" y="464" width="548" height="108" rx="4"/>
@@ -109,7 +110,9 @@
   <path class="line" d="M580,302 H334 V344" marker-end="url(#arrow)"/>
   <path class="line" d="M728,302 H946 V344" marker-end="url(#arrow)"/>
   <!-- gateway -> cognito (dashed) -->
-  <path class="dash" d="M560,314 H470 V496" marker-end="url(#arrow)"/>
+  <path class="dash" d="M560,314 H446 V496" marker-end="url(#arrow)"/>
+  <!-- cognito -> SES (Cognito sends MFA OTP / verification email via SES) -->
+  <path class="line" d="M500,516 H508" marker-end="url(#arrow)"/>
   <!-- intelligence -> data -->
   <path class="line" d="M231,408 V456 V464" marker-end="url(#arrow)"/>
   <!-- core -> orchestration -->
