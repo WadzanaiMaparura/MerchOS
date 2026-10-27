@@ -50,7 +50,7 @@ Multi-factor authentication follows a **split model** (ADR-005):
 
 Which factor applies is enforced at the application layer; the pool enables both TOTP and email OTP as available second factors.
 
-> **Note (as-built):** SES currently operates in the **sandbox** — only verified recipient addresses receive mail. Production access (sandbox exit) is required before unverified sellers can receive OTPs. Cognito Threat Protection is set to **AUDIT** (detects and logs risk without blocking); restoring **ENFORCED** requires wiring Amplify advanced-security user-context collection in the SPAs.
+> **Note (as-built):** SES has **production access** (sandbox exit granted) — any registered seller can receive MFA OTP and verification email; the Cognito sender identity `admin@merchos.co.za` is verified. Cognito Threat Protection is currently set to **AUDIT** (detects and logs risk without blocking). The Amplify advanced-security device-fingerprint script (`amazon-cognito-advanced-security-data.min.js`, `eu-west-1`) is loaded in both SPA root layouts so that `signIn`/`confirmSignIn` attach `UserContextData` — the prerequisite for restoring **ENFORCED**. Flip `advancedSecurityMode` back to `ENFORCED` in `infrastructure/lib/auth-stack.ts` once a login has been verified with the script in place.
 
 ### 1.3 App Client Configuration
 
