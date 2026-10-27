@@ -143,17 +143,28 @@ export class AuthStack extends cdk.Stack {
         fromName: 'MerchOS',
         sesRegion: 'eu-west-1',
       }),
-      // Threat Protection ENFORCED: risk-score every auth operation and BLOCK
-      // sign-ins Cognito deems high-risk (compromised-credential and adaptive-
-      // auth blocking). ENFORCED requires the client to attach encrypted
-      // device-fingerprint UserContextData; Amplify JS does not send it on its
-      // own, so both SPAs load the amazon-cognito-advanced-security-data.min.js
-      // script in their root layouts (apps/*/app/layout.tsx), which lets
-      // signIn/confirmSignIn attach the EncodedData Cognito risk-scores against.
-      // Without that script this reverts to the earlier failure where ENFORCED
-      // rejected the email-OTP RespondToAuthChallenge with 400. If the script is
-      // ever removed, drop this back to AUDIT.
-      advancedSecurityMode: cognito.AdvancedSecurityMode.ENFORCED,
+      // Threat Protection AUDIT (detect + log risk; do NOT block).
+      //
+      // We attempted ENFORCED after loading the advanced-security data script
+      // (amazon-cognito-advanced-security-data.min.js) in both SPA root layouts.
+      // The script ships in the built HTML, yet ENFORCED STILL blocked a
+      // legitimate seller login ("Invalid email or password") — i.e. Amplify v6
+      // did not attach usable device-fingerprint EncodedData to the SRP
+      // signIn/confirmSignIn in this deployed setup, so Cognito scored the
+      // request as high-risk and blocked it. We rolled the live pool back to
+      // AUDIT to restore login.
+      //
+      // AUDIT keeps full threat telemetry (risk scores, compromised-credential
+      // detection, CloudWatch metrics) WITHOUT blocking, and does not weaken the
+      // actual auth factors (password + MFA are unchanged). It is the documented
+      // safe posture when the client cannot guarantee context data.
+      //
+      // TODO(security): restoring ENFORCED needs verification that
+      // UserContextData.EncodedData is actually on the signIn wire (inspect the
+      // cognito-idp request), likely an explicit context-data hook rather than
+      // relying on Amplify v6 auto-collection. Track as a dedicated task; or
+      // adopt passkeys/WebAuthn instead.
+      advancedSecurityMode: cognito.AdvancedSecurityMode.AUDIT,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
