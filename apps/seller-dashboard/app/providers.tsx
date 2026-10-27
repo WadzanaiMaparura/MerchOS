@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, configureCognitoAuth } from '@merch-os/auth';
+import { ToastProvider } from '@merch-os/ui';
 import { ErrorHandlingProvider } from './components/ErrorHandlingProvider';
 
 /**
@@ -22,7 +23,12 @@ interface ProvidersProps {
 
 /**
  * App-level providers wrapper (client component).
- * Order: QueryClientProvider > AuthProvider > ErrorHandlingProvider > children
+ * Order: QueryClientProvider > AuthProvider > ToastProvider > ErrorHandlingProvider > children
+ *
+ * ToastProvider supplies the toast context consumed via useToast() by the
+ * dashboard pages and notification bridge (@merch-os/ui). It must wrap the
+ * dashboard subtree or those components throw
+ * "useToast must be used within a ToastProvider".
  *
  * QueryClient is configured with:
  * - retry: 3 (default retries for failed queries)
@@ -50,9 +56,11 @@ export function Providers({ children }: ProvidersProps) {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <ErrorHandlingProvider>
-          {children}
-        </ErrorHandlingProvider>
+        <ToastProvider>
+          <ErrorHandlingProvider>
+            {children}
+          </ErrorHandlingProvider>
+        </ToastProvider>
       </AuthProvider>
     </QueryClientProvider>
   );
