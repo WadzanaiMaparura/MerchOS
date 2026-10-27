@@ -143,18 +143,17 @@ export class AuthStack extends cdk.Stack {
         fromName: 'MerchOS',
         sesRegion: 'eu-west-1',
       }),
-      // Threat Protection in AUDIT (not ENFORCED). ENFORCED risk-scores every
-      // auth operation and BLOCKS sign-ins it deems risky — but that requires
-      // the client to attach encrypted device-fingerprint UserContextData
-      // (collected by Amplify's advanced-security script via a hosted-UI
-      // domain). This SPA authenticates with the SRP flow and does NOT send
-      // that context, so ENFORCED treated every sign-in as high-risk and
-      // rejected the MFA RespondToAuthChallenge with 400, breaking email-OTP
-      // login. AUDIT still detects and logs risk (CloudWatch/metrics) but does
-      // not block, which unblocks the flow while preserving telemetry.
-      // TODO(security): before production, either wire Amplify advanced-security
-      // user-context collection and restore ENFORCED, or adopt passkeys/WebAuthn.
-      advancedSecurityMode: cognito.AdvancedSecurityMode.AUDIT,
+      // Threat Protection ENFORCED: risk-score every auth operation and BLOCK
+      // sign-ins Cognito deems high-risk (compromised-credential and adaptive-
+      // auth blocking). ENFORCED requires the client to attach encrypted
+      // device-fingerprint UserContextData; Amplify JS does not send it on its
+      // own, so both SPAs load the amazon-cognito-advanced-security-data.min.js
+      // script in their root layouts (apps/*/app/layout.tsx), which lets
+      // signIn/confirmSignIn attach the EncodedData Cognito risk-scores against.
+      // Without that script this reverts to the earlier failure where ENFORCED
+      // rejected the email-OTP RespondToAuthChallenge with 400. If the script is
+      // ever removed, drop this back to AUDIT.
+      advancedSecurityMode: cognito.AdvancedSecurityMode.ENFORCED,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
