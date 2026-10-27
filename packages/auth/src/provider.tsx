@@ -15,6 +15,7 @@ import {
   setUpTOTP,
   verifyTOTPSetup,
   updateMFAPreference,
+  getCurrentUser,
 } from 'aws-amplify/auth';
 import type { AuthContextValue, AuthUser, MfaChallengeResult, TotpSetupDetails } from '@merch-os/types';
 import type { SellerRole } from '@merch-os/types';
@@ -129,6 +130,20 @@ export function AuthProvider({ children }: AuthProviderProps): React.ReactElemen
    * Returns MfaChallengeResult if MFA is required, otherwise void on success.
    */
   const login = useCallback(async (email: string, password: string): Promise<MfaChallengeResult | void> => {
+    // Amplify v6 rejects signIn() with UserAlreadyAuthenticatedException when a
+    // user is already signed in (e.g. a prior successful sign-in whose redirect
+    // didn't complete, or a stale session left in storage). This surfaced as a
+    // misleading "Invalid email or password" on the second attempt. Clear any
+    // existing session first so every login starts from a clean state.
+    try {
+      await getCurrentUser();
+      // A user is already authenticated — sign them out before re-authenticating.
+      await signOut();
+    } catch {
+      // getCurrentUser throws when nobody is signed in — the normal, expected
+      // case. Nothing to clear; proceed to signIn.
+    }
+
     const result = await signIn({
       username: email,
       password,
