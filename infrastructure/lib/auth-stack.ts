@@ -143,7 +143,18 @@ export class AuthStack extends cdk.Stack {
         fromName: 'MerchOS',
         sesRegion: 'eu-west-1',
       }),
-      advancedSecurityMode: cognito.AdvancedSecurityMode.ENFORCED,
+      // Threat Protection in AUDIT (not ENFORCED). ENFORCED risk-scores every
+      // auth operation and BLOCKS sign-ins it deems risky — but that requires
+      // the client to attach encrypted device-fingerprint UserContextData
+      // (collected by Amplify's advanced-security script via a hosted-UI
+      // domain). This SPA authenticates with the SRP flow and does NOT send
+      // that context, so ENFORCED treated every sign-in as high-risk and
+      // rejected the MFA RespondToAuthChallenge with 400, breaking email-OTP
+      // login. AUDIT still detects and logs risk (CloudWatch/metrics) but does
+      // not block, which unblocks the flow while preserving telemetry.
+      // TODO(security): before production, either wire Amplify advanced-security
+      // user-context collection and restore ENFORCED, or adopt passkeys/WebAuthn.
+      advancedSecurityMode: cognito.AdvancedSecurityMode.AUDIT,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
