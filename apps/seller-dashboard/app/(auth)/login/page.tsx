@@ -109,7 +109,15 @@ export default function LoginPage() {
 
         // Successful authentication — redirect to dashboard
         router.push('/dashboard');
-      } catch {
+      } catch (err) {
+        // TEMPORARY DEBUG: surface the real Amplify error so we can diagnose the
+        // deployed login failure. Remove once resolved — this intentionally
+        // bypasses the non-enumerating generic message.
+        const debugName = err instanceof Error ? err.name : 'UnknownError';
+        const debugMsg = err instanceof Error ? err.message : String(err);
+        // eslint-disable-next-line no-console
+        console.error('[MerchOS login debug]', debugName, debugMsg, err);
+
         // Record failed attempt timestamp
         const now = Date.now();
         const updatedAttempts = [...failedAttempts, now].filter(
@@ -124,8 +132,10 @@ export default function LoginPage() {
             'Your account has been temporarily locked due to too many failed login attempts. Please try again in 15 minutes.'
           );
         } else {
-          // Generic error message — does not reveal whether email exists (Requirement 1.3)
-          setError('Invalid email or password. Please try again.');
+          // TEMPORARY DEBUG: show the real error name/message on screen to
+          // diagnose the deployed login failure. Revert to the generic
+          // non-enumerating message once resolved.
+          setError(`[debug] ${debugName}: ${debugMsg}`);
         }
       } finally {
         setIsSubmitting(false);
