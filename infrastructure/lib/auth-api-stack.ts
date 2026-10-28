@@ -168,8 +168,20 @@ export class AuthApiStack extends cdk.Stack {
         minify: true,
         sourceMap: true,
         target: 'node20',
-        format: lambdaNodejs.OutputFormat.ESM,
-        mainFields: ['module', 'main'],
+        // CommonJS output (NOT ESM). Every handler here uses
+        // @aws-lambda-powertools/logger, which transitively pulls in
+        // lodash.merge doing a top-level `require("util").types`. Under
+        // esbuild's ESM output that becomes a `__require` shim that throws at
+        // module INIT — "Dynamic require of \"util\" is not supported" — so the
+        // function crashes before the handler runs (Runtime.Unknown) and the
+        // route returns 5xx. This originally only bit RegisterPending and was
+        // patched there; it also silently broke GET /auth/profile-status (and
+        // every other handler), which trapped the seller dashboard on
+        // "Checking your account setup…". Emitting CommonJS preserves a real
+        // `require("util")` that Node 20 satisfies natively. `mainFields`
+        // prefers the CJS `main` entrypoint to match.
+        format: lambdaNodejs.OutputFormat.CJS,
+        mainFields: ['main', 'module'],
       },
     };
 
@@ -238,23 +250,11 @@ export class AuthApiStack extends cdk.Stack {
         actions: ['kms:GenerateDataKey', 'kms:Decrypt'],
         resources: [props.platformKey.keyArn],
       }),
-    ],
-    // ESM BUNDLING FIX (RegisterPending only): the shared default bundles as
-    // ESM (OutputFormat.ESM). A transitive dependency — lodash.merge, pulled in
-    // via @aws-lambda-powertools/logger — performs a top-level
-    // `require("util").types`. Under esbuild's ESM output that compiles to the
-    // `__require` shim, which throws at module init:
-    //   "Dynamic require of \"util\" is not supported"
-    // crashing the function during INIT (Runtime.Unknown) before the handler
-    // runs, so POST /auth/register-pending returns 502. Emitting this one
-    // handler as CommonJS preserves a real `require("util")` that Node 20
-    // satisfies natively. `mainFields` is flipped to prefer the CJS `main`
-    // entrypoint of dependencies to match the CJS output. The shared ESM
-    // defaults for every other handler are intentionally left unchanged.
-    {
-      format: lambdaNodejs.OutputFormat.CJS,
-      mainFields: ['main', 'module'],
-    });
+    ]);
+    // NOTE: the CommonJS bundling that this handler used to override locally is
+    // now the shared default for ALL auth handlers (see defaultLambdaProps.bundling),
+    // because the same require("util") ESM crash affects every logger-using
+    // handler. No per-handler override needed here anymore.
 
     // 9c. Profile Status (authenticated recovery read)
     // Reads canonical tenant metadata + owner profile from the tenants table
