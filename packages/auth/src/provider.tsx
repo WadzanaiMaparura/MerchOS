@@ -33,11 +33,21 @@ const REFRESH_TIMEOUT_MS = 3000;
  * Extract AuthUser from Cognito session JWT claims.
  */
 function extractUserFromToken(idTokenPayload: Record<string, unknown>): AuthUser {
+  // The PreTokenGeneration trigger injects custom:role as '' (empty string)
+  // when the Cognito user has no role attribute yet. An empty string is NOT
+  // caught by `?? 'viewer'` (?? only catches null/undefined), which previously
+  // left role='' — treated by RouteGuard as an indeterminate role and bounced
+  // to /login (login loop). Coerce any empty/missing role to the 'viewer'
+  // default so an authenticated user is never trapped by a blank role claim.
+  const rawRole = idTokenPayload['custom:role'];
+  const role: SellerRole =
+    typeof rawRole === 'string' && rawRole.length > 0 ? (rawRole as SellerRole) : 'viewer';
+
   return {
     userId: (idTokenPayload['sub'] as string) ?? '',
     email: (idTokenPayload['email'] as string) ?? '',
     tenantId: (idTokenPayload['custom:tenantId'] as string) ?? '',
-    role: (idTokenPayload['custom:role'] as SellerRole) ?? 'viewer',
+    role,
     givenName: idTokenPayload['given_name'] as string | undefined,
     familyName: idTokenPayload['family_name'] as string | undefined,
   };
