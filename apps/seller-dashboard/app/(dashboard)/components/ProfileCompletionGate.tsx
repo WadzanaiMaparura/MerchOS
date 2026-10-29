@@ -37,7 +37,7 @@ const COMPLETION_PATH = '/complete-profile';
 export function ProfileCompletionGate({ children }: ProfileCompletionGateProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, isLoading, refreshSession } = useAuth();
+  const { user, isLoading, accessToken } = useAuth();
 
   // The initial status check has resolved or failed (false only while the very
   // first authenticated evaluation is still pending). Once settled it stays
@@ -50,7 +50,12 @@ export function ProfileCompletionGate({ children }: ProfileCompletionGateProps) 
   const [retryKey, setRetryKey] = useState(0);
   const redirectingRef = useRef(false);
 
-  const getAccessToken = useCallback(async () => refreshSession(), [refreshSession]);
+  // Use the access token already held in auth state for the profile-status
+  // call. Must NOT call refreshSession(): that forces a token refresh and
+  // hard-redirects to /login on any failure, which — running on dashboard
+  // mount right after login/MFA — bounced the user back to /login (post-OTP
+  // loop). The gate fails open on a status-check error anyway.
+  const getAccessToken = useCallback(async () => accessToken ?? '', [accessToken]);
 
   useEffect(() => {
     // Only evaluate once auth is resolved and a user exists. Until then we do

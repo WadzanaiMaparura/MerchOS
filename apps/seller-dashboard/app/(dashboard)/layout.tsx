@@ -226,7 +226,7 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, isLoading: isAuthLoading, refreshSession } = useAuth();
+  const { user, isLoading: isAuthLoading, accessToken } = useAuth();
 
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
@@ -236,10 +236,20 @@ export default function DashboardLayout({
   // WebSocket URL from environment variable
   const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'wss://ws.merchos.io';
 
-  // Access token getter for WebSocket authentication
+  // Access token getter for WebSocket authentication.
+  //
+  // IMPORTANT: this must NOT call refreshSession(). refreshSession() does a
+  // forced token refresh and, on any failure/timeout, HARD-redirects to /login
+  // via window.location. The WebSocket connects on dashboard mount and calls
+  // this immediately — right after login/MFA — so a forced refresh racing the
+  // just-written tokens would tear down a valid session and bounce the user
+  // back to /login (the post-OTP login loop). Instead, hand the WebSocket the
+  // current access token already held in auth state; if it is not ready yet,
+  // return an empty string and let the WebSocketManager retry/back off. Token
+  // renewal for API calls is handled separately by the api-client interceptor.
   const getAccessToken = useCallback(async () => {
-    return refreshSession();
-  }, [refreshSession]);
+    return accessToken ?? '';
+  }, [accessToken]);
 
   // Resolve Platform Role from user context. This is the seller dashboard,
   // so we use 'Seller' as the platform role.
