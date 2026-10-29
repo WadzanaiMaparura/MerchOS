@@ -208,8 +208,20 @@ export function AuthProvider({ children }: AuthProviderProps): React.ReactElemen
         setUser(extractUserFromToken(payload));
         setAccessToken(accessTkn.toString());
         setIsAuthenticated(true);
+      } else {
+        // confirmSignIn reported signed-in but no tokens were readable from the
+        // session — surface this rather than silently redirecting into a loop.
+        throw new Error(
+          `MFA confirmed but session has no tokens (idToken=${!!idToken}, accessToken=${!!accessTkn})`,
+        );
       }
       pendingSignInRef.current = null;
+    } else {
+      // Not signed in and no error thrown by Amplify — the challenge did not
+      // complete (e.g. lost sign-in state across the page navigation). Surface
+      // the next step instead of redirecting into a loop.
+      const step = result.nextStep?.signInStep ?? 'UNKNOWN';
+      throw new Error(`MFA not completed (isSignedIn=false, nextStep=${step})`);
     }
   }, []);
 

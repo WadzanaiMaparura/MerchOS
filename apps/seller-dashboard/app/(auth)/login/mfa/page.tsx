@@ -59,10 +59,14 @@ export default function SellerMfaPage() {
         await completeMfa(data.code);
         // MFA complete — session is now established. Redirect to dashboard.
         router.replace('/dashboard');
-      } catch {
-        // Generic, non-enumerating message. Covers both a wrong code and a
-        // missing/expired challenge (e.g. direct navigation or reload).
-        setError('Invalid or expired verification code. Please try again.');
+      } catch (err) {
+        // TEMPORARY DEBUG: surface the real confirmSignIn error to diagnose the
+        // post-OTP login loop. Remove once resolved.
+        const debugName = err instanceof Error ? err.name : 'UnknownError';
+        const debugMsg = err instanceof Error ? err.message : String(err);
+        // eslint-disable-next-line no-console
+        console.error('[MerchOS mfa debug]', debugName, debugMsg, err);
+        setError(`[debug] ${debugName}: ${debugMsg}`);
         form.setValue('code', '');
       } finally {
         setIsSubmitting(false);
