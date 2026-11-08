@@ -244,7 +244,12 @@ export default function DashboardLayout({
   // a number/id as the seller's name).
   const organisationName =
     (user as { organisationName?: string })?.organisationName ?? 'Trampoline Store';
-  const companyInitial = (organisationName.trim()[0] ?? 'M').toUpperCase();
+  // MerchOS-allocated Seller ID. A human-friendly id is assigned by MerchOS at
+  // registration (profile API, pending). Until that is wired, show a readable
+  // placeholder derived from the tenant id rather than the raw UUID.
+  const sellerId =
+    (user as { sellerId?: string })?.sellerId ??
+    (user?.tenantId ? `MOS-${user.tenantId.replace(/[^a-z0-9]/gi, '').slice(0, 6).toUpperCase()}` : 'MOS-000000');
 
   // Build a map from nav item id → icon for lookup after filtering
   const iconMap = useMemo(() => {
@@ -306,14 +311,14 @@ export default function DashboardLayout({
               <NavLoadingIndicator />
             ) : (
               <div className="flex h-full flex-col bg-sidebar-bg">
-                {/* Company / brand block (top-left) */}
-                <div className="flex items-center gap-2.5 border-b border-gray-200 px-4 py-4">
+                {/* MerchOS brand block (top-left) — the product brand, not the seller's. */}
+                <div className="flex items-center gap-2.5 border-b border-gray-300 px-4 py-4">
                   <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary-600 text-sm font-bold tracking-tight text-white">
-                    {companyInitial}
+                    M
                   </span>
                   {!sidebarCollapsed && (
-                    <span className="truncate text-sm font-semibold tracking-tight text-gray-900" title={organisationName}>
-                      {truncate(organisationName, 22)}
+                    <span className="truncate text-base font-bold tracking-tight text-gray-900">
+                      MerchOS
                     </span>
                   )}
                 </div>
@@ -342,9 +347,10 @@ export default function DashboardLayout({
                 <div className="hidden sm:flex flex-col">
                   <span
                     className="text-sm font-semibold text-gray-900"
-                    title={organisationName}
+                    title={`${organisationName} (${sellerId})`}
                   >
-                    {truncate(organisationName, 40)}
+                    Account: {truncate(organisationName, 36)}{' '}
+                    <span className="font-normal text-gray-500">({sellerId})</span>
                   </span>
                   <span className="text-xs text-gray-500">Seller</span>
                 </div>
