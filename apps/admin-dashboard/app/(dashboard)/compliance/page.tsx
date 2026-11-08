@@ -9,7 +9,6 @@ import {
 } from '@merch-os/api-client';
 import { Alert, Badge, Card, Skeleton } from '@merch-os/ui';
 import { ComplianceFormRenderer } from './components/ComplianceFormRenderer';
-import { isDemoMode, DEMO_COMPLIANCE_CHANNELS } from '../../../lib/demo-data';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -192,19 +191,12 @@ export default function CompliancePage() {
   const [apiError, setApiError] = useState<string | null>(null);
 
   const {
-    data: liveChannels,
+    data: channels,
     isLoading: channelsLoading,
-    isError: channelsErrorRaw,
+    isError: channelsError,
     error: channelsErrorMsg,
     refetch: refetchChannels,
   } = useComplianceChannels();
-
-  // Demo fallback: sample compliance channels when the backend returns nothing.
-  const demo = isDemoMode();
-  const useSampleChannels =
-    demo && !channelsLoading && (!liveChannels || liveChannels.length === 0);
-  const channels = useSampleChannels ? DEMO_COMPLIANCE_CHANNELS : liveChannels;
-  const channelsError = channelsErrorRaw && !demo;
 
   const { mutate: saveRules, isPending: isSaving } = useSaveComplianceRules();
 

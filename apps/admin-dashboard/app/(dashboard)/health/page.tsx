@@ -6,7 +6,6 @@ import { StatCard, Skeleton } from '@merch-os/ui';
 import type { TimeRange } from '@merch-os/types';
 import { HealthChart } from './components/HealthChart';
 import { TimeRangeSelector } from './components/TimeRangeSelector';
-import { isDemoMode, DEMO_HEALTH_SUMMARY, DEMO_HEALTH_METRICS } from '../../../lib/demo-data';
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
@@ -173,15 +172,6 @@ export default function HealthPage() {
 
   const isRefreshing = metricsFetching && !metricsLoading;
 
-  // Demo fallback: when sample mode is on and the live queries return nothing
-  // (backend not connected), show illustrative figures/charts instead of an
-  // error. Real data always takes precedence.
-  const demo = isDemoMode();
-  const summary = summaryData ?? (demo && !summaryLoading ? DEMO_HEALTH_SUMMARY : undefined);
-  const metrics = metricsData ?? (demo && !metricsLoading ? DEMO_HEALTH_METRICS : undefined);
-  const showSummaryError = summaryError && !demo;
-  const showMetricsError = metricsError && !demo;
-
   return (
     <main className="space-y-6 p-6" aria-label="Platform health">
       {/* ── Page Header ─────────────────────────────────────────────────── */}
@@ -213,23 +203,23 @@ export default function HealthPage() {
       <section aria-label="Health summary">
         <h2 className="sr-only">Summary</h2>
 
-        {summaryLoading && !demo ? (
+        {summaryLoading ? (
           <SummaryCardsSkeleton />
-        ) : showSummaryError ? (
+        ) : summaryError ? (
           <ErrorAlert
             message="Health summary data is temporarily unavailable."
             onRetry={() => refetchSummary()}
           />
-        ) : summary ? (
+        ) : summaryData ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <StatCard
               label="Active Tenants"
-              value={summary.activeTenantCount.toLocaleString()}
+              value={summaryData.activeTenantCount.toLocaleString()}
               icon={<UsersIcon />}
             />
             <StatCard
               label="Products Processed Today"
-              value={summary.productsProcessedToday.toLocaleString()}
+              value={summaryData.productsProcessedToday.toLocaleString()}
               icon={<BoxIcon />}
             />
           </div>
@@ -240,38 +230,38 @@ export default function HealthPage() {
       <section aria-label="Infrastructure metrics" aria-live="polite" aria-busy={metricsLoading || metricsFetching}>
         <h2 className="sr-only">Infrastructure metrics</h2>
 
-        {showMetricsError ? (
+        {metricsError ? (
           <ErrorAlert
             message="Health metric data is temporarily unavailable."
             onRetry={() => refetchMetrics()}
           />
-        ) : metricsLoading && !demo ? (
+        ) : metricsLoading ? (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <ChartSkeleton title="Lambda Error Rates" />
             <ChartSkeleton title="Step Functions Failures" />
             <ChartSkeleton title="SQS Queue Depths" />
             <ChartSkeleton title="DynamoDB Consumed Capacity" />
           </div>
-        ) : metrics ? (
+        ) : metricsData ? (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <HealthChart
               title="Lambda Error Rates"
-              series={metrics.lambdaErrorRates}
+              series={metricsData.lambdaErrorRates}
               unit="errors/min"
             />
             <HealthChart
               title="Step Functions Failures"
-              series={metrics.stepFunctionsFailures}
+              series={metricsData.stepFunctionsFailures}
               unit="failures"
             />
             <HealthChart
               title="SQS Queue Depths"
-              series={metrics.sqsQueueDepths}
+              series={metricsData.sqsQueueDepths}
               unit="messages"
             />
             <HealthChart
               title="DynamoDB Consumed Capacity"
-              series={metrics.dynamoConsumedCapacity}
+              series={metricsData.dynamoConsumedCapacity}
               unit="CU"
             />
           </div>

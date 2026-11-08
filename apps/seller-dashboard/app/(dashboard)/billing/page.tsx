@@ -132,18 +132,18 @@ function AccessDenied() {
   );
 }
 
-// DEMO FALLBACK: while the billing backend is not yet wired, the page renders
-// with clearly-representative placeholder data instead of an error/blank state.
-// When useBilling() returns real data it is used as-is.
-const DEMO_BILLING = {
-  planId: 'growth' as PlanId,
-  planName: 'Growth',
+// EMPTY PLACEHOLDER: the structure renders before the billing backend is
+// connected, but with no fabricated figures — blank values (em dash) and zero
+// usage. Replaced field-for-field once useBilling() returns real data.
+const EMPTY_BILLING = {
+  planId: undefined as unknown as PlanId,
+  planName: '—',
   billingCycle: 'monthly' as const,
-  subscriptionStatus: 'active',
-  currentPeriodStart: '2026-11-01',
-  currentPeriodEnd: '2026-12-01',
-  usage: { aiCalls: 418, imageCalls: 210, csvExports: 114 },
-  limits: { maxAiCallsPerMonth: 2000, maxImageCallsPerMonth: 1000, maxCsvExportsPerMonth: 50 },
+  subscriptionStatus: 'unknown',
+  currentPeriodStart: '—',
+  currentPeriodEnd: '—',
+  usage: { aiCalls: 0, imageCalls: 0, csvExports: 0 },
+  limits: { maxAiCallsPerMonth: 0, maxImageCallsPerMonth: 0, maxCsvExportsPerMonth: 0 },
 };
 
 function BillingContent() {
@@ -159,9 +159,9 @@ function BillingContent() {
 
   const planChangeMutation = usePlanChange();
 
-  // Use live billing when available, otherwise the demo fallback so the page
-  // always renders its full UI (no error/blank state) awaiting the backend.
-  const billing = (billingData ?? DEMO_BILLING) as NonNullable<typeof billingData> | typeof DEMO_BILLING;
+  // Use live billing when available; otherwise render the structure with empty
+  // placeholder values (no fabricated figures) until the backend is connected.
+  const billing = (billingData ?? EMPTY_BILLING) as NonNullable<typeof billingData> | typeof EMPTY_BILLING;
 
   const handlePdfDownload = async (invoice: InvoiceSummary) => {
     if (!invoice.downloadUrl) {

@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import { useTaxonomyList, useTriggerTaxonomyRefresh } from '@merch-os/api-client';
 import type { TaxonomyStatus } from '@merch-os/types';
 import { Badge, Card, Alert, Skeleton } from '@merch-os/ui';
-import { isDemoMode, DEMO_TAXONOMY_STATUS } from '../../../lib/demo-data';
 
 // ─── Taxonomy Status Badge ────────────────────────────────────────────────────
 
@@ -144,13 +143,8 @@ function TaxonomyTableSkeleton() {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function TaxonomyPage() {
-  const { data: liveTaxonomies, isLoading, isError, refetch } = useTaxonomyList();
+  const { data: taxonomies, isLoading, isError, refetch } = useTaxonomyList();
   const triggerRefresh = useTriggerTaxonomyRefresh();
-
-  // Demo fallback: sample taxonomy status when the backend returns nothing.
-  const demo = isDemoMode();
-  const useSample = demo && !isLoading && (!liveTaxonomies || liveTaxonomies.length === 0);
-  const taxonomies = useSample ? DEMO_TAXONOMY_STATUS : liveTaxonomies;
 
   // Track per-channel refresh state and errors
   const [refreshingChannels, setRefreshingChannels] = useState<Set<string>>(new Set());
@@ -191,7 +185,7 @@ export default function TaxonomyPage() {
         </p>
       </div>
 
-      {isError && !demo && (
+      {isError && (
         <Alert
           variant="error"
           title="Failed to load taxonomy data"
@@ -236,9 +230,9 @@ export default function TaxonomyPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {isLoading && !demo ? (
+              {isLoading ? (
                 <TaxonomyTableSkeleton />
-              ) : (!isError || demo) && taxonomies?.length === 0 ? (
+              ) : !isError && taxonomies?.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-500">
                     No taxonomy channels found.

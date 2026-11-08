@@ -18,9 +18,10 @@
  *  - Tokenisation is Kiro-style: a monthly plan includes a bundle of CREDITS;
  *    AI actions consume credits; exceeding the allowance is overage.
  *
- * MOCK: all values are clearly-labelled demonstration data (DEMO_*). Pricing
- * numbers are placeholders pending the finalised pricing model. Buttons are
- * wired to placeholder routes, ready to connect to the real workflow later.
+ * The full structure renders ahead of the backend, but with no fabricated
+ * figures: credit counts are zero and the batch lists are empty until real
+ * data is connected. Buttons are wired to placeholder routes, ready to connect
+ * to the real workflow later.
  *
  * Palette: MerchOS slate + primary blue. No emoji, no em dashes.
  */
@@ -67,27 +68,30 @@ const STAGE_VARIANT: Record<Stage, BadgeVariant> = {
 
 // ─── Tokenisation (Kiro-style monthly credits + overage) ───────────────────────
 
-const DEMO_CREDITS = {
-  monthlyIncluded: 1000,
-  used: 742,
+// EMPTY PLACEHOLDERS: the dashboard structure renders before the backend is
+// connected, but with no fabricated figures. Counts are zero and the batch
+// lists are empty until real data arrives.
+const CREDITS = {
+  monthlyIncluded: 0,
+  used: 0,
   overage: 0,
-  overageUnitPriceMinor: 15, // ZAR 0.15 per extra credit (PLACEHOLDER)
-  planName: 'Growth',
+  overageUnitPriceMinor: 0,
+  planName: '—',
   planCurrency: 'ZAR',
-  cycleResetsAt: '2026-12-01',
+  cycleResetsAt: '',
   breakdown: [
-    { label: 'MerchOS enrichment', credits: 418 },
-    { label: 'Image generation', credits: 210 },
-    { label: 'CSV generation', credits: 114 },
+    { label: 'MerchOS enrichment', credits: 0 },
+    { label: 'Image generation', credits: 0 },
+    { label: 'CSV generation', credits: 0 },
   ],
 } as const;
 
-const DEMO_STAGES: { stage: Stage; count: number; note: string }[] = [
-  { stage: 'DRAFT', count: 18, note: 'uploaded, not started' },
-  { stage: 'GENERATING', count: 7, note: 'AI synthesising' },
-  { stage: 'NEEDS_REVIEW', count: 12, note: 'awaiting your approval' },
-  { stage: 'CSV_READY', count: 31, note: 'ready to download' },
-  { stage: 'EXPORTED', count: 40, note: 'downloaded by you' },
+const STAGES: { stage: Stage; count: number; note: string }[] = [
+  { stage: 'DRAFT', count: 0, note: 'uploaded, not started' },
+  { stage: 'GENERATING', count: 0, note: 'AI synthesising' },
+  { stage: 'NEEDS_REVIEW', count: 0, note: 'awaiting your approval' },
+  { stage: 'CSV_READY', count: 0, note: 'ready to download' },
+  { stage: 'EXPORTED', count: 0, note: 'downloaded by you' },
 ];
 
 // ─── Batches (seller-named files, each may hold many products) ──────────────────
@@ -115,25 +119,13 @@ interface ActivityBatch {
   updatedAt: string;
 }
 
-const DEMO_REVIEW: ReviewBatch[] = [
-  { id: 'rv1', batchName: 'November trampolines', productCount: 8, marketplaces: ['Takealot', 'Amazon'] },
-  { id: 'rv2', batchName: 'Safety accessories', productCount: 3, marketplaces: ['Takealot'] },
-  { id: 'rv3', batchName: 'Spring covers restock', productCount: 5, marketplaces: ['Takealot', 'Makro'] },
-];
+// Empty until the backend is connected — the sections render their own
+// "nothing yet" empty states rather than fabricated batches.
+const REVIEW: ReviewBatch[] = [];
 
-const DEMO_READY: ReadyBatch[] = [
-  { id: 'rd1', batchName: 'Mini trampolines Q4', productCount: 3, marketplaces: ['Takealot'] },
-  { id: 'rd2', batchName: 'Rebounder set launch', productCount: 1, marketplaces: ['Amazon'] },
-  { id: 'rd3', batchName: 'Ladders and steps', productCount: 2, marketplaces: ['Takealot', 'Shopify'] },
-];
+const READY: ReadyBatch[] = [];
 
-const DEMO_ACTIVITY: ActivityBatch[] = [
-  { id: 'a1', batchName: 'November trampolines', marketplaces: ['Takealot', 'Amazon'], stage: 'NEEDS_REVIEW', products: 8, updatedAt: '2026-11-08' },
-  { id: 'a2', batchName: 'Mini trampolines Q4', marketplaces: ['Takealot'], stage: 'CSV_READY', products: 3, updatedAt: '2026-11-08' },
-  { id: 'a3', batchName: 'Spring covers restock', marketplaces: ['Takealot', 'Makro'], stage: 'GENERATING', products: 5, updatedAt: '2026-11-07' },
-  { id: 'a4', batchName: 'Rebounder set launch', marketplaces: ['Amazon'], stage: 'EXPORTED', products: 1, updatedAt: '2026-11-06' },
-  { id: 'a5', batchName: 'Garden play draft', marketplaces: ['Takealot'], stage: 'DRAFT', products: 6, updatedAt: '2026-11-05' },
-];
+const ACTIVITY: ActivityBatch[] = [];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -153,7 +145,7 @@ function daysUntil(iso: string): number {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const c = DEMO_CREDITS;
+  const c = CREDITS;
 
   const inOverage = c.overage > 0;
   const creditsLeft = Math.max(0, c.monthlyIncluded - c.used);
@@ -300,7 +292,11 @@ export default function DashboardPage() {
                 )}
               </span>
               <span aria-hidden="true">·</span>
-              <span>Resets in {resetDays} day{resetDays === 1 ? '' : 's'} ({formatDate(c.cycleResetsAt)})</span>
+              <span>
+                {c.cycleResetsAt
+                  ? `Resets in ${resetDays} day${resetDays === 1 ? '' : 's'} (${formatDate(c.cycleResetsAt)})`
+                  : 'Resets —'}
+              </span>
               <span aria-hidden="true">·</span>
               <span>Overage: {c.planCurrency} {(c.overageUnitPriceMinor / 100).toFixed(2)} per credit</span>
             </div>
@@ -336,7 +332,7 @@ export default function DashboardPage() {
       <section aria-label="Listing pipeline">
         <h2 className="mb-2 text-sm font-semibold text-gray-900">Listing pipeline</h2>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-          {DEMO_STAGES.map(({ stage, count, note }) => {
+          {STAGES.map(({ stage, count, note }) => {
             const highlight = stage === 'NEEDS_REVIEW';
             return (
               <div
@@ -366,11 +362,11 @@ export default function DashboardPage() {
             </button>
           </div>
           <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-            {DEMO_REVIEW.length === 0 ? (
+            {REVIEW.length === 0 ? (
               <p className="px-4 py-6 text-center text-sm text-gray-500">Nothing to review.</p>
             ) : (
               <ul className="divide-y divide-gray-100">
-                {DEMO_REVIEW.map((b) => (
+                {REVIEW.map((b) => (
                   <li key={b.id} className="flex items-center justify-between gap-3 px-4 py-3">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-gray-900">{b.batchName}</p>
@@ -402,11 +398,11 @@ export default function DashboardPage() {
             </button>
           </div>
           <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-            {DEMO_READY.length === 0 ? (
+            {READY.length === 0 ? (
               <p className="px-4 py-6 text-center text-sm text-gray-500">No CSVs ready yet.</p>
             ) : (
               <ul className="divide-y divide-gray-100">
-                {DEMO_READY.map((b) => (
+                {READY.map((b) => (
                   <li key={b.id} className="flex items-center justify-between gap-3 px-4 py-3">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-gray-900">{b.batchName}</p>
@@ -450,7 +446,7 @@ export default function DashboardPage() {
         </div>
         <DataTable
           columns={activityColumns}
-          data={DEMO_ACTIVITY}
+          data={ACTIVITY}
           getRowKey={(r) => r.id}
           onRowClick={(r) => router.push(`/products?batch=${r.id}`)}
           emptyMessage="No activity yet."
