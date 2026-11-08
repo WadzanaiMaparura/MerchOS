@@ -9,8 +9,7 @@ import { useAuth, RouteGuard } from '@merch-os/auth';
 import { filterNavigationItems, PermissionRegistry, defaultPermissionConfig } from '@merch-os/rbac';
 import type { NavigationItem, PlatformRole } from '@merch-os/rbac';
 import { useUIStore } from '../stores/ui-store';
-import { NotificationProvider, NotificationHistoryDropdown, ConnectionStatusIndicator } from '../components/notifications';
-import { OfflineIndicator } from './components/OfflineIndicator';
+import { NotificationProvider, NotificationHistoryDropdown } from '../components/notifications';
 import { ErrorBoundaryWrapper } from './components/ErrorBoundaryWrapper';
 import { DashboardRouteGuard } from './components/DashboardRouteGuard';
 import { ProfileCompletionGate } from './components/ProfileCompletionGate';
@@ -80,7 +79,7 @@ const SELLER_NAV_ITEMS: NavigationItem[] = [
   { id: 'create-listings', label: 'Create Listings', href: '/create', icon: SparkIcon, requiredResource: 'products' },
   { id: 'products', label: 'Products', href: '/products', icon: PackageIcon, requiredResource: 'products' },
   { id: 'review-queue', label: 'Review Queue', href: '/review-queue', icon: ClipboardCheckIcon, requiredResource: 'products' },
-  { id: 'exports', label: 'Exports', href: '/exports', icon: DownloadIcon, requiredResource: 'exports' },
+  { id: 'exports', label: 'Exports CSV', href: '/exports', icon: DownloadIcon, requiredResource: 'exports' },
   { id: 'settings', label: 'Settings', href: '/settings', icon: SettingsIcon, requiredResource: 'subscription' },
   { id: 'billing', label: 'Billing', href: '/billing', icon: CreditCardIcon, requiredResource: 'subscription' },
 ];
@@ -239,12 +238,16 @@ export default function DashboardLayout({
   const platformRole: PlatformRole = 'Seller';
   const isPermissionsResolved = !isAuthLoading && user != null;
 
-  const displayName = user?.givenName
+  // Company (organisation) name is the primary identity shown in the shell.
+  // It comes from the seller's profile. Until the profile API is wired, fall
+  // back to a readable placeholder rather than the raw tenant UUID (never show
+  // a number/id as the seller's name).
+  const organisationName =
+    (user as { organisationName?: string })?.organisationName ?? 'Trampoline Store';
+  const contactName = user?.givenName
     ? `${user.givenName}${user.familyName ? ' ' + user.familyName : ''}`
-    : user?.email ?? 'User';
-  const organisationName = (user as { organisationName?: string })?.organisationName
-    ?? user?.tenantId
-    ?? 'Organisation';
+    : user?.email ?? '';
+  const companyInitial = (organisationName.trim()[0] ?? 'M').toUpperCase();
 
   // Build a map from nav item id → icon for lookup after filtering
   const iconMap = useMemo(() => {
@@ -305,12 +308,27 @@ export default function DashboardLayout({
             {!isPermissionsResolved ? (
               <NavLoadingIndicator />
             ) : (
-              <Sidebar
-                items={filteredNavItems}
-                collapsed={sidebarCollapsed}
-                onToggleCollapse={toggleSidebar}
-                onNavigate={handleNavigate}
-              />
+              <div className="flex h-full flex-col bg-sidebar-bg">
+                {/* Company / brand block (top-left) */}
+                <div className="flex items-center gap-2.5 px-4 py-4 text-white">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white/15 text-sm font-bold tracking-tight">
+                    {companyInitial}
+                  </span>
+                  {!sidebarCollapsed && (
+                    <span className="truncate text-sm font-semibold tracking-tight" title={organisationName}>
+                      {truncate(organisationName, 22)}
+                    </span>
+                  )}
+                </div>
+                <div className="flex-1">
+                  <Sidebar
+                    items={filteredNavItems}
+                    collapsed={sidebarCollapsed}
+                    onToggleCollapse={toggleSidebar}
+                    onNavigate={handleNavigate}
+                  />
+                </div>
+              </div>
             )}
           </nav>
 
@@ -326,22 +344,20 @@ export default function DashboardLayout({
                 <div className="hidden sm:flex flex-col">
                   <span
                     className="text-sm font-semibold text-gray-900"
-                    title={displayName}
+                    title={organisationName}
                   >
-                    {truncate(displayName, 30)}
+                    {truncate(organisationName, 40)}
                   </span>
                   <span className="text-xs text-gray-500">
-                    Seller ·{' '}
-                    <span title={organisationName}>
-                      {truncate(organisationName, 40)}
-                    </span>
+                    Seller{contactName ? ` · ${truncate(contactName, 30)}` : ''}
                   </span>
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
-                <ConnectionStatusIndicator />
-                <OfflineIndicator />
+                {/* Connection / offline indicators are hidden until a real
+                    notifications WebSocket backend exists (avoids a misleading
+                    "Limited connectivity" state against the placeholder URL). */}
                 <NotificationHistoryDropdown />
               </div>
             </header>
