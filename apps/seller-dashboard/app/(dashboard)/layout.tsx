@@ -244,9 +244,6 @@ export default function DashboardLayout({
   // a number/id as the seller's name).
   const organisationName =
     (user as { organisationName?: string })?.organisationName ?? 'Trampoline Store';
-  const contactName = user?.givenName
-    ? `${user.givenName}${user.familyName ? ' ' + user.familyName : ''}`
-    : user?.email ?? '';
   const companyInitial = (organisationName.trim()[0] ?? 'M').toUpperCase();
 
   // Build a map from nav item id → icon for lookup after filtering
@@ -310,12 +307,12 @@ export default function DashboardLayout({
             ) : (
               <div className="flex h-full flex-col bg-sidebar-bg">
                 {/* Company / brand block (top-left) */}
-                <div className="flex items-center gap-2.5 px-4 py-4 text-white">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white/15 text-sm font-bold tracking-tight">
+                <div className="flex items-center gap-2.5 border-b border-gray-200 px-4 py-4">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary-600 text-sm font-bold tracking-tight text-white">
                     {companyInitial}
                   </span>
                   {!sidebarCollapsed && (
-                    <span className="truncate text-sm font-semibold tracking-tight" title={organisationName}>
+                    <span className="truncate text-sm font-semibold tracking-tight text-gray-900" title={organisationName}>
                       {truncate(organisationName, 22)}
                     </span>
                   )}
@@ -326,6 +323,7 @@ export default function DashboardLayout({
                     collapsed={sidebarCollapsed}
                     onToggleCollapse={toggleSidebar}
                     onNavigate={handleNavigate}
+                    theme="light"
                   />
                 </div>
               </div>
@@ -348,9 +346,7 @@ export default function DashboardLayout({
                   >
                     {truncate(organisationName, 40)}
                   </span>
-                  <span className="text-xs text-gray-500">
-                    Seller{contactName ? ` · ${truncate(contactName, 30)}` : ''}
-                  </span>
+                  <span className="text-xs text-gray-500">Seller</span>
                 </div>
               </div>
 

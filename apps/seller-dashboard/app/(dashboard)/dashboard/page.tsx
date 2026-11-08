@@ -205,7 +205,7 @@ export default function DashboardPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-gray-900">Overview</h1>
-          <p className="text-sm text-gray-500">Turn raw product information into marketplace-ready CSVs.</p>
+          <p className="text-sm text-gray-500">Marketplace Automation, Engineered for Accuracy &amp; Speed.</p>
         </div>
         <div className="flex items-center gap-2">
           {/* Create Listings: click opens a marketplace multi-select */}
