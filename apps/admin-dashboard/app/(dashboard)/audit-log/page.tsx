@@ -4,7 +4,6 @@ import React, { useState, useDeferredValue, useCallback } from 'react';
 import { useAuditLog } from '@merch-os/api-client';
 import type { AuditEvent, AuditListParams } from '@merch-os/types';
 import { Card, Alert, Skeleton, Input, Select } from '@merch-os/ui';
-import { isDemoMode, DEMO_AUDIT_EVENTS } from '../../../lib/demo-data';
 
 // ─── Action type options ──────────────────────────────────────────────────────
 
@@ -141,13 +140,8 @@ export default function AuditLogPage() {
 
   const { data, isLoading, isError, refetch } = useAuditLog(params);
 
-  // Demo fallback: sample audit events when the backend returns nothing. Real
-  // data always wins.
-  const demo = isDemoMode();
-  const liveEvents = data?.items ?? [];
-  const useSample = demo && !isLoading && liveEvents.length === 0;
-  const events = useSample ? DEMO_AUDIT_EVENTS : liveEvents;
-  const totalItems = useSample ? DEMO_AUDIT_EVENTS.length : (data?.total ?? 0);
+  const events = data?.items ?? [];
+  const totalItems = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
 
   const toggleRow = useCallback((eventId: string) => {
@@ -245,8 +239,8 @@ export default function AuditLogPage() {
         </div>
       </Card>
 
-      {/* Error state (suppressed in demo mode) */}
-      {isError && !demo && (
+      {/* Error state */}
+      {isError && (
         <Alert
           variant="error"
           title="Failed to load audit data"
@@ -295,7 +289,7 @@ export default function AuditLogPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 bg-white">
-              {isLoading && !demo ? (
+              {isLoading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i}>
                     {Array.from({ length: COLUMNS }).map((__, j) => (

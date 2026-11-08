@@ -7,7 +7,6 @@ import type { AdminBillingSummary, SubscriptionStatus } from '@merch-os/types';
 import { DataTable, Badge, Alert, Select } from '@merch-os/ui';
 import type { ColumnDef, BadgeVariant, SelectOption } from '@merch-os/ui';
 import { BillingDetailPanel } from './components/BillingDetailPanel';
-import { isDemoMode, DEMO_ADMIN_BILLING } from '../../../lib/demo-data';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -114,22 +113,8 @@ export default function BillingPage() {
 
   const { data, isLoading, isError, error, refetch } = useAdminBillingList(queryParams);
 
-  // Demo fallback: sample subscriptions when the backend returns nothing,
-  // filtered to match active search/status controls. Real data always wins.
-  const demo = isDemoMode();
-  const liveItems = data?.items ?? [];
-  const useSample = demo && !isLoading && liveItems.length === 0;
-  const sampleItems = useMemo(() => {
-    if (!useSample) return [];
-    return DEMO_ADMIN_BILLING.filter((b) => {
-      if (statusFilter !== 'all' && b.status !== statusFilter) return false;
-      if (debouncedSearch && !b.tenantName.toLowerCase().includes(debouncedSearch.toLowerCase())) return false;
-      return true;
-    });
-  }, [useSample, statusFilter, debouncedSearch]);
-
-  const billingItems = useSample ? sampleItems : liveItems;
-  const totalItems = useSample ? sampleItems.length : (data?.total ?? 0);
+  const billingItems = data?.items ?? [];
+  const totalItems = data?.total ?? 0;
 
   // ── Column definitions ────────────────────────────────────────────────────
   const columns: ColumnDef<AdminBillingSummary>[] = useMemo(
@@ -205,7 +190,7 @@ export default function BillingPage() {
             </p>
           </div>
 
-          {!isLoading && (!isError || demo) && (
+          {!isLoading && !isError && (
             <p className="text-sm text-gray-500" aria-live="polite">
               {totalItems.toLocaleString()} subscription{totalItems !== 1 ? 's' : ''}
             </p>
@@ -266,8 +251,8 @@ export default function BillingPage() {
           </div>
         </div>
 
-        {/* Error (suppressed in demo mode) */}
-        {isError && !demo && (
+        {/* Error */}
+        {isError && (
           <Alert variant="error" title="Failed to load billing data" dismissible={false}>
             <p>
               {(error as { message?: string })?.message ?? 'Billing data is temporarily unavailable.'}
@@ -282,12 +267,12 @@ export default function BillingPage() {
         )}
 
         {/* DataTable */}
-        {(!isError || demo) && (
+        {!isError && (
           <DataTable<AdminBillingSummary>
             columns={columns}
             data={billingItems}
             getRowKey={(row) => row.tenantId}
-            isLoading={isLoading && !demo}
+            isLoading={isLoading}
             skeletonRows={DEFAULT_PAGE_SIZE}
             page={page}
             pageSize={DEFAULT_PAGE_SIZE}

@@ -21,7 +21,6 @@ import { DataTable, Badge, Alert, Select, ConfirmationModal, useToast } from '@m
 import type { ColumnDef, BadgeVariant, SelectOption } from '@merch-os/ui';
 import { AdminRouteGuard } from '../../../components/AdminRouteGuard';
 import { InviteUserModal } from './components/InviteUserModal';
-import { isDemoMode, DEMO_TENANTS, DEMO_USERS_BY_TENANT } from '../../../lib/demo-data';
 
 const ROLE_OPTIONS: SelectOption[] = [
   { value: 'viewer', label: 'Viewer' },
@@ -65,19 +64,15 @@ function UsersPageContent() {
   const [disableTarget, setDisableTarget] = useState<AdminUserSummary | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AdminUserSummary | null>(null);
 
-  const demo = isDemoMode();
-
   // Tenant selector options (reuse the existing tenants list).
   const { data: tenantsData, isLoading: tenantsLoading } = useAdminTenants({ page: 1, pageSize: 100 });
   const tenantOptions: SelectOption[] = useMemo(() => {
-    const liveItems = tenantsData?.items ?? [];
-    // Demo fallback: list sample tenants when the backend returns none.
-    const items = demo && liveItems.length === 0 ? DEMO_TENANTS : liveItems;
+    const items = tenantsData?.items ?? [];
     return [
-      { value: '', label: tenantsLoading && !demo ? 'Loading tenants…' : 'Select a tenant…' },
+      { value: '', label: tenantsLoading ? 'Loading tenants…' : 'Select a tenant…' },
       ...items.map((t) => ({ value: t.tenantId, label: t.name })),
     ];
-  }, [tenantsData, tenantsLoading, demo]);
+  }, [tenantsData, tenantsLoading]);
 
   // Users for the selected tenant.
   const {
@@ -88,9 +83,7 @@ function UsersPageContent() {
     refetch,
   } = useAdminUsers({ tenantId: selectedTenantId, limit: 100 });
 
-  const liveUsers = usersData?.users ?? [];
-  const useSampleUsers = demo && !usersLoading && liveUsers.length === 0;
-  const users = useSampleUsers ? (DEMO_USERS_BY_TENANT[selectedTenantId] ?? []) : liveUsers;
+  const users = usersData?.users ?? [];
 
   const updateRole = useUpdateUserRole();
   const disableUser = useDisableUser();
@@ -260,8 +253,8 @@ function UsersPageContent() {
         </p>
       )}
 
-      {/* Error state with retry (suppressed in demo mode) */}
-      {selectedTenantId && usersError && !demo && (
+      {/* Error state with retry */}
+      {selectedTenantId && usersError && (
         <Alert variant="error" title="Failed to load users" dismissible={false}>
           <p>{(usersErrorObj as ApiError)?.message ?? 'User data is temporarily unavailable.'}</p>
           <button
@@ -274,12 +267,12 @@ function UsersPageContent() {
       )}
 
       {/* Users table */}
-      {selectedTenantId && (!usersError || demo) && (
+      {selectedTenantId && !usersError && (
         <DataTable<AdminUserSummary>
           columns={columns}
           data={users}
           getRowKey={(row) => row.userId}
-          isLoading={usersLoading && !demo}
+          isLoading={usersLoading}
           skeletonRows={8}
           emptyMessage="No users in this tenant yet. Invite the first one."
           caption="Tenant users"

@@ -82,16 +82,6 @@ function formatDate(dateStr: string): string {
   }
 }
 
-// DEMO FALLBACK products (shown only when the backend returns no data), so the
-// catalogue renders a full table awaiting backend rather than an empty state.
-const DEMO_PRODUCTS: ProductListItem[] = [
-  { productId: 'demo-1', sku: 'TRM-10FT-PRO', title: 'Trampoline 10ft Pro with Safety Net', brand: 'JumpMaster', lifecycleState: 'REVIEW' as LifecycleState, updatedAt: '2026-11-08T09:00:00Z' },
-  { productId: 'demo-2', sku: 'TRM-MINI-36', title: 'Mini Trampoline 36 inch Rebounder', brand: 'JumpMaster', lifecycleState: 'EXPORT_READY' as LifecycleState, updatedAt: '2026-11-08T08:30:00Z' },
-  { productId: 'demo-3', sku: 'TRM-NET-12', title: 'Replacement Safety Net 12ft', brand: 'JumpMaster', lifecycleState: 'DRAFT' as LifecycleState, updatedAt: '2026-11-07T14:10:00Z' },
-  { productId: 'demo-4', sku: 'TRM-COVER-PAD', title: 'Spring Cover Pad, UV Resistant', brand: 'JumpMaster', lifecycleState: 'ENRICHED' as LifecycleState, updatedAt: '2026-11-07T11:45:00Z' },
-  { productId: 'demo-5', sku: 'TRM-LADDER', title: 'Trampoline Access Ladder, 3 Step', brand: 'JumpMaster', lifecycleState: 'PUBLISHED' as LifecycleState, updatedAt: '2026-11-06T16:20:00Z' },
-] as ProductListItem[];
-
 export default function ProductsPage() {
   const router = useRouter();
   const role = useRole();
@@ -132,16 +122,9 @@ export default function ProductsPage() {
   // Use search results when searching, otherwise regular results
   const activeQuery = isSearching ? searchQuery_ : productsQuery;
 
-  // DEMO FALLBACK: until the products backend is wired, render representative
-  // demo products instead of an empty table or an endless skeleton. When the
-  // query returns real items they are used as-is; demo rows are only shown when
-  // the query has settled (not loading) with no data.
-  const liveItems = (activeQuery.data?.items ?? []) as ProductListItem[];
-  const usingDemo = !activeQuery.isLoading && liveItems.length === 0 && !isSearching;
-  const data: ProductListItem[] = usingDemo ? DEMO_PRODUCTS : liveItems;
-  const totalItems = usingDemo ? DEMO_PRODUCTS.length : (activeQuery.data?.total ?? 0);
-  // Never show an endless skeleton: only reflect loading until the first settle.
-  const isLoading = activeQuery.isLoading && liveItems.length === 0 && !usingDemo;
+  const data: ProductListItem[] = (activeQuery.data?.items ?? []) as ProductListItem[];
+  const totalItems = activeQuery.data?.total ?? 0;
+  const isLoading = activeQuery.isLoading;
 
   const handleRowClick = useCallback(
     (row: ProductListItem) => {

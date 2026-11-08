@@ -30,7 +30,6 @@ import { useAdminAuth } from '../hooks/useAdminAuth';
 import { usePlatformRole } from '../hooks/usePlatformRole';
 import { useAdminUIStore } from '../stores/ui-store';
 import { ErrorBoundaryFallback } from './ErrorBoundaryFallback';
-import { SampleDataBanner } from './SampleDataBanner';
 
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
 
@@ -354,9 +353,6 @@ export function AdminAppShell({ children }: AdminAppShellProps) {
             </button>
           </div>
         </header>
-
-        {/* Sample-data notice (demo mode only; disappears when backend connected) */}
-        <SampleDataBanner />
 
         {/* Content area */}
         <main

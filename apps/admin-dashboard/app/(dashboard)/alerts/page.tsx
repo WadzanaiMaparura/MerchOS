@@ -4,9 +4,8 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { useAlerts, useUnresolvedAlertCount, useResolveAlert } from '@merch-os/api-client';
 import type { AlertItem, AlertStatusFilter } from '@merch-os/types';
 import { Badge, Card, Alert, Select, Skeleton } from '@merch-os/ui';
-import type { SelectOption } from '@merch-os/ui';
+import type { BadgeVariant, SelectOption } from '@merch-os/ui';
 import { AlertResolutionForm } from './components/AlertResolutionForm';
-import { isDemoMode, DEMO_ALERTS, DEMO_UNRESOLVED_ALERT_COUNT } from '../../../lib/demo-data';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -156,27 +155,13 @@ export default function AlertsPage() {
   const [resolveErrors, setResolveErrors] = useState<Record<string, string>>({});
 
   const { data: alerts, isLoading, isError, refetch } = useAlerts(statusFilter);
-  const { data: liveUnresolvedCount } = useUnresolvedAlertCount();
+  const { data: unresolvedCount = 0 } = useUnresolvedAlertCount();
   const resolveMutation = useResolveAlert();
-
-  // Demo fallback: sample alerts when the backend returns nothing. Real data
-  // always wins.
-  const demo = isDemoMode();
-  const useSample = demo && !isLoading && (!alerts || alerts.length === 0);
-  const sourceAlerts = useSample
-    ? DEMO_ALERTS.filter((a) =>
-        statusFilter === 'all'
-          ? true
-          : statusFilter === 'unresolved'
-            ? !a.resolved
-            : a.resolved
-      )
-    : (alerts ?? []);
-  const unresolvedCount = liveUnresolvedCount ?? (demo ? DEMO_UNRESOLVED_ALERT_COUNT : 0);
 
   // Sort: unresolved first, then by triggeredAt descending
   const sortedAlerts = useMemo(() => {
-    return [...sourceAlerts].sort((a, b) => {
+    if (!alerts) return [];
+    return [...alerts].sort((a, b) => {
       // Unresolved first
       if (a.resolved !== b.resolved) {
         return a.resolved ? 1 : -1;
@@ -184,7 +169,7 @@ export default function AlertsPage() {
       // Then by most recent
       return new Date(b.triggeredAt).getTime() - new Date(a.triggeredAt).getTime();
     });
-  }, [sourceAlerts]);
+  }, [alerts]);
 
   const handleStatusFilterChange = useCallback((value: string) => {
     setStatusFilter(value as AlertStatusFilter);
@@ -257,8 +242,8 @@ export default function AlertsPage() {
         </div>
       </div>
 
-      {/* Error state (suppressed in demo mode) */}
-      {isError && !demo && (
+      {/* Error state */}
+      {isError && (
         <Alert
           variant="error"
           title="Failed to load alerts"
@@ -275,7 +260,7 @@ export default function AlertsPage() {
       )}
 
       {/* Alert list */}
-      {isLoading && !demo ? (
+      {isLoading ? (
         <AlertListSkeleton />
       ) : sortedAlerts.length === 0 ? (
         <Card>
