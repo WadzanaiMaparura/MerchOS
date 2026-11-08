@@ -312,12 +312,9 @@ export default function DashboardLayout({
             ) : (
               <div className="flex h-full flex-col bg-sidebar-bg">
                 {/* MerchOS brand block (top-left) — the product brand, not the seller's. */}
-                <div className="flex items-center gap-2.5 border-b border-gray-300 px-4 py-4">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary-600 text-sm font-bold tracking-tight text-white">
-                    M
-                  </span>
+                <div className="flex items-center border-b border-gray-300 px-4 py-4">
                   {!sidebarCollapsed && (
-                    <span className="truncate text-base font-bold tracking-tight text-gray-900">
+                    <span className="truncate text-base font-bold tracking-tight text-primary-600">
                       MerchOS
                     </span>
                   )}
