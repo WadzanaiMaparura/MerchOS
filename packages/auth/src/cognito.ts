@@ -13,7 +13,11 @@
 // one — surfacing as "AuthUserPoolException: Auth UserPool not configured."
 // Routing everything through the aggregate package eliminates that split.
 import { Amplify } from 'aws-amplify';
-import { signUp as amplifySignUp, confirmSignUp as amplifyConfirmSignUp } from 'aws-amplify/auth';
+import {
+  signUp as amplifySignUp,
+  confirmSignUp as amplifyConfirmSignUp,
+  resendSignUpCode as amplifyResendSignUpCode,
+} from 'aws-amplify/auth';
 
 export interface CognitoConfig {
   userPoolId: string;
@@ -143,4 +147,17 @@ export async function cognitoConfirmSignUp(
   return {
     isSignUpComplete: result.isSignUpComplete,
   };
+}
+
+/**
+ * Resend the sign-up confirmation code to a registered-but-unconfirmed user.
+ *
+ * Used by the registration flow when Cognito reports the account already
+ * exists: if that account is still UNCONFIRMED (signed up but never verified),
+ * we resend the code and route the user to the verification screen so they can
+ * finish — rather than dead-ending them. A CONFIRMED account is handled
+ * separately (directed to sign in).
+ */
+export async function cognitoResendSignUpCode(email: string): Promise<void> {
+  await amplifyResendSignUpCode({ username: email });
 }

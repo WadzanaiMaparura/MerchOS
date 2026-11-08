@@ -15,7 +15,7 @@
 
 export { AuthProvider, AuthContext } from './provider';
 export { useAuth, useRole, useSession } from './hooks';
-export { configureCognitoAuth, defaultCognitoConfig, cognitoSignUp, cognitoConfirmSignUp } from './cognito';
+export { configureCognitoAuth, defaultCognitoConfig, cognitoSignUp, cognitoConfirmSignUp, cognitoResendSignUpCode } from './cognito';
 export type { CognitoConfig, SignUpParams } from './cognito';
 export { RouteGuard } from './route-guard';
 export type { RouteGuardProps } from './route-guard';
