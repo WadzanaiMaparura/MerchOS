@@ -7,6 +7,7 @@ import type { TenantSummary } from '@merch-os/types';
 import { DataTable, Badge, Alert, Select } from '@merch-os/ui';
 import type { ColumnDef, BadgeVariant, SelectOption } from '@merch-os/ui';
 import { TenantDetailPanel } from './components/TenantDetailPanel';
+import { isDemoMode, DEMO_TENANTS } from '../../../lib/demo-data';
 
 /** Default page size per requirements 4.1 */
 const DEFAULT_PAGE_SIZE = 25;
@@ -115,8 +116,25 @@ export default function TenantsPage() {
 
   const { data, isLoading, isError, error, refetch } = useAdminTenants(queryParams);
 
-  const tenants = data?.items ?? [];
-  const totalItems = data?.total ?? 0;
+  // Demo fallback: when sample mode is on and the live query has returned no
+  // rows (backend not connected), show illustrative tenants filtered to match
+  // the active search/status/plan controls. Real data always wins.
+  const demo = isDemoMode();
+  const liveTenants = data?.items ?? [];
+  const useSample = demo && !isLoading && liveTenants.length === 0;
+
+  const sampleTenants = useMemo(() => {
+    if (!useSample) return [];
+    return DEMO_TENANTS.filter((t) => {
+      if (statusFilter !== 'all' && t.status !== statusFilter) return false;
+      if (planFilter !== 'all' && t.plan !== planFilter) return false;
+      if (debouncedSearch && !t.name.toLowerCase().includes(debouncedSearch.toLowerCase())) return false;
+      return true;
+    });
+  }, [useSample, statusFilter, planFilter, debouncedSearch]);
+
+  const tenants = useSample ? sampleTenants : liveTenants;
+  const totalItems = useSample ? sampleTenants.length : (data?.total ?? 0);
 
   // Column definitions (Requirement 4.1)
   const columns: ColumnDef<TenantSummary>[] = useMemo(
@@ -197,7 +215,7 @@ export default function TenantsPage() {
           </div>
 
           {/* Total count */}
-          {!isLoading && !isError && (
+          {!isLoading && (!isError || demo) && (
             <p className="text-sm text-gray-500" aria-live="polite">
               {totalItems.toLocaleString()} tenant{totalItems !== 1 ? 's' : ''}
             </p>
@@ -269,8 +287,9 @@ export default function TenantsPage() {
           </div>
         </div>
 
-        {/* Error state with retry — Requirement 4.9 */}
-        {isError && (
+        {/* Error state with retry — Requirement 4.9. Suppressed in demo mode,
+            where the sample dataset is shown instead of an error. */}
+        {isError && !demo && (
           <Alert
             variant="error"
             title="Failed to load tenants"
@@ -290,12 +309,12 @@ export default function TenantsPage() {
         )}
 
         {/* DataTable — Requirements 4.1, 4.5 */}
-        {!isError && (
+        {(!isError || demo) && (
           <DataTable<TenantSummary>
             columns={columns}
             data={tenants}
             getRowKey={(row) => row.tenantId}
-            isLoading={isLoading}
+            isLoading={isLoading && !demo}
             skeletonRows={DEFAULT_PAGE_SIZE}
             page={page}
             pageSize={DEFAULT_PAGE_SIZE}

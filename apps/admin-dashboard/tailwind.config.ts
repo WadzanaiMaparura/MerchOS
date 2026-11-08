@@ -22,10 +22,12 @@ const config: Config = {
           900: '#1e3a8a',
         },
         sidebar: {
-          bg: '#1e293b',
-          hover: '#334155',
-          active: '#0f172a',
-          accent: '#3b82f6',
+          // Deeper light-grey sidebar: light surface, dark text, primary-blue active accent.
+          // Matches the seller dashboard for cross-app brand consistency.
+          bg: '#e5e7eb',      // gray-200 surface
+          hover: '#d1d5db',   // gray-300 hover
+          active: '#dbeafe',  // primary-100 tint for the active item
+          accent: '#2563eb',  // primary-600 active accent bar
         },
         success: {
           50: '#f0fdf4',

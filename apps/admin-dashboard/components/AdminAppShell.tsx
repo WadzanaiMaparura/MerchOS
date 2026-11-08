@@ -30,6 +30,7 @@ import { useAdminAuth } from '../hooks/useAdminAuth';
 import { usePlatformRole } from '../hooks/usePlatformRole';
 import { useAdminUIStore } from '../stores/ui-store';
 import { ErrorBoundaryFallback } from './ErrorBoundaryFallback';
+import { SampleDataBanner } from './SampleDataBanner';
 
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
 
@@ -286,25 +287,38 @@ export function AdminAppShell({ children }: AdminAppShellProps) {
         ].join(' ')}
         aria-label="Primary navigation"
       >
-        {!isResolved ? (
-          <div
-            className={[
-              'flex flex-col items-center justify-center h-full bg-white border-r border-gray-200',
-              sidebarCollapsed ? 'w-16' : 'w-64',
-            ].join(' ')}
-            role="status"
-            aria-label="Loading navigation"
-          >
-            <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 border-t-blue-500" />
+        <div className="flex h-full flex-col bg-sidebar-bg">
+          {/* MerchOS brand block (top-left) — the product brand. */}
+          <div className="flex items-center border-b border-gray-300 px-4 py-4">
+            {!sidebarCollapsed && (
+              <span className="truncate text-base font-bold tracking-tight text-primary-600">
+                MerchOS
+              </span>
+            )}
           </div>
-        ) : (
-          <Sidebar
-            items={navItems}
-            collapsed={sidebarCollapsed}
-            onToggleCollapse={toggleSidebar}
-            onNavigate={handleNavigate}
-          />
-        )}
+          {!isResolved ? (
+            <div
+              className={[
+                'flex flex-1 flex-col items-center justify-center',
+                sidebarCollapsed ? 'w-16' : 'w-64',
+              ].join(' ')}
+              role="status"
+              aria-label="Loading navigation"
+            >
+              <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-400 border-t-primary-600" />
+            </div>
+          ) : (
+            <div className="flex-1">
+              <Sidebar
+                items={navItems}
+                collapsed={sidebarCollapsed}
+                onToggleCollapse={toggleSidebar}
+                onNavigate={handleNavigate}
+                theme="light"
+              />
+            </div>
+          )}
+        </div>
       </nav>
 
       {/* Main content column */}
@@ -340,6 +354,9 @@ export function AdminAppShell({ children }: AdminAppShellProps) {
             </button>
           </div>
         </header>
+
+        {/* Sample-data notice (demo mode only; disappears when backend connected) */}
+        <SampleDataBanner />
 
         {/* Content area */}
         <main
