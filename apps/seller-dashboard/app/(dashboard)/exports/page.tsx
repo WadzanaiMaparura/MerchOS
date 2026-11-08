@@ -21,14 +21,34 @@ export default function ExportsPage() {
         </p>
       </div>
       <Card padding="lg">
-        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          CSV generation is being built. Approved batches will appear here with a Product CSV
-          to download for each target marketplace.
+        <div className="flex flex-col items-center justify-center py-14 text-center">
+          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-gray-400">
+            <svg
+              className="h-6 w-6"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={1.5}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+              />
+            </svg>
+          </div>
+          <h2 className="text-sm font-semibold text-gray-900">No exports yet</h2>
+          <p className="mt-1 max-w-md text-sm text-gray-500">
+            Approved batches will appear here with a Product CSV to download for each target
+            marketplace. Set price, stock, and lead time on the marketplace after uploading.
+          </p>
+          <a
+            href="/create"
+            className="mt-5 inline-flex items-center rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+          >
+            Create listings
+          </a>
         </div>
-        <p className="mt-3 text-xs text-gray-400">
-          MerchOS creates your product listing file. Set price, stock, and lead time on the
-          marketplace after uploading.
-        </p>
       </Card>
     </div>
   );
