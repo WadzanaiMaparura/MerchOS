@@ -1,547 +1,484 @@
 'use client';
 
 /**
- * Seller Intelligence Dashboard
+ * Seller Dashboard — overview of the create-listings pipeline, credits, and
+ * downloadable marketplace CSVs.
  *
- * Centralised listing analytics for the seller: summary metrics, a product
- * import entry point, and tables surfacing listings that need attention and
- * recent listing activity.
+ * Designed to sit INSIDE the (dashboard) app shell (sidebar + top bar provide
+ * global chrome), so this renders a slim page header + content.
  *
- * NOTE: This is a MOCK built against clearly-labelled demonstration data
- * (see DEMO_* constants and the "Demonstration data" banner). Every control is
- * already functional — filters narrow the rendered rows, the import controls
- * route into the real /imports flow and accept dropped files, and the tables
- * use the shared DataTable primitive with sorting/pagination. When the backend
- * listing-analytics endpoints land, replace the DEMO_* sources and the
- * in-memory filtering with the live queries; the component shape stays the same.
+ * Product model (confirmed with product owner):
+ *  - A seller uploads mixed media (images + PDF + text + a video URL) for one
+ *    or many products, names a BATCH, and selects target marketplace(s).
+ *  - MerchOS AI-synthesises a complete marketplace listing per product, the
+ *    seller reviews/corrects/approves, then MerchOS generates the full
+ *    PRODUCT CSV (content loadsheet) per marketplace for download.
+ *  - Pricing / stock / lead time are NOT our concern — the seller sets those
+ *    directly on the marketplace after uploading the Product CSV.
+ *  - Tokenisation is Kiro-style: a monthly plan includes a bundle of CREDITS;
+ *    AI actions consume credits; exceeding the allowance is overage.
  *
- * Palette: MerchOS slate (`sidebar.*`) + `primary` blue from tailwind.config.ts.
- * No decorative colour, no emoji — a restrained, professional surface.
+ * MOCK: all values are clearly-labelled demonstration data (DEMO_*). Pricing
+ * numbers are placeholders pending the finalised pricing model. Buttons are
+ * wired to placeholder routes, ready to connect to the real workflow later.
+ *
+ * Palette: MerchOS slate + primary blue. No emoji, no em dashes.
  */
 
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, StatCard, Badge, DataTable, Select, FileUpload, Alert, useToast } from '@merch-os/ui';
-import type { ColumnDef, SelectOption, SortDirection, BadgeVariant } from '@merch-os/ui';
+import { Card, Badge, ProgressBar, DataTable } from '@merch-os/ui';
+import type { ColumnDef, BadgeVariant } from '@merch-os/ui';
 
-// ─── Domain types (mock shape; mirrors the intended listing-analytics model) ──
+// ─── Marketplaces (for the Create Listings selector) ───────────────────────────
 
-type ListingStatus =
-  | 'DRAFT'
-  | 'PROCESSING'
-  | 'READY_FOR_EXPORT'
-  | 'EXPORTED'
-  | 'NEEDS_ATTENTION';
-
-type InputSource =
-  | 'CSV / Excel'
-  | 'PDF Documents'
-  | 'Product Images'
-  | 'Manual Entry'
-  | 'Supplier URLs';
-
-interface AttentionListing {
+interface Marketplace {
   id: string;
-  productName: string;
-  sku: string;
-  marketplace: string;
-  errorCategory: string;
-  updatedAt: string;
+  name: string;
 }
 
-interface ActivityListing {
-  id: string;
-  productTitle: string;
-  reference: string;
-  marketplace: string;
-  inputSource: InputSource;
-  status: ListingStatus;
-  createdAt: string;
-  updatedAt: string;
-}
+const MARKETPLACES: Marketplace[] = [
+  { id: 'takealot', name: 'Takealot' },
+  { id: 'amazon', name: 'Amazon' },
+  { id: 'shopify', name: 'Shopify' },
+  { id: 'makro', name: 'Makro' },
+  { id: 'woocommerce', name: 'WooCommerce' },
+  { id: 'ebay', name: 'eBay' },
+  { id: 'etsy', name: 'Etsy' },
+];
 
-// ─── Status presentation ──────────────────────────────────────────────────────
+// ─── Pipeline stages ────────────────────────────────────────────────────────────
 
-const STATUS_LABELS: Record<ListingStatus, string> = {
+type Stage = 'DRAFT' | 'GENERATING' | 'NEEDS_REVIEW' | 'CSV_READY' | 'EXPORTED';
+
+const STAGE_LABEL: Record<Stage, string> = {
   DRAFT: 'Draft',
-  PROCESSING: 'Processing',
-  READY_FOR_EXPORT: 'Ready for Export',
+  GENERATING: 'Generating',
+  NEEDS_REVIEW: 'Needs review',
+  CSV_READY: 'CSV ready',
   EXPORTED: 'Exported',
-  NEEDS_ATTENTION: 'Needs Attention',
 };
 
-// Restrained, on-brand mapping. Only genuine states carry an accent; the rest
-// stay neutral so the surface reads as serious rather than colourful.
-const STATUS_VARIANT: Record<ListingStatus, BadgeVariant> = {
+const STAGE_VARIANT: Record<Stage, BadgeVariant> = {
   DRAFT: 'neutral',
-  PROCESSING: 'info',
-  READY_FOR_EXPORT: 'info',
-  EXPORTED: 'success',
-  NEEDS_ATTENTION: 'warning',
+  GENERATING: 'info',
+  NEEDS_REVIEW: 'info',
+  CSV_READY: 'success',
+  EXPORTED: 'neutral',
 };
 
-function StatusBadge({ status }: { status: ListingStatus }) {
-  return <Badge variant={STATUS_VARIANT[status]}>{STATUS_LABELS[status]}</Badge>;
-}
+// ─── Tokenisation (Kiro-style monthly credits + overage) ───────────────────────
 
-// ─── Filter option sets ────────────────────────────────────────────────────────
-
-const MARKETPLACE_OPTIONS: SelectOption[] = [
-  { value: 'all', label: 'All Marketplaces' },
-  { value: 'Takealot', label: 'Takealot' },
-  { value: 'Amazon', label: 'Amazon' },
-  { value: 'Shopify', label: 'Shopify' },
-  { value: 'Makro', label: 'Makro' },
-  { value: 'WooCommerce', label: 'WooCommerce' },
-  { value: 'eBay', label: 'eBay' },
-  { value: 'Etsy', label: 'Etsy' },
-];
-
-const STATUS_OPTIONS: SelectOption[] = [
-  { value: 'all', label: 'All Statuses' },
-  { value: 'DRAFT', label: 'Draft' },
-  { value: 'PROCESSING', label: 'Processing' },
-  { value: 'READY_FOR_EXPORT', label: 'Ready for Export' },
-  { value: 'EXPORTED', label: 'Exported' },
-  { value: 'NEEDS_ATTENTION', label: 'Needs Attention' },
-];
-
-const SOURCE_OPTIONS: SelectOption[] = [
-  { value: 'all', label: 'All Input Sources' },
-  { value: 'CSV / Excel', label: 'CSV / Excel' },
-  { value: 'PDF Documents', label: 'PDF Documents' },
-  { value: 'Product Images', label: 'Product Images' },
-  { value: 'Manual Entry', label: 'Manual Entry' },
-  { value: 'Supplier URLs', label: 'Supplier URLs' },
-];
-
-// ─── Demonstration data ────────────────────────────────────────────────────────
-// Clearly labelled sample data for the initial design. Replace with live
-// listing-analytics queries when the backend endpoints are available.
-
-const DEMO_METRICS = {
-  totalProducts: 200,
-  draft: 39,
-  processing: 39,
-  readyForExport: 50,
-  exported: 40,
-  needsAttention: 32,
-  totalTrend: '+12%',
-  exportedTrend: '+8%',
+const DEMO_CREDITS = {
+  monthlyIncluded: 1000,
+  used: 742,
+  overage: 0,
+  overageUnitPriceMinor: 15, // ZAR 0.15 per extra credit (PLACEHOLDER)
+  planName: 'Growth',
+  planCurrency: 'ZAR',
+  cycleResetsAt: '2026-12-01',
+  breakdown: [
+    { label: 'AI enrichment', credits: 418 },
+    { label: 'Image generation', credits: 210 },
+    { label: 'CSV generation', credits: 114 },
+  ],
 } as const;
 
-const DEMO_ATTENTION: AttentionListing[] = [
-  { id: 'a1', productName: 'Car Phone Mount v3', sku: 'SKU-18119', marketplace: 'Takealot', errorCategory: 'Description Too Short', updatedAt: '2026-10-19' },
-  { id: 'a2', productName: 'Folding Camping Chair v3', sku: 'SKU-18137', marketplace: 'Etsy', errorCategory: 'Price Mismatch', updatedAt: '2026-09-22' },
-  { id: 'a3', productName: 'Ceramic Coffee Mug Set v2', sku: 'SKU-18062', marketplace: 'Makro', errorCategory: 'Description Too Short', updatedAt: '2026-09-09' },
-  { id: 'a4', productName: 'Wireless Bluetooth Headphones v2', sku: 'SKU-18050', marketplace: 'Amazon', errorCategory: 'Missing Images', updatedAt: '2026-08-08' },
-  { id: 'a5', productName: 'Essential Oil Set 6pk', sku: 'SKU-18018', marketplace: 'Etsy', errorCategory: 'Missing Images', updatedAt: '2026-07-22' },
-  { id: 'a6', productName: 'Thermal Insulated Lunch Bag v4', sku: 'SKU-18173', marketplace: 'Amazon', errorCategory: 'Invalid SKU', updatedAt: '2026-07-18' },
-  { id: 'a7', productName: 'Stainless Steel Cookware Set v2', sku: 'SKU-18065', marketplace: 'Amazon', errorCategory: 'Price Mismatch', updatedAt: '2026-07-16' },
-  { id: 'a8', productName: 'Memory Foam Pillow v2', sku: 'SKU-18066', marketplace: 'Amazon', errorCategory: 'Weight Missing', updatedAt: '2026-07-04' },
-  { id: 'a9', productName: 'Microfibre Cleaning Cloths 12pk v2', sku: 'SKU-18083', marketplace: 'eBay', errorCategory: 'Description Too Short', updatedAt: '2026-06-25' },
-  { id: 'a10', productName: 'LED Desk Lamp Pro', sku: 'SKU-18003', marketplace: 'Etsy', errorCategory: 'Missing Images', updatedAt: '2026-06-21' },
-  { id: 'a11', productName: 'Portable Bluetooth Speaker v2', sku: 'SKU-18091', marketplace: 'eBay', errorCategory: 'Invalid SKU', updatedAt: '2026-04-14' },
-  { id: 'a12', productName: 'Solar Garden Lights 6pk v4', sku: 'SKU-18194', marketplace: 'eBay', errorCategory: 'Category Error', updatedAt: '2026-04-04' },
-  { id: 'a13', productName: 'Stainless Steel Water Bottle', sku: 'SKU-18081', marketplace: 'eBay', errorCategory: 'Missing Images', updatedAt: '2026-03-06' },
-  { id: 'a14', productName: 'USB-C Hub 7-in-1', sku: 'SKU-18030', marketplace: 'WooCommerce', errorCategory: 'Missing Images', updatedAt: '2026-02-22' },
-  { id: 'a15', productName: 'Reusable Produce Bags v2', sku: 'SKU-18085', marketplace: 'eBay', errorCategory: 'Category Error', updatedAt: '2026-01-20' },
-  { id: 'a16', productName: 'Car Phone Mount v4', sku: 'SKU-18109', marketplace: 'Takealot', errorCategory: 'Missing Images', updatedAt: '2026-01-20' },
-  { id: 'a17', productName: 'Portable Power Bank 20000mAh v3', sku: 'SKU-18107', marketplace: 'eBay', errorCategory: 'Description Too Short', updatedAt: '2025-12-10' },
-  { id: 'a18', productName: 'Digital Meat Thermometer v4', sku: 'SKU-18196', marketplace: 'Amazon', errorCategory: 'Price Mismatch', updatedAt: '2025-12-08' },
-  { id: 'a19', productName: 'Ceramic Coffee Mug Set', sku: 'SKU-18012', marketplace: 'Shopify', errorCategory: 'Category Error', updatedAt: '2025-12-07' },
-  { id: 'a20', productName: 'Portable Bluetooth Speaker', sku: 'SKU-18041', marketplace: 'Makro', errorCategory: 'Invalid SKU', updatedAt: '2025-11-09' },
+const DEMO_STAGES: { stage: Stage; count: number; note: string }[] = [
+  { stage: 'DRAFT', count: 18, note: 'uploaded, not started' },
+  { stage: 'GENERATING', count: 7, note: 'AI synthesising' },
+  { stage: 'NEEDS_REVIEW', count: 12, note: 'awaiting your approval' },
+  { stage: 'CSV_READY', count: 31, note: 'ready to download' },
+  { stage: 'EXPORTED', count: 40, note: 'downloaded by you' },
 ];
 
-const DEMO_ACTIVITY: ActivityListing[] = [
-  { id: 'r1', productTitle: 'Phone Screen Protector 3pk v2', reference: 'PRD-8087', marketplace: 'eBay', inputSource: 'CSV / Excel', status: 'READY_FOR_EXPORT', createdAt: '2026-10-25', updatedAt: '2026-10-27' },
-  { id: 'r2', productTitle: 'Kids Building Blocks 500pc v3', reference: 'PRD-8118', marketplace: 'WooCommerce', inputSource: 'Product Images', status: 'EXPORTED', createdAt: '2026-10-24', updatedAt: '2026-10-27' },
-  { id: 'r3', productTitle: 'Ceramic Coffee Mug Set v4', reference: 'PRD-8163', marketplace: 'WooCommerce', inputSource: 'Manual Entry', status: 'PROCESSING', createdAt: '2026-10-23', updatedAt: '2026-10-25' },
-  { id: 'r4', productTitle: 'Portable Power Bank 20000mAh', reference: 'PRD-8008', marketplace: 'Takealot', inputSource: 'Manual Entry', status: 'DRAFT', createdAt: '2026-10-19', updatedAt: '2026-10-23' },
-  { id: 'r5', productTitle: 'Car Phone Mount v3', reference: 'PRD-8120', marketplace: 'Takealot', inputSource: 'PDF Documents', status: 'NEEDS_ATTENTION', createdAt: '2026-10-19', updatedAt: '2026-10-19' },
-  { id: 'r6', productTitle: 'Acacia Wood Serving Board v3', reference: 'PRD-8149', marketplace: 'Takealot', inputSource: 'PDF Documents', status: 'DRAFT', createdAt: '2026-10-12', updatedAt: '2026-10-19' },
-  { id: 'r7', productTitle: 'Running Shoes Ultra v4', reference: 'PRD-8156', marketplace: 'Takealot', inputSource: 'CSV / Excel', status: 'READY_FOR_EXPORT', createdAt: '2026-10-11', updatedAt: '2026-10-13' },
-  { id: 'r8', productTitle: 'Weighted Jump Rope v2', reference: 'PRD-8094', marketplace: 'Takealot', inputSource: 'Product Images', status: 'PROCESSING', createdAt: '2026-10-09', updatedAt: '2026-10-13' },
-  { id: 'r9', productTitle: 'Wireless Bluetooth Headphones v4', reference: 'PRD-8151', marketplace: 'eBay', inputSource: 'Supplier URLs', status: 'EXPORTED', createdAt: '2026-09-30', updatedAt: '2026-10-03' },
-  { id: 'r10', productTitle: 'Wireless Charging Pad v2', reference: 'PRD-8065', marketplace: 'Takealot', inputSource: 'Manual Entry', status: 'PROCESSING', createdAt: '2026-09-30', updatedAt: '2026-10-01' },
-  { id: 'r11', productTitle: 'Memory Foam Pillow', reference: 'PRD-8017', marketplace: 'Shopify', inputSource: 'Product Images', status: 'EXPORTED', createdAt: '2026-09-25', updatedAt: '2026-09-25' },
-  { id: 'r12', productTitle: 'Weighted Jump Rope', reference: 'PRD-8044', marketplace: 'Amazon', inputSource: 'PDF Documents', status: 'PROCESSING', createdAt: '2026-09-23', updatedAt: '2026-09-23' },
-  { id: 'r13', productTitle: 'Folding Camping Chair v3', reference: 'PRD-8138', marketplace: 'Etsy', inputSource: 'Product Images', status: 'NEEDS_ATTENTION', createdAt: '2026-09-19', updatedAt: '2026-09-22' },
-  { id: 'r14', productTitle: 'Solar Garden Lights 6pk v3', reference: 'PRD-8145', marketplace: 'Etsy', inputSource: 'CSV / Excel', status: 'READY_FOR_EXPORT', createdAt: '2026-09-13', updatedAt: '2026-09-18' },
-  { id: 'r15', productTitle: 'Ceramic Coffee Mug Set v2', reference: 'PRD-8063', marketplace: 'Makro', inputSource: 'Supplier URLs', status: 'NEEDS_ATTENTION', createdAt: '2026-09-11', updatedAt: '2026-09-16' },
+// ─── Batches (seller-named files, each may hold many products) ──────────────────
+
+interface ReviewBatch {
+  id: string;
+  batchName: string;
+  productCount: number;
+  marketplaces: string[];
+}
+
+interface ReadyBatch {
+  id: string;
+  batchName: string;
+  productCount: number;
+  marketplaces: string[];
+}
+
+interface ActivityBatch {
+  id: string;
+  batchName: string;
+  marketplaces: string[];
+  stage: Stage;
+  products: number;
+  updatedAt: string;
+}
+
+const DEMO_REVIEW: ReviewBatch[] = [
+  { id: 'rv1', batchName: 'November trampolines', productCount: 8, marketplaces: ['Takealot', 'Amazon'] },
+  { id: 'rv2', batchName: 'Safety accessories', productCount: 3, marketplaces: ['Takealot'] },
+  { id: 'rv3', batchName: 'Spring covers restock', productCount: 5, marketplaces: ['Takealot', 'Makro'] },
 ];
 
-const ACTIVITY_PAGE_SIZE = 15;
+const DEMO_READY: ReadyBatch[] = [
+  { id: 'rd1', batchName: 'Mini trampolines Q4', productCount: 3, marketplaces: ['Takealot'] },
+  { id: 'rd2', batchName: 'Rebounder set launch', productCount: 1, marketplaces: ['Amazon'] },
+  { id: 'rd3', batchName: 'Ladders and steps', productCount: 2, marketplaces: ['Takealot', 'Shopify'] },
+];
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+const DEMO_ACTIVITY: ActivityBatch[] = [
+  { id: 'a1', batchName: 'November trampolines', marketplaces: ['Takealot', 'Amazon'], stage: 'NEEDS_REVIEW', products: 8, updatedAt: '2026-11-08' },
+  { id: 'a2', batchName: 'Mini trampolines Q4', marketplaces: ['Takealot'], stage: 'CSV_READY', products: 3, updatedAt: '2026-11-08' },
+  { id: 'a3', batchName: 'Spring covers restock', marketplaces: ['Takealot', 'Makro'], stage: 'GENERATING', products: 5, updatedAt: '2026-11-07' },
+  { id: 'a4', batchName: 'Rebounder set launch', marketplaces: ['Amazon'], stage: 'EXPORTED', products: 1, updatedAt: '2026-11-06' },
+  { id: 'a5', batchName: 'Garden play draft', marketplaces: ['Takealot'], stage: 'DRAFT', products: 6, updatedAt: '2026-11-05' },
+];
 
-function formatDate(dateStr: string): string {
+// ─── Helpers ────────────────────────────────────────────────────────────────────
+
+function formatDate(iso: string): string {
   try {
-    return new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium' }).format(new Date(dateStr));
+    return new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium' }).format(new Date(iso));
   } catch {
-    return dateStr;
+    return iso;
   }
 }
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+function daysUntil(iso: string): number {
+  return Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000));
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { toast } = useToast();
+  const c = DEMO_CREDITS;
 
-  // Filters
-  const [marketplace, setMarketplace] = useState('all');
-  const [status, setStatus] = useState('all');
-  const [source, setSource] = useState('all');
-  const [fromDate, setFromDate] = useState('2025-07-01');
-  const [toDate, setToDate] = useState(todayIso());
+  const inOverage = c.overage > 0;
+  const creditsLeft = Math.max(0, c.monthlyIncluded - c.used);
+  const resetDays = daysUntil(c.cycleResetsAt);
+  const totalUsed = c.used + c.overage;
 
-  // Table paging / sorting
-  const [activityPage, setActivityPage] = useState(1);
-  const [activitySort, setActivitySort] = useState<{ col: string | null; dir: SortDirection }>({
-    col: 'createdAt',
-    dir: 'desc',
-  });
+  // Create Listings: marketplace multi-select dropdown.
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const pickerRef = useRef<HTMLDivElement>(null);
 
-  const lastRefreshed = useMemo(
-    () => new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date()),
-    []
-  );
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setPickerOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [pickerOpen]);
 
-  // ── Filtering (client-side over demo data; swap for server queries later) ──
-  const withinRange = useCallback(
-    (dateStr: string) => {
-      const d = dateStr.slice(0, 10);
-      return (!fromDate || d >= fromDate) && (!toDate || d <= toDate);
-    },
-    [fromDate, toDate]
-  );
+  const allSelected = selected.length === MARKETPLACES.length;
+  const toggleMarketplace = (id: string) =>
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const toggleAll = () => setSelected(allSelected ? [] : MARKETPLACES.map((m) => m.id));
 
-  const attentionRows = useMemo(
-    () =>
-      DEMO_ATTENTION.filter(
-        (r) =>
-          (marketplace === 'all' || r.marketplace === marketplace) &&
-          (status === 'all' || status === 'NEEDS_ATTENTION') &&
-          withinRange(r.updatedAt)
-      ),
-    [marketplace, status, withinRange]
-  );
+  const startCreate = useCallback(() => {
+    const qs = selected.length ? `?marketplaces=${selected.join(',')}` : '';
+    router.push(`/create${qs}`);
+  }, [router, selected]);
 
-  const activityRowsAll = useMemo(() => {
-    const filtered = DEMO_ACTIVITY.filter(
-      (r) =>
-        (marketplace === 'all' || r.marketplace === marketplace) &&
-        (status === 'all' || r.status === status) &&
-        (source === 'all' || r.inputSource === source) &&
-        withinRange(r.createdAt)
-    );
-
-    const { col, dir } = activitySort;
-    if (!col || !dir) return filtered;
-    const sorted = [...filtered].sort((a, b) => {
-      const av = String((a as unknown as Record<string, unknown>)[col] ?? '');
-      const bv = String((b as unknown as Record<string, unknown>)[col] ?? '');
-      return av < bv ? -1 : av > bv ? 1 : 0;
-    });
-    return dir === 'asc' ? sorted : sorted.reverse();
-  }, [marketplace, status, source, withinRange, activitySort]);
-
-  const activityRows = useMemo(() => {
-    const start = (activityPage - 1) * ACTIVITY_PAGE_SIZE;
-    return activityRowsAll.slice(start, start + ACTIVITY_PAGE_SIZE);
-  }, [activityRowsAll, activityPage]);
-
-  const resetPaging = useCallback(() => setActivityPage(1), []);
-
-  // ── Import handlers (functional entry points into the real /imports flow) ──
-  const goToImports = useCallback(
-    (sourceHint?: string) => {
-      router.push(sourceHint ? `/imports?source=${encodeURIComponent(sourceHint)}` : '/imports');
-    },
-    [router]
-  );
-
-  const handleFilesSelected = useCallback(
-    (files: File[]) => {
-      toast({
-        title: files.length > 1 ? `${files.length} files received` : 'File received',
-        description: 'Continue in the import workspace to start the job.',
-        variant: 'info',
-      });
-      router.push('/imports');
-    },
-    [router, toast]
-  );
-
-  // ── Column definitions ─────────────────────────────────────────────────────
-  const attentionColumns: ColumnDef<AttentionListing>[] = useMemo(
+  const activityColumns: ColumnDef<ActivityBatch>[] = useMemo(
     () => [
-      { id: 'productName', header: 'Product Name', cell: (r) => <span className="font-medium text-gray-900">{r.productName}</span> },
-      { id: 'sku', header: 'SKU', cell: (r) => <span className="font-mono text-xs text-gray-600">{r.sku}</span> },
-      { id: 'marketplace', header: 'Marketplace', cell: (r) => r.marketplace },
-      { id: 'status', header: 'Status', cell: () => <StatusBadge status="NEEDS_ATTENTION" /> },
-      { id: 'errorCategory', header: 'Error Category', cell: (r) => <span className="text-gray-700">{r.errorCategory}</span> },
-      { id: 'updatedAt', header: 'Last Updated', cell: (r) => <span className="text-gray-500">{formatDate(r.updatedAt)}</span> },
+      { id: 'batchName', header: 'Batch', cell: (r) => (
+        <div>
+          <span className="font-medium text-gray-900">{r.batchName}</span>
+          <span className="ml-2 text-xs text-gray-400">{r.products} products</span>
+        </div>
+      ) },
+      { id: 'marketplaces', header: 'Marketplaces', cell: (r) => <span className="text-gray-700">{r.marketplaces.join(', ')}</span> },
+      { id: 'stage', header: 'Stage', cell: (r) => <Badge variant={STAGE_VARIANT[r.stage]}>{STAGE_LABEL[r.stage]}</Badge> },
+      { id: 'updatedAt', header: 'Updated', cell: (r) => <span className="text-gray-500">{formatDate(r.updatedAt)}</span> },
     ],
     []
   );
-
-  const activityColumns: ColumnDef<ActivityListing>[] = useMemo(
-    () => [
-      { id: 'productTitle', header: 'Product Title', sortable: true, cell: (r) => <span className="font-medium text-gray-900">{r.productTitle}</span> },
-      { id: 'reference', header: 'Reference', cell: (r) => <span className="font-mono text-xs text-gray-600">{r.reference}</span> },
-      { id: 'marketplace', header: 'Marketplace', sortable: true, cell: (r) => r.marketplace },
-      { id: 'inputSource', header: 'Input Source', cell: (r) => <span className="text-gray-600">{r.inputSource}</span> },
-      { id: 'status', header: 'Status', sortable: true, cell: (r) => <StatusBadge status={r.status} /> },
-      { id: 'createdAt', header: 'Created', sortable: true, cell: (r) => <span className="text-gray-500">{formatDate(r.createdAt)}</span> },
-      { id: 'updatedAt', header: 'Updated', sortable: true, cell: (r) => <span className="text-gray-500">{formatDate(r.updatedAt)}</span> },
-    ],
-    []
-  );
-
-  const handleActivitySort = useCallback((columnId: string, direction: SortDirection) => {
-    setActivitySort({ col: direction ? columnId : null, dir: direction });
-    setActivityPage(1);
-  }, []);
 
   return (
-    <div className="space-y-6 p-6">
-      {/* ── Header ──────────────────────────────────────────────────────── */}
-      <header className="rounded-lg border border-gray-200 bg-sidebar-bg px-6 py-5 text-white shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-white/10 text-lg font-semibold tracking-tight">
-              M
+    <div className="mx-auto max-w-6xl space-y-6">
+      {/* ── Page header + Create Listings ─────────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight text-gray-900">Overview</h1>
+          <p className="text-sm text-gray-500">Turn raw product info into marketplace-ready CSVs.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800">
+            Demonstration data
+          </span>
+
+          {/* Create Listings: click opens a marketplace multi-select */}
+          <div ref={pickerRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setPickerOpen((o) => !o)}
+              aria-haspopup="true"
+              aria-expanded={pickerOpen}
+              className="inline-flex items-center gap-2 rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2"
+            >
+              <PlusIcon />
+              Create listings
+              <ChevronIcon />
+            </button>
+
+            {pickerOpen && (
+              <div className="absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded-md border border-gray-200 bg-white shadow-lg">
+                <div className="border-b border-gray-100 px-3 py-2">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Select marketplaces</p>
+                </div>
+                <label className="flex cursor-pointer items-center gap-2 border-b border-gray-100 px-3 py-2 text-sm hover:bg-gray-50">
+                  <input type="checkbox" checked={allSelected} onChange={toggleAll} className="h-4 w-4 rounded border-gray-300 text-primary-600 focus-visible:ring-primary-600" />
+                  <span className="font-medium text-gray-900">All marketplaces</span>
+                </label>
+                <ul className="max-h-60 overflow-y-auto py-1">
+                  {MARKETPLACES.map((m) => (
+                    <li key={m.id}>
+                      <label className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50">
+                        <input
+                          type="checkbox"
+                          checked={selected.includes(m.id)}
+                          onChange={() => toggleMarketplace(m.id)}
+                          className="h-4 w-4 rounded border-gray-300 text-primary-600 focus-visible:ring-primary-600"
+                        />
+                        <span className="text-gray-900">{m.name}</span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+                <div className="border-t border-gray-100 p-2">
+                  <button
+                    type="button"
+                    onClick={startCreate}
+                    disabled={selected.length === 0}
+                    className="w-full rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:bg-primary-600/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2"
+                  >
+                    {selected.length === 0
+                      ? 'Select at least one'
+                      : `Continue with ${selected.length} marketplace${selected.length === 1 ? '' : 's'}`}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Credits hero (tokenisation) ──────────────────────────────────── */}
+      <Card padding="lg" className="border-gray-200">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-gray-900">Monthly credits</h2>
+              <Badge variant="neutral">{c.planName} plan</Badge>
+              {inOverage && <Badge variant="warning">In overage</Badge>}
             </div>
-            <div>
-              <h1 className="text-lg font-semibold tracking-tight">Seller Intelligence Dashboard</h1>
-              <p className="text-sm text-gray-300">MerchOS · Centralised listing analytics</p>
+
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className="text-3xl font-bold tracking-tight text-gray-900">{c.used.toLocaleString()}</span>
+              <span className="text-sm text-gray-500">of {c.monthlyIncluded.toLocaleString()} credits used</span>
+            </div>
+
+            <div className="mt-3">
+              {/* Always MerchOS blue (variant 'default'); numeric left + overage badge convey limit state. */}
+              <ProgressBar
+                label="Credits this cycle"
+                value={Math.min(c.used, c.monthlyIncluded)}
+                max={c.monthlyIncluded}
+                size="lg"
+                showValue={false}
+                variant="default"
+              />
+            </div>
+
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
+              <span>
+                {inOverage ? (
+                  <span className="font-medium text-amber-700">{c.overage.toLocaleString()} overage credits</span>
+                ) : (
+                  <span className="font-medium text-gray-700">{creditsLeft.toLocaleString()} credits left</span>
+                )}
+              </span>
+              <span aria-hidden="true">·</span>
+              <span>Resets in {resetDays} day{resetDays === 1 ? '' : 's'} ({formatDate(c.cycleResetsAt)})</span>
+              <span aria-hidden="true">·</span>
+              <span>Overage: {c.planCurrency} {(c.overageUnitPriceMinor / 100).toFixed(2)} per credit</span>
             </div>
           </div>
-          <div className="text-right text-sm text-gray-300">
-            <p className="font-medium text-white">{DEMO_METRICS.totalProducts} total records</p>
-            <p>Last refreshed {lastRefreshed}</p>
+
+          <div className="w-full shrink-0 lg:w-72">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">What used your credits</p>
+            <ul className="space-y-2">
+              {c.breakdown.map((b) => {
+                const bpct = totalUsed > 0 ? Math.round((b.credits / totalUsed) * 100) : 0;
+                return (
+                  <li key={b.label} className="flex items-center justify-between gap-3 text-sm">
+                    <span className="truncate text-gray-700">{b.label}</span>
+                    <span className="shrink-0 tabular-nums text-gray-500">
+                      {b.credits.toLocaleString()} <span className="text-gray-400">({bpct}%)</span>
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+            <button
+              type="button"
+              onClick={() => router.push('/billing')}
+              className="mt-3 inline-flex w-full items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:border-gray-400 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2"
+            >
+              Manage plan and billing
+            </button>
           </div>
-        </div>
-
-        {/* Filters */}
-        <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <FilterSelect label="Marketplace" value={marketplace} options={MARKETPLACE_OPTIONS} onChange={(v) => { setMarketplace(v); resetPaging(); }} />
-          <FilterSelect label="Status" value={status} options={STATUS_OPTIONS} onChange={(v) => { setStatus(v); resetPaging(); }} />
-          <FilterSelect label="Input Source" value={source} options={SOURCE_OPTIONS} onChange={(v) => { setSource(v); resetPaging(); }} />
-          <DateField label="From" value={fromDate} onChange={(v) => { setFromDate(v); resetPaging(); }} />
-          <DateField label="To" value={toDate} onChange={(v) => { setToDate(v); resetPaging(); }} />
-        </div>
-      </header>
-
-      {/* ── Demonstration banner ────────────────────────────────────────── */}
-      <Alert variant="warning" title="Demonstration data">
-        <p className="text-sm">
-          This dashboard uses clearly-labelled sample data for the initial design. Connect your
-          MerchOS data source for production analytics.
-        </p>
-      </Alert>
-
-      {/* ── Summary metrics ─────────────────────────────────────────────── */}
-      <section aria-label="Summary metrics">
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-          <StatCard label="Total Products" value={DEMO_METRICS.totalProducts} description={`${DEMO_METRICS.totalTrend} vs last period`} trend="up" icon={<PackageIcon />} />
-          <StatCard label="Draft Listings" value={DEMO_METRICS.draft} icon={<DraftIcon />} />
-          <StatCard label="Processing" value={DEMO_METRICS.processing} icon={<ProcessingIcon />} />
-          <StatCard label="Ready for Export" value={DEMO_METRICS.readyForExport} icon={<CheckIcon />} />
-          <StatCard label="Exported" value={DEMO_METRICS.exported} description={`${DEMO_METRICS.exportedTrend} vs last period`} trend="up" icon={<ExportIcon />} />
-          <StatCard label="Needs Attention" value={DEMO_METRICS.needsAttention} icon={<AttentionIcon />} />
-        </div>
-      </section>
-
-      {/* ── Import Products ─────────────────────────────────────────────── */}
-      <Card>
-        <div className="mb-4 flex items-center gap-2">
-          <ImportIcon />
-          <h2 className="text-sm font-semibold text-gray-900">Import Products</h2>
-        </div>
-        <p className="mb-4 text-sm text-gray-500">
-          Upload product files to create marketplace listings. Supports CSV, Excel, PDF, and images.
-        </p>
-
-        <div className="mb-4 flex flex-wrap gap-2">
-          <ImportButton label="CSV / Excel" onClick={() => goToImports('FILE_CSV')} icon={<SheetIcon />} />
-          <ImportButton label="PDF Documents" onClick={() => goToImports('FILE_PDF')} icon={<DocIcon />} />
-          <ImportButton label="Product Images" onClick={() => goToImports('IMAGE')} icon={<ImageIcon />} />
-          <ImportButton label="Any File" onClick={() => goToImports()} icon={<FileIcon />} />
-        </div>
-
-        <FileUpload
-          aria-label="Drag and drop product files to import"
-          multiple
-          acceptedTypes={['text/csv', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/pdf', 'image/*']}
-          hint="CSV, Excel, PDF, or images · up to 10 MB each"
-          onFilesSelected={handleFilesSelected}
-        />
-
-        <div className="mt-4 flex justify-end">
-          <button
-            type="button"
-            onClick={() => goToImports()}
-            className="inline-flex items-center gap-2 rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2"
-          >
-            <PlayIcon />
-            Start Job
-          </button>
         </div>
       </Card>
 
-      {/* ── Listings Requiring Attention ────────────────────────────────── */}
-      <section aria-label="Listings requiring attention">
-        <div className="mb-2 flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-900">Listings Requiring Attention</h2>
-            <p className="text-xs text-gray-500">Failed or incomplete listings needing intervention</p>
-          </div>
-          <Badge variant="warning">{attentionRows.length} items</Badge>
+      {/* ── Listing pipeline ─────────────────────────────────────────────── */}
+      <section aria-label="Listing pipeline">
+        <h2 className="mb-2 text-sm font-semibold text-gray-900">Listing pipeline</h2>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          {DEMO_STAGES.map(({ stage, count, note }) => {
+            const highlight = stage === 'NEEDS_REVIEW';
+            return (
+              <div
+                key={stage}
+                className={`rounded-lg border p-4 shadow-sm ${highlight ? 'border-primary-200 bg-primary-50' : 'border-gray-200 bg-white'}`}
+              >
+                <p className={`text-xs font-medium ${highlight ? 'text-primary-700' : 'text-gray-500'}`}>{STAGE_LABEL[stage]}</p>
+                <p className={`mt-1 text-2xl font-bold ${highlight ? 'text-primary-900' : 'text-gray-900'}`}>{count}</p>
+                <p className={`text-xs ${highlight ? 'text-primary-600' : 'text-gray-400'}`}>{note}</p>
+              </div>
+            );
+          })}
         </div>
-        <DataTable
-          columns={attentionColumns}
-          data={attentionRows}
-          getRowKey={(r) => r.id}
-          onRowClick={(r) => router.push(`/products?sku=${encodeURIComponent(r.sku)}`)}
-          emptyMessage="No listings require attention for the selected filters."
-          caption="Listings requiring attention"
-        />
       </section>
 
-      {/* ── Recent Listing Activity ─────────────────────────────────────── */}
-      <section aria-label="Recent listing activity">
+      {/* ── Needs review + Ready to download ─────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Needs review */}
+        <section aria-label="Batches needing review">
+          <div className="mb-2 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Needs review</h2>
+              <p className="text-xs text-gray-500">Generated listings awaiting your approval</p>
+            </div>
+            <button type="button" onClick={() => router.push('/review-queue')} className="text-sm font-medium text-primary-600 hover:text-primary-700">
+              View all
+            </button>
+          </div>
+          <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+            {DEMO_REVIEW.length === 0 ? (
+              <p className="px-4 py-6 text-center text-sm text-gray-500">Nothing to review.</p>
+            ) : (
+              <ul className="divide-y divide-gray-100">
+                {DEMO_REVIEW.map((b) => (
+                  <li key={b.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-gray-900">{b.batchName}</p>
+                      <p className="truncate text-xs text-gray-500">{b.productCount} products · {b.marketplaces.join(', ')}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/review-queue/${b.id}`)}
+                      className="shrink-0 rounded-md bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2"
+                    >
+                      Review
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+
+        {/* Ready to download */}
+        <section aria-label="Batches ready to download">
+          <div className="mb-2 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Ready to download</h2>
+              <p className="text-xs text-gray-500">Approved. Product CSV generated per marketplace.</p>
+            </div>
+            <button type="button" onClick={() => router.push('/exports')} className="text-sm font-medium text-primary-600 hover:text-primary-700">
+              All exports
+            </button>
+          </div>
+          <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+            {DEMO_READY.length === 0 ? (
+              <p className="px-4 py-6 text-center text-sm text-gray-500">No CSVs ready yet.</p>
+            ) : (
+              <ul className="divide-y divide-gray-100">
+                {DEMO_READY.map((b) => (
+                  <li key={b.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-gray-900">{b.batchName}</p>
+                      <p className="truncate text-xs text-gray-500">{b.productCount} products · {b.marketplaces.join(', ')}</p>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+                      {b.marketplaces.map((mp) => (
+                        <button
+                          key={mp}
+                          type="button"
+                          onClick={() => router.push(`/exports/${b.id}?marketplace=${encodeURIComponent(mp)}`)}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition-colors hover:border-gray-400 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600"
+                          title={`Download ${mp} Product CSV`}
+                        >
+                          <DownloadIcon />
+                          {mp} Product CSV
+                        </button>
+                      ))}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <p className="mt-2 text-xs text-gray-400">
+            MerchOS creates your product listing file. Set price, stock, and lead time on the marketplace after uploading.
+          </p>
+        </section>
+      </div>
+
+      {/* ── Recent activity ──────────────────────────────────────────────── */}
+      <section aria-label="Recent activity">
         <div className="mb-2 flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-gray-900">Recent Listing Activity</h2>
-            <p className="text-xs text-gray-500">Latest product listing records</p>
+            <h2 className="text-sm font-semibold text-gray-900">Recent activity</h2>
+            <p className="text-xs text-gray-500">Latest batch updates</p>
           </div>
-          <span className="text-xs text-gray-500">{activityRowsAll.length} listings</span>
+          <button type="button" onClick={() => router.push('/products')} className="text-sm font-medium text-primary-600 hover:text-primary-700">
+            View all
+          </button>
         </div>
         <DataTable
           columns={activityColumns}
-          data={activityRows}
+          data={DEMO_ACTIVITY}
           getRowKey={(r) => r.id}
-          sortColumn={activitySort.col}
-          sortDirection={activitySort.dir}
-          onSort={handleActivitySort}
-          onRowClick={(r) => router.push(`/products?ref=${encodeURIComponent(r.reference)}`)}
-          page={activityPage}
-          pageSize={ACTIVITY_PAGE_SIZE}
-          totalItems={activityRowsAll.length}
-          onPageChange={setActivityPage}
-          emptyMessage="No listing activity for the selected filters."
-          caption="Recent listing activity"
+          onRowClick={(r) => router.push(`/products?batch=${r.id}`)}
+          emptyMessage="No activity yet."
+          caption="Recent batch activity"
         />
       </section>
 
       <footer className="pt-2 text-center text-xs text-gray-400">
-        MerchOS Seller Intelligence Dashboard · Demonstration data · {new Date().getFullYear()}
+        MerchOS Seller Dashboard · Demonstration data
       </footer>
     </div>
   );
 }
 
-// ─── Local presentational helpers ──────────────────────────────────────────────
+// ─── Icons (monochrome, thin stroke, no emoji) ──────────────────────────────────
 
-/** Select styled for the dark header strip (overrides the light default). */
-function FilterSelect({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: SelectOption[];
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div className="[&_label]:text-gray-300">
-      <Select label={label} value={value} options={options} onValueChange={onChange} />
-    </div>
-  );
+function PlusIcon() {
+  return (<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14M5 12h14" /></svg>);
 }
-
-function DateField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label className="text-sm font-medium text-gray-300">{label}</label>
-      <input
-        type="date"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2"
-      />
-    </div>
-  );
+function ChevronIcon() {
+  return (<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>);
 }
-
-function ImportButton({ label, onClick, icon }: { label: string; onClick: () => void; icon: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:border-gray-400 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2"
-    >
-      <span className="text-gray-500" aria-hidden="true">{icon}</span>
-      {label}
-    </button>
-  );
-}
-
-// ─── Icons (monochrome, thin stroke — no colour, no emoji) ──────────────────────
-
-function iconProps(size = 'h-5 w-5') {
-  return {
-    xmlns: 'http://www.w3.org/2000/svg',
-    className: size,
-    fill: 'none',
-    viewBox: '0 0 24 24',
-    stroke: 'currentColor',
-    'aria-hidden': true as const,
-  };
-}
-
-function PackageIcon() {
-  return (<svg {...iconProps()}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>);
-}
-function DraftIcon() {
-  return (<svg {...iconProps()}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>);
-}
-function ProcessingIcon() {
-  return (<svg {...iconProps()}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>);
-}
-function CheckIcon() {
-  return (<svg {...iconProps()}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>);
-}
-function ExportIcon() {
-  return (<svg {...iconProps()}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>);
-}
-function AttentionIcon() {
-  return (<svg {...iconProps()}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>);
-}
-function ImportIcon() {
-  return (<svg {...iconProps('h-5 w-5 text-gray-700')}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>);
-}
-function SheetIcon() {
-  return (<svg {...iconProps('h-4 w-4')}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 17v-2m3 2v-4m3 4v-6M5 4h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1z" /></svg>);
-}
-function DocIcon() {
-  return (<svg {...iconProps('h-4 w-4')}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>);
-}
-function ImageIcon() {
-  return (<svg {...iconProps('h-4 w-4')}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>);
-}
-function FileIcon() {
-  return (<svg {...iconProps('h-4 w-4')}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>);
-}
-function PlayIcon() {
-  return (<svg {...iconProps('h-4 w-4')}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>);
+function DownloadIcon() {
+  return (<svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>);
 }

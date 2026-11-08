@@ -44,9 +44,9 @@ const ClipboardCheckIcon = (
   </svg>
 );
 
-const WarehouseIcon = (
+const SparkIcon = (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-    <path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v4M12 14v4M16 14v4" />
+    <path d="M12 3v3m0 12v3M5.6 5.6l2.1 2.1m8.6 8.6l2.1 2.1M3 12h3m12 0h3M5.6 18.4l2.1-2.1m8.6-8.6l2.1-2.1" />
   </svg>
 );
 
@@ -70,21 +70,6 @@ const CreditCardIcon = (
   </svg>
 );
 
-const ChannelsIcon = (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-    <polyline points="22,6 12,13 2,6" />
-  </svg>
-);
-
-const TeamIcon = (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-    <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
-    <circle cx="9" cy="7" r="4" />
-    <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
-  </svg>
-);
-
 /**
  * SELLER_NAV_ITEMS — Navigation items annotated with requiredResource
  * mapping to the permission registry resources for the Seller role.
@@ -92,13 +77,11 @@ const TeamIcon = (
  */
 const SELLER_NAV_ITEMS: NavigationItem[] = [
   { id: 'dashboard', label: 'Dashboard', href: '/dashboard', icon: HomeIcon, requiredResource: 'analytics' },
+  { id: 'create-listings', label: 'Create Listings', href: '/create', icon: SparkIcon, requiredResource: 'products' },
   { id: 'products', label: 'Products', href: '/products', icon: PackageIcon, requiredResource: 'products' },
   { id: 'review-queue', label: 'Review Queue', href: '/review-queue', icon: ClipboardCheckIcon, requiredResource: 'products' },
-  { id: 'inventory', label: 'Inventory', href: '/inventory', icon: WarehouseIcon, requiredResource: 'products' },
   { id: 'exports', label: 'Exports', href: '/exports', icon: DownloadIcon, requiredResource: 'exports' },
-  { id: 'channels', label: 'Channels', href: '/settings/channels', icon: ChannelsIcon, requiredResource: 'ai-listings' },
   { id: 'settings', label: 'Settings', href: '/settings', icon: SettingsIcon, requiredResource: 'subscription' },
-  { id: 'team', label: 'Team', href: '/settings/team', icon: TeamIcon, requiredResource: 'subscription' },
   { id: 'billing', label: 'Billing', href: '/billing', icon: CreditCardIcon, requiredResource: 'subscription' },
 ];
 
