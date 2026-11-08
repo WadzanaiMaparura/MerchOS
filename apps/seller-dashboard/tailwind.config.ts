@@ -22,11 +22,11 @@ const config: Config = {
           900: '#1e3a8a',
         },
         sidebar: {
-          // MerchOS brand blue sidebar (primary palette).
-          bg: '#1d4ed8',      // primary-700
-          hover: '#2563eb',   // primary-600
-          active: '#1e40af',  // primary-800
-          accent: '#ffffff',  // white active accent on blue
+          // Light grey sidebar: light surface, dark text, primary-blue active accent.
+          bg: '#f3f4f6',      // gray-100 surface
+          hover: '#e5e7eb',   // gray-200 hover
+          active: '#e0e7ff',  // primary-100 tint for the active item
+          accent: '#2563eb',  // primary-600 active accent bar
         },
         success: {
           50: '#f0fdf4',

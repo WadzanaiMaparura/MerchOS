@@ -25,6 +25,13 @@ export interface SidebarProps {
   onToggleCollapse?: () => void;
   /** Callback when a navigation item is clicked */
   onNavigate?: (href: string) => void;
+  /**
+   * Colour theme. 'dark' (default) renders white text on a dark
+   * `sidebar.bg` surface; 'light' renders dark text for a light-grey surface.
+   * The surface/hover/active/accent colours come from the app's `sidebar.*`
+   * tailwind tokens regardless of theme; only the text/idle colours switch.
+   */
+  theme?: 'dark' | 'light';
 }
 
 /**
@@ -37,10 +44,22 @@ export function Sidebar({
   collapsed = false,
   onToggleCollapse,
   onNavigate,
+  theme = 'dark',
 }: SidebarProps) {
+  const isLight = theme === 'light';
+  const baseText = isLight ? 'text-gray-900' : 'text-white';
+  const idleItem = isLight
+    ? 'text-gray-600 hover:bg-sidebar-hover hover:text-gray-900'
+    : 'text-gray-300 hover:bg-sidebar-hover hover:text-white';
+  const activeItem = isLight ? 'bg-sidebar-active text-gray-900' : 'bg-sidebar-active text-white';
+  const toggleText = isLight
+    ? 'text-gray-500 hover:text-gray-900 hover:bg-sidebar-hover'
+    : 'text-gray-400 hover:text-white hover:bg-sidebar-hover';
+  const borderColor = isLight ? 'border-gray-200' : 'border-gray-700';
+
   return (
     <aside
-      className={`flex flex-col h-full bg-sidebar-bg text-white transition-all duration-200 ${
+      className={`flex flex-col h-full bg-sidebar-bg ${baseText} transition-all duration-200 ${
         collapsed ? 'w-16' : 'w-64'
       }`}
       aria-label="Main navigation"
@@ -63,11 +82,7 @@ export function Sidebar({
                 }}
                 className={`relative flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors
                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar-bg
-                  ${
-                    item.active
-                      ? 'bg-sidebar-active text-white'
-                      : 'text-gray-300 hover:bg-sidebar-hover hover:text-white'
-                  }
+                  ${item.active ? activeItem : idleItem}
                 `}
                 aria-current={item.active ? 'page' : undefined}
               >
@@ -99,10 +114,10 @@ export function Sidebar({
       </NavigationMenu.Root>
 
       {/* Collapse toggle button */}
-      <div className="p-2 border-t border-gray-700">
+      <div className={`p-2 border-t ${borderColor}`}>
         <button
           onClick={onToggleCollapse}
-          className="flex items-center justify-center w-full p-2 rounded-md text-gray-400 hover:text-white hover:bg-sidebar-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar-bg"
+          className={`flex items-center justify-center w-full p-2 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar-bg ${toggleText}`}
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           aria-expanded={!collapsed}
         >
