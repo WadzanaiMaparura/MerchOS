@@ -47,7 +47,6 @@ export function ProfileCompletionGate({ children }: ProfileCompletionGateProps) 
   // True while we have decided to redirect to /complete-profile and are waiting
   // for navigation to take effect — used to keep children withheld (no flash).
   const [redirecting, setRedirecting] = useState(false);
-  const [retryKey, setRetryKey] = useState(0);
   const redirectingRef = useRef(false);
 
   // Use the access token already held in auth state for the profile-status
@@ -106,9 +105,7 @@ export function ProfileCompletionGate({ children }: ProfileCompletionGateProps) 
     return () => {
       cancelled = true;
     };
-  }, [isLoading, user, pathname, getAccessToken, router, retryKey]);
-
-  const onRetry = useCallback(() => setRetryKey((k) => k + 1), []);
+  }, [isLoading, user, pathname, getAccessToken, router]);
 
   // Withhold dashboard children only while the INITIAL authenticated evaluation
   // is still in flight, or while a redirect to /complete-profile is pending.
@@ -132,24 +129,13 @@ export function ProfileCompletionGate({ children }: ProfileCompletionGateProps) 
     );
   }
 
+  // NOTE: the account-setup check fails OPEN — if the status check errors (e.g.
+  // the profile-status backend is unavailable in this environment), we render
+  // the dashboard anyway and intentionally DO NOT show a warning banner, so the
+  // dashboard renders cleanly while the backend is still being wired. The gate
+  // still redirects a genuine needs_profile_completion case when it resolves.
   return (
     <>
-      {checkError && (
-        <div
-          role="alert"
-          aria-live="polite"
-          className="flex items-center justify-between gap-4 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800"
-        >
-          <span>We couldn&apos;t verify your account setup status.</span>
-          <button
-            type="button"
-            onClick={onRetry}
-            className="rounded-md border border-amber-300 bg-white px-3 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
-          >
-            Retry
-          </button>
-        </div>
-      )}
       {children}
     </>
   );

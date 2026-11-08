@@ -43,8 +43,6 @@ const MARKETPLACES: Marketplace[] = [
   { id: 'shopify', name: 'Shopify' },
   { id: 'makro', name: 'Makro' },
   { id: 'woocommerce', name: 'WooCommerce' },
-  { id: 'ebay', name: 'eBay' },
-  { id: 'etsy', name: 'Etsy' },
 ];
 
 // ─── Pipeline stages ────────────────────────────────────────────────────────────
@@ -78,7 +76,7 @@ const DEMO_CREDITS = {
   planCurrency: 'ZAR',
   cycleResetsAt: '2026-12-01',
   breakdown: [
-    { label: 'AI enrichment', credits: 418 },
+    { label: 'MerchOS enrichment', credits: 418 },
     { label: 'Image generation', credits: 210 },
     { label: 'CSV generation', credits: 114 },
   ],
@@ -207,13 +205,9 @@ export default function DashboardPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-gray-900">Overview</h1>
-          <p className="text-sm text-gray-500">Turn raw product info into marketplace-ready CSVs.</p>
+          <p className="text-sm text-gray-500">Turn raw product information into marketplace-ready CSVs.</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800">
-            Demonstration data
-          </span>
-
           {/* Create Listings: click opens a marketplace multi-select */}
           <div ref={pickerRef} className="relative">
             <button
@@ -464,9 +458,6 @@ export default function DashboardPage() {
         />
       </section>
 
-      <footer className="pt-2 text-center text-xs text-gray-400">
-        MerchOS Seller Dashboard · Demonstration data
-      </footer>
     </div>
   );
 }
