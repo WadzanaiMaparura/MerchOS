@@ -22,10 +22,10 @@ const config: Config = {
           900: '#1e3a8a',
         },
         sidebar: {
-          // Light grey sidebar: light surface, dark text, primary-blue active accent.
-          bg: '#f3f4f6',      // gray-100 surface
-          hover: '#e5e7eb',   // gray-200 hover
-          active: '#e0e7ff',  // primary-100 tint for the active item
+          // Deeper light-grey sidebar: light surface, dark text, primary-blue active accent.
+          bg: '#e5e7eb',      // gray-200 surface (deeper than gray-100)
+          hover: '#d1d5db',   // gray-300 hover
+          active: '#dbeafe',  // primary-100 tint for the active item
           accent: '#2563eb',  // primary-600 active accent bar
         },
         success: {
