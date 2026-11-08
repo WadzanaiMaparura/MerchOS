@@ -8,7 +8,6 @@ import {
 } from '@merch-os/api-client';
 import {
   Card,
-  StatCard,
   DataTable,
   ProgressBar,
   Badge,
@@ -247,54 +246,45 @@ function BillingContent() {
   ];
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="mx-auto max-w-5xl space-y-5 p-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Billing</h1>
+        <h1 className="text-xl font-semibold tracking-tight text-gray-900">Billing</h1>
         <button
           onClick={() => setShowPlanChange(!showPlanChange)}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+          className="rounded-md bg-blue-600 px-3.5 py-1.5 text-sm font-medium text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
         >
           Change Plan
         </button>
       </div>
 
-      {/* Subscription Overview (Requirement 8.1) */}
+      {/* Subscription Overview (Requirement 8.1) — compact summary row */}
       <Card title="Subscription Overview">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard
-            label="Current Plan"
-            value={billing.planName}
-            description={`${billing.billingCycle === 'annual' ? 'Annual' : 'Monthly'} billing`}
-          />
-          <StatCard
-            label="Billing Cycle"
-            value={billing.billingCycle === 'annual' ? 'Annual' : 'Monthly'}
-          />
-          <StatCard
-            label="Status"
-            value={formatSubscriptionStatus(billing.subscriptionStatus)}
-          />
-          <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm" role="group" aria-label="Subscription status badge">
-            <p className="text-sm font-medium text-gray-500">Subscription Status</p>
-            <div className="mt-1">
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-4">
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-400">Current Plan</dt>
+            <dd className="mt-0.5 text-sm font-semibold text-gray-900">{billing.planName}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-400">Billing Cycle</dt>
+            <dd className="mt-0.5 text-sm font-semibold text-gray-900">
+              {billing.billingCycle === 'annual' ? 'Annual' : 'Monthly'}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-400">Status</dt>
+            <dd className="mt-0.5">
               <Badge variant={getSubscriptionStatusVariant(billing.subscriptionStatus)}>
                 {formatSubscriptionStatus(billing.subscriptionStatus)}
               </Badge>
-            </div>
+            </dd>
           </div>
-        </div>
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <StatCard
-            label="Period Start"
-            value={billing.currentPeriodStart}
-            description="ISO 8601"
-          />
-          <StatCard
-            label="Period End"
-            value={billing.currentPeriodEnd}
-            description="ISO 8601"
-          />
-        </div>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-400">Current Period</dt>
+            <dd className="mt-0.5 text-sm font-semibold text-gray-900">
+              {billing.currentPeriodStart} &ndash; {billing.currentPeriodEnd}
+            </dd>
+          </div>
+        </dl>
       </Card>
 
       {/* Usage Meters (Requirement 8.2) */}
