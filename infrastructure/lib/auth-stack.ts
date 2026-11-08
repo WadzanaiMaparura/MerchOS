@@ -352,8 +352,18 @@ export class AuthStack extends cdk.Stack {
         minify: true,
         sourceMap: true,
         target: 'node20',
-        format: lambdaNodejs.OutputFormat.ESM,
-        mainFields: ['module', 'main'],
+        // CommonJS output (NOT ESM). All four Cognito triggers use
+        // @aws-lambda-powertools/logger, which transitively pulls in
+        // lodash.merge doing a top-level require('util').types. Under esbuild
+        // ESM output that becomes a __require shim that throws at module INIT
+        // ("Dynamic require of \"util\" is not supported"), crashing the
+        // trigger before the handler runs. For PostConfirmation this meant a
+        // confirmed self-signup never got its custom:role/tenant assigned or
+        // Seller group membership — leaving the user unprovisioned and stuck in
+        // a login loop. CommonJS preserves a real require('util') that Node 20
+        // satisfies natively. (Same fix as the Auth API handlers.)
+        format: lambdaNodejs.OutputFormat.CJS,
+        mainFields: ['main', 'module'],
       },
     };
 

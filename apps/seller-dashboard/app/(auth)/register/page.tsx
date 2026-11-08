@@ -5,9 +5,10 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useRouter } from 'next/navigation';
-import { cognitoSignUp } from '@merch-os/auth';
+import { cognitoSignUp, cognitoResendSignUpCode } from '@merch-os/auth';
 import { Form, FormField, Input } from '@merch-os/ui';
 import { createPendingRegistration } from './register-pending-client';
+import { PhoneInput } from './PhoneInput';
 
 /**
  * International phone number validation.
@@ -129,9 +130,37 @@ export default function RegisterPage() {
         registrationId,
       });
     } catch (err: unknown) {
-      // The pending record exists but the Cognito account was not created.
-      // The pending record has a ~1 hour TTL; surface a clear, honest error and
-      // do NOT claim success. Retrying creates a fresh pending record.
+      const name = err instanceof Error ? err.name : '';
+
+      // The account already exists in Cognito. Two cases:
+      //   - UNCONFIRMED: the user signed up before but never verified their
+      //     email. Re-running signUp throws UsernameExistsException rather than
+      //     resending — so resend the code and send them to /verify to finish.
+      //   - CONFIRMED: a real account already exists → direct them to sign in.
+      // We detect UNCONFIRMED by attempting a resend: it succeeds for an
+      // unconfirmed user and throws for a confirmed one.
+      if (name === 'UsernameExistsException') {
+        try {
+          await cognitoResendSignUpCode(data.email);
+          // Resend succeeded → account is unconfirmed. Carry the fresh
+          // registrationId so verification can still correlate the pending
+          // record, and let the user complete verification.
+          const params = new URLSearchParams({ email: data.email, registrationId });
+          router.push(`/verify?${params.toString()}`);
+          setIsSubmitting(false);
+          return;
+        } catch {
+          // Resend failed → the account is already confirmed. Point the user
+          // to sign in instead of dead-ending them.
+          setError('An account with this email already exists. Please sign in instead.');
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      // Any other failure: the pending record exists but the Cognito account
+      // was not created. The pending record has a ~1 hour TTL; surface a clear,
+      // honest error and do NOT claim success.
       const message =
         err instanceof Error ? err.message : 'Account creation failed. Please try again.';
       setError(
@@ -207,20 +236,15 @@ export default function RegisterPage() {
             name="phoneNumber"
             label="Phone number"
             required
-            hint="Include your country code, e.g. +27831234567"
+            hint="Pick your country, then enter your number"
           >
             {({ field }) => (
-              <Input
-                {...field}
-                value={field.value as string}
-                // The shared Input constrains `type` to text/email/password/
-                // number, so we use `text` with `inputMode="tel"` to surface a
-                // telephone keypad on mobile without widening the shared type.
-                type="text"
-                placeholder="+27831234567"
+              <PhoneInput
+                value={(field.value as string) ?? ''}
+                onChange={field.onChange}
+                onBlur={field.onBlur}
                 disabled={isSubmitting}
-                autoComplete="tel"
-                inputMode="tel"
+                id="phoneNumber"
               />
             )}
           </FormField>
