@@ -17,7 +17,13 @@ import { ListProductsOptions, PaginatedProducts, ProductEnrichmentRecord } from 
 import { CreateProductInput, UpdateProductInput } from './types';
 import { assembleProductDto, assembleProductSummary } from './dto-mapper';
 import { applySynthesis, type GlueGenerationResult } from './synthesis-glue';
-import type { LifecycleTransition, LifecycleState, EnrichmentLayer } from '@merch-os/types';
+import { assertTransition } from './lifecycle';
+import type {
+  LifecycleTransition,
+  LifecycleState,
+  EnrichmentLayer,
+  EnrichedAttribute,
+} from '@merch-os/types';
 import {
   ProductAlreadyExistsError,
   ProductNotFoundError,
@@ -284,6 +290,214 @@ export class ProductService {
       enrichment: applied.enrichment,
       lifecycleHistory,
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Review loop — per-field approve / override / confirm category / transition
+  // ---------------------------------------------------------------------------
+
+  /** Loads the enrichment record for a product, throwing if the product is gone. */
+  private async requireEnrichment(
+    tenantId: string,
+    productId: string
+  ): Promise<ProductEnrichmentRecord> {
+    const product = await this.repository.get(tenantId, productId);
+    if (!product) {
+      throw new ProductNotFoundError(tenantId, productId);
+    }
+    const existing = await this.repository.getEnrichment(tenantId, productId);
+    // Seed an empty record (with the product's current UI state) if none exists.
+    return (
+      existing ?? {
+        uiLifecycleState: 'DRAFT',
+        enrichment: { attributes: {}, channelContent: {}, detectedLanguage: '', enrichedAt: '' },
+        lifecycleHistory: [],
+        updatedAt: '',
+      }
+    );
+  }
+
+  /**
+   * Approve an enriched attribute: clears its review flag, records approver +
+   * timestamp. Throws ProductValidationError if the attribute does not exist.
+   */
+  async approveAttribute(
+    tenantId: string,
+    productId: string,
+    attributeName: string,
+    approvedBy: string
+  ): Promise<ProductEnrichmentRecord> {
+    const record = await this.requireEnrichment(tenantId, productId);
+    const attr = record.enrichment.attributes[attributeName];
+    if (!attr) {
+      throw new ProductValidationError(
+        `Attribute '${attributeName}' not found in enrichment layer`,
+        attributeName
+      );
+    }
+    const updated: EnrichedAttribute = {
+      ...attr,
+      flaggedForReview: false,
+      approvedBy,
+      approvedAt: new Date().toISOString(),
+    };
+    const enrichment: EnrichmentLayer = {
+      ...record.enrichment,
+      attributes: { ...record.enrichment.attributes, [attributeName]: updated },
+    };
+    return this.repository.putEnrichment(tenantId, productId, {
+      uiLifecycleState: record.uiLifecycleState,
+      enrichment,
+      lifecycleHistory: record.lifecycleHistory,
+    });
+  }
+
+  /**
+   * Override an enriched attribute with a seller-provided value: sets the value,
+   * marks source 'manual', clears the review flag. Creates the attribute entry
+   * if it did not exist (a seller-supplied field). Also writes the value through
+   * to canonical content for the known top-level fields.
+   */
+  async overrideAttribute(
+    tenantId: string,
+    productId: string,
+    attributeName: string,
+    newValue: string | number | boolean,
+    actor: string
+  ): Promise<ProductEnrichmentRecord> {
+    const product = await this.repository.get(tenantId, productId);
+    if (!product) {
+      throw new ProductNotFoundError(tenantId, productId);
+    }
+    const existing = await this.repository.getEnrichment(tenantId, productId);
+    const base: ProductEnrichmentRecord =
+      existing ?? {
+        uiLifecycleState: 'DRAFT',
+        enrichment: { attributes: {}, channelContent: {}, detectedLanguage: 'en', enrichedAt: '' },
+        lifecycleHistory: [],
+        updatedAt: '',
+      };
+
+    const updated: EnrichedAttribute = {
+      value: newValue,
+      confidence: 1, // manual values are fully trusted
+      source: 'manual',
+      flaggedForReview: false,
+      approvedBy: actor,
+      approvedAt: new Date().toISOString(),
+    };
+    const enrichment: EnrichmentLayer = {
+      ...base.enrichment,
+      attributes: { ...base.enrichment.attributes, [attributeName]: updated },
+    };
+
+    // Write through to canonical content for known top-level fields.
+    const content = { ...product.content, attributes: { ...product.content.attributes } };
+    if (attributeName === 'title' && typeof newValue === 'string') content.title = newValue;
+    else if (attributeName === 'description' && typeof newValue === 'string') content.longDescription = newValue;
+    else if (attributeName === 'brand' && typeof newValue === 'string') content.brand = newValue;
+    else content.attributes[attributeName] = newValue;
+    await this.repository.update(tenantId, productId, { ...product, content });
+
+    return this.repository.putEnrichment(tenantId, productId, {
+      uiLifecycleState: base.uiLifecycleState,
+      enrichment,
+      lifecycleHistory: base.lifecycleHistory,
+    });
+  }
+
+  /**
+   * Confirm the marketplace category the engine recommended: clears the
+   * `category` attribute's review flag and records the confirmed node id onto
+   * the attribute value + approver. A confirmed category is required before
+   * EXPORT_READY.
+   */
+  async confirmCategory(
+    tenantId: string,
+    productId: string,
+    categoryNodeId: string,
+    actor: string
+  ): Promise<ProductEnrichmentRecord> {
+    const record = await this.requireEnrichment(tenantId, productId);
+    const updated: EnrichedAttribute = {
+      value: categoryNodeId,
+      confidence: 1,
+      source: 'manual',
+      flaggedForReview: false,
+      approvedBy: actor,
+      approvedAt: new Date().toISOString(),
+    };
+    const enrichment: EnrichmentLayer = {
+      ...record.enrichment,
+      attributes: { ...record.enrichment.attributes, category: updated },
+    };
+    return this.repository.putEnrichment(tenantId, productId, {
+      uiLifecycleState: record.uiLifecycleState,
+      enrichment,
+      lifecycleHistory: record.lifecycleHistory,
+    });
+  }
+
+  /** Reasons a product is not yet eligible for EXPORT_READY. */
+  private exportReadinessBlockers(record: ProductEnrichmentRecord): string[] {
+    const blockers: string[] = [];
+    const attrs = record.enrichment.attributes;
+    const flagged = Object.entries(attrs)
+      .filter(([, a]) => a.flaggedForReview)
+      .map(([name]) => name);
+    if (flagged.length > 0) {
+      blockers.push(`Fields awaiting review: ${flagged.join(', ')}`);
+    }
+    // Category must be confirmed (present and not flagged).
+    const category = attrs['category'];
+    if (!category || category.flaggedForReview) {
+      blockers.push('Marketplace category not confirmed');
+    }
+    return blockers;
+  }
+
+  /**
+   * Transition a product's lifecycle state. Enforces the allowed-transition
+   * table (via assertTransition) and, for a move to EXPORT_READY, the extra
+   * gate: no fields flagged for review and the category confirmed. Marketplace
+   * validation (Phase 3) is layered on top of this gate when available.
+   */
+  async transitionLifecycle(
+    tenantId: string,
+    productId: string,
+    targetState: LifecycleState,
+    actor: string,
+    reason?: string
+  ): Promise<ProductEnrichmentRecord> {
+    const record = await this.requireEnrichment(tenantId, productId);
+    const fromState = record.uiLifecycleState;
+
+    // Structural rule check.
+    assertTransition(fromState, targetState);
+
+    // Extra gate for EXPORT_READY.
+    if (targetState === 'EXPORT_READY') {
+      const blockers = this.exportReadinessBlockers(record);
+      if (blockers.length > 0) {
+        throw new InvalidProductLifecycleError(
+          `Cannot mark product export-ready: ${blockers.join('; ')}.`
+        );
+      }
+    }
+
+    const transition: LifecycleTransition = {
+      fromState,
+      toState: targetState,
+      transitionedAt: new Date().toISOString(),
+      actor,
+      ...(reason ? { reason } : {}),
+    };
+    return this.repository.appendLifecycleTransition(
+      tenantId,
+      productId,
+      transition,
+      targetState
+    );
   }
 
   // ---------------------------------------------------------------------------

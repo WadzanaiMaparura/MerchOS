@@ -283,3 +283,41 @@ Each phase is a separate branch/PR off `main`, built and verified before merge, 
 - After synthesis, `categoryMappings[takealot]` holds `recommendedNodes[]` (nodeId + confidence) from the engine's `category` result, with no `confirmedNodeId`.
 - The Review_Loop treats an unconfirmed category as a required review item (same gating as a `flaggedForReview` attribute): the seller picks the node (defaulting to the top recommendation), which sets `confirmedNodeId`/`confirmedBy`/`confirmedAt`.
 - The Schema Registry lookup (§4.1) uses `confirmedNodeId` to select the loadsheet; validation and the `EXPORT_READY` gate fail closed if no category is confirmed (ties into Requirement 7.4 "unsupported category" and 6.6 export gate).
+
+
+## 10. Phase 4 — Post-Submission Rejection Loop (design sketch)
+
+> Depends on Phase 3 (export engine). Sketched now so the lifecycle and data
+> model account for it; full design expands when Phase 4 is scheduled.
+
+**Lifecycle:** add a `REJECTED` state. Transitions: `PUBLISHED → REJECTED`
+(marketplace rejected after the seller marked it submitted/accepted-pending) and
+`EXPORT_READY → REJECTED` (rejected before acceptance was recorded). Recovery:
+`REJECTED → REVIEW` (seller corrects via the existing review loop) → `EXPORT_READY`
+→ resubmit → `PUBLISHED` on recorded acceptance. Add to `ALLOWED_TRANSITIONS`
+and the DTO enum; map `REJECTED` → canonical `ready` (it is being reworked).
+
+**Rejection intake:** a new endpoint records rejections against an Export_Job /
+product — manual entry and/or upload of the marketplace's rejection report.
+Each rejection captures: marketplace target, category, per-product reason(s)
+(free text + structured code/field where available), the offending value, and a
+link to the Export_Job attempt.
+
+**Attempt history:** store resubmission attempts per product per marketplace
+(e.g. `PRODUCT#{id}#ATTEMPT#{marketplace}#{n}`) linking rejection → correction →
+re-export, so the loop is auditable and the seller sees the history.
+
+**Targeted correction:** rejection reasons drive the review loop — a flagged
+field can be regenerated with the rejection reason passed to the engine as
+context, and/or the seller overrides it. Re-export reuses Phase 3 unchanged.
+
+**Learning signal (capture only):** persist every rejection as a tenant-scoped,
+structured record (reason, field, marketplace, category, offending value,
+applied correction). This is a reusable dataset for later prompt refinement /
+Marketplace_Spec + Validation_Engine tightening. Where a rejection maps to a
+constraint MerchOS could have validated pre-export, flag it to tighten the spec
+(feeds Requirements 7/8 precision). Applying the signal to the model is future
+work (out of scope here).
+
+**Security:** all rejection-loop operations are tenant-isolated, RBAC-gated, and
+audited, consistent with Section 6.

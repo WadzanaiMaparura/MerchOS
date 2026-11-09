@@ -218,6 +218,16 @@ export class ProductApiStack extends cdk.Stack {
     ]);
     synthesizeProductFn.addEnvironment('INTELLIGENCE_API_URL', intelligenceApiUrl);
 
+    // Review-loop handlers.
+    const approveAttributeFn = createLambda('ApproveAttribute', path.join(handlersPath, 'approve-attribute.ts'), [dynamoDbReadWritePolicy, kmsPolicy]);
+    const overrideAttributeFn = createLambda('OverrideAttribute', path.join(handlersPath, 'override-attribute.ts'), [dynamoDbReadWritePolicy, kmsPolicy]);
+    const patchAttributeFn = createLambda('PatchAttribute', path.join(handlersPath, 'patch-attribute.ts'), [dynamoDbReadWritePolicy, kmsPolicy]);
+    const confirmCategoryFn = createLambda('ConfirmCategory', path.join(handlersPath, 'confirm-category.ts'), [dynamoDbReadWritePolicy, kmsPolicy]);
+    const transitionLifecycleFn = createLambda('TransitionLifecycle', path.join(handlersPath, 'transition-lifecycle.ts'), [dynamoDbReadWritePolicy, kmsPolicy]);
+    // Regenerate calls the Intelligence API server-to-server.
+    const regenerateAttributeFn = createLambda('RegenerateAttribute', path.join(handlersPath, 'regenerate-attribute.ts'), [dynamoDbReadWritePolicy, kmsPolicy]);
+    regenerateAttributeFn.addEnvironment('INTELLIGENCE_API_URL', intelligenceApiUrl);
+
     // -----------------------------------------------------------------------
     // Route Integrations (all require JWT authorization)
     // -----------------------------------------------------------------------
@@ -261,6 +271,44 @@ export class ProductApiStack extends cdk.Stack {
       path: '/products/{productId}/synthesize',
       methods: [HttpMethod.POST],
       integration: new HttpLambdaIntegration('SynthesizeProductIntegration', synthesizeProductFn),
+      authorizer: jwtAuthorizer,
+    });
+
+    // Review-loop routes.
+    this.httpApi.addRoutes({
+      path: '/products/{productId}/attributes',
+      methods: [HttpMethod.PATCH],
+      integration: new HttpLambdaIntegration('PatchAttributeIntegration', patchAttributeFn),
+      authorizer: jwtAuthorizer,
+    });
+    this.httpApi.addRoutes({
+      path: '/products/{productId}/attributes/{name}/approve',
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration('ApproveAttributeIntegration', approveAttributeFn),
+      authorizer: jwtAuthorizer,
+    });
+    this.httpApi.addRoutes({
+      path: '/products/{productId}/attributes/{name}/override',
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration('OverrideAttributeIntegration', overrideAttributeFn),
+      authorizer: jwtAuthorizer,
+    });
+    this.httpApi.addRoutes({
+      path: '/products/{productId}/attributes/{name}/regenerate',
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration('RegenerateAttributeIntegration', regenerateAttributeFn),
+      authorizer: jwtAuthorizer,
+    });
+    this.httpApi.addRoutes({
+      path: '/products/{productId}/category/confirm',
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration('ConfirmCategoryIntegration', confirmCategoryFn),
+      authorizer: jwtAuthorizer,
+    });
+    this.httpApi.addRoutes({
+      path: '/products/{productId}/lifecycle/transition',
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration('TransitionLifecycleIntegration', transitionLifecycleFn),
       authorizer: jwtAuthorizer,
     });
 
