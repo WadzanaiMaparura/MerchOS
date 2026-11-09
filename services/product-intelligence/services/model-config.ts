@@ -14,9 +14,18 @@
 import type { GenerationType } from '../types/generation.types';
 import type { ModelConfig } from '../types/usage.types';
 
-/** Bedrock model identifiers */
-const CLAUDE_3_HAIKU = 'anthropic.claude-3-haiku-20240307-v1:0';
-const CLAUDE_3_SONNET = 'anthropic.claude-3-sonnet-20240229-v1:0';
+/**
+ * Bedrock model identifiers — EU cross-region INFERENCE PROFILE ids.
+ *
+ * The current Claude models in eu-west-1 (Haiku 4.5 / Sonnet 4.5) support only
+ * INFERENCE_PROFILE inference, not ON_DEMAND, so they MUST be invoked via an
+ * inference-profile id (the `eu.` cross-region profile), not a bare
+ * `anthropic.*` foundation-model id. Verified via
+ * `bedrock list-inference-profiles`. Keep in sync with the IAM policy in
+ * infrastructure/lib/product-intelligence-stack.ts.
+ */
+const CLAUDE_3_HAIKU = 'eu.anthropic.claude-haiku-4-5-20251001-v1:0';
+const CLAUDE_3_SONNET = 'eu.anthropic.claude-sonnet-4-5-20250929-v1:0';
 
 /**
  * Default model configuration for each generation type.

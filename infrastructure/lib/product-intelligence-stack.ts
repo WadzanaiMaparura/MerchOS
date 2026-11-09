@@ -123,14 +123,15 @@ export class ProductIntelligenceStack extends cdk.Stack {
     });
 
     // -----------------------------------------------------------------------
-    // AWS Powertools Lambda Layer
+    // AWS Powertools packaging
     // -----------------------------------------------------------------------
-
-    const powertoolsLayer = lambda.LayerVersion.fromLayerVersionArn(
-      this,
-      'PowertoolsLayer',
-      `arn:aws:lambda:${this.region}:094274105915:layer:AWSLambdaPowertoolsTypeScriptV2:latest`,
-    );
+    //
+    // Powertools (@aws-lambda-powertools/logger, tracer, metrics) are bundled
+    // into each function by esbuild from the workspace dependencies. We
+    // intentionally do NOT use the cross-account AWS-managed Powertools Lambda
+    // layer: CloudFormation rejects that cross-account layer ARN (the `:latest`
+    // alias is not a valid layer-version ARN). Bundling matches the
+    // Auth/AuthApi/ProductApi/SupplierIntelligence stacks, which deploy cleanly.
 
     // -----------------------------------------------------------------------
     // Shared Lambda configuration
@@ -158,7 +159,6 @@ export class ProductIntelligenceStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
       tracing: lambda.Tracing.ACTIVE, // X-Ray enabled (Req 17.5)
-      layers: [powertoolsLayer],
       environment: commonEnv,
       bundling: {
         minify: true,
@@ -166,11 +166,7 @@ export class ProductIntelligenceStack extends cdk.Stack {
         target: 'node20',
         format: lambdaNodejs.OutputFormat.ESM,
         mainFields: ['module', 'main'],
-        externalModules: [
-          '@aws-lambda-powertools/logger',
-          '@aws-lambda-powertools/tracer',
-          '@aws-lambda-powertools/metrics',
-        ],
+        // Powertools packages are bundled (not externalized) — see note above.
       },
     };
 
@@ -218,13 +214,18 @@ export class ProductIntelligenceStack extends cdk.Stack {
       ],
     });
 
-    // Bedrock InvokeModel — restricted to specific model ARNs only (Req 17.3)
+    // Bedrock InvokeModel — scoped to Bedrock foundation-models and EU
+    // inference-profiles (Req 17.3). The current Claude models (Haiku 4.5 /
+    // Sonnet 4.5) are INFERENCE_PROFILE only, so runtime invokes the `eu.`
+    // cross-region inference profile. We scope by resource type (wildcard id)
+    // rather than exact ARNs — model selection is pinned in
+    // services/product-intelligence/services/model-config.ts.
     const bedrockInvokePolicy = new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
-      actions: ['bedrock:InvokeModel'],
+      actions: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'],
       resources: [
-        'arn:aws:bedrock:*::foundation-model/anthropic.claude-3-haiku-20240307-v1:0',
-        'arn:aws:bedrock:*::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0',
+        `arn:aws:bedrock:*:${this.account}:inference-profile/*`,
+        'arn:aws:bedrock:*::foundation-model/*',
       ],
     });
 
