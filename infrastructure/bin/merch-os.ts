@@ -12,6 +12,7 @@ import { ProductApiStack } from '../lib/product-api-stack';
 import { InventoryApiStack } from '../lib/inventory-api-stack';
 import { SupplierIntelligenceStack } from '../lib/supplier-intelligence-stack';
 import { ImageIntelligenceStack } from '../lib/image-intelligence-stack';
+import { ProductIntelligenceStack } from '../lib/product-intelligence-stack';
 
 const app = new cdk.App();
 
@@ -97,5 +98,17 @@ const imageStack = new ImageIntelligenceStack(app, `MerchOS-ImageIntelligence-${
 });
 imageStack.addDependency(foundationStack);
 imageStack.addDependency(authStack);
+
+// Product Intelligence (AI synthesis engine) reads Foundation (KMS, EventBridge)
+// and Auth (Cognito tenant pool/client) values via SSM at deploy time. Declare
+// the deploy-time dependencies so those parameters exist before this stack
+// deploys. The stack exposes /intelligence/* behind the seller Cognito JWT and
+// exports its API URL at /merch-os/{env}/product-intelligence/api-url.
+const productIntelligenceStack = new ProductIntelligenceStack(app, `MerchOS-ProductIntelligence-${env}`, {
+  env: cdkEnv,
+  environment: env,
+});
+productIntelligenceStack.addDependency(foundationStack);
+productIntelligenceStack.addDependency(authStack);
 
 app.synth();
