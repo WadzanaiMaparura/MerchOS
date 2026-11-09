@@ -20,6 +20,11 @@ import { LifecycleState, LifecycleTransition } from '../types';
  */
 const FORWARD_TRANSITIONS: Record<LifecycleState, ReadonlySet<LifecycleState>> = {
   DRAFT: new Set(['INGESTED']),
+  // GENERATING belongs to the synthesis path reconciled in
+  // services/product/service/lifecycle.ts (the authoritative transition table).
+  // It is included here only to satisfy the exhaustive Record<LifecycleState>
+  // type; this legacy linear machine does not drive the synthesis flow.
+  GENERATING: new Set(['REVIEW', 'DRAFT']),
   INGESTED: new Set(['ENRICHED']),
   ENRICHED: new Set(['REVIEW']),
   REVIEW: new Set(['VALIDATED']),
