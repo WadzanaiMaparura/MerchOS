@@ -5,7 +5,7 @@ import {
   ProductSkuAlreadyExistsError,
   ProductValidationError,
   InvalidProductLifecycleError,
-} from '../service';
+} from '../service/errors';
 
 export function mapErrorToResponse(error: unknown): { statusCode: number; body: string } {
   if (error instanceof ProductNotFoundError) {

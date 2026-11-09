@@ -16,6 +16,7 @@ import {
 import { ListProductsOptions, PaginatedProducts, ProductEnrichmentRecord } from '../repository/types';
 import { CreateProductInput, UpdateProductInput } from './types';
 import { assembleProductDto, assembleProductSummary } from './dto-mapper';
+import { applySynthesis, type GlueGenerationResult } from './synthesis-glue';
 import type { LifecycleTransition, LifecycleState, EnrichmentLayer } from '@merch-os/types';
 import {
   ProductAlreadyExistsError,
@@ -232,6 +233,57 @@ export class ProductService {
       transition,
       uiLifecycleState
     );
+  }
+
+  /**
+   * Applies synthesis results onto the product: runs the glue over the current
+   * content + enrichment, persists the updated canonical content, and writes the
+   * enrichment layer with the given precise UI lifecycle state + history.
+   * Returns the updated enrichment record. Throws ProductNotFoundError if the
+   * product is gone.
+   */
+  async applyAndPersistSynthesis(
+    tenantId: string,
+    productId: string,
+    results: GlueGenerationResult[],
+    uiLifecycleState: LifecycleState,
+    lifecycleHistory: LifecycleTransition[],
+    reviewThreshold?: number
+  ): Promise<ProductEnrichmentRecord> {
+    const product = await this.repository.get(tenantId, productId);
+    if (!product) {
+      throw new ProductNotFoundError(tenantId, productId);
+    }
+
+    const existingEnrichment = await this.repository.getEnrichment(tenantId, productId);
+    const baseEnrichment: EnrichmentLayer =
+      existingEnrichment?.enrichment ?? {
+        attributes: {},
+        channelContent: {},
+        detectedLanguage: '',
+        enrichedAt: '',
+      };
+
+    const applied = applySynthesis(
+      product.content,
+      baseEnrichment,
+      results,
+      reviewThreshold
+    );
+
+    // Persist updated canonical content (keep everything else unchanged).
+    const updatedProduct: CanonicalProduct = {
+      ...product,
+      content: applied.content,
+    };
+    await this.repository.update(tenantId, productId, updatedProduct);
+
+    // Persist the enrichment layer + precise lifecycle state + history.
+    return this.repository.putEnrichment(tenantId, productId, {
+      uiLifecycleState,
+      enrichment: applied.enrichment,
+      lifecycleHistory,
+    });
   }
 
   // ---------------------------------------------------------------------------

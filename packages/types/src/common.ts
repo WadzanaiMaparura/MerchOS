@@ -3,9 +3,17 @@
  * These mirror the backend common.types.ts wire format.
  */
 
-/** Valid states in the product lifecycle state machine. */
+/**
+ * Valid states in the product lifecycle state machine (the external UI/API
+ * contract).
+ *
+ * `GENERATING` represents a product actively being synthesised by the Product
+ * Intelligence Engine (DRAFT → GENERATING → REVIEW, or back to DRAFT on
+ * failure). It sits between DRAFT and REVIEW.
+ */
 export type LifecycleState =
   | 'DRAFT'
+  | 'GENERATING'
   | 'INGESTED'
   | 'ENRICHED'
   | 'REVIEW'
@@ -39,7 +47,9 @@ export type EventType =
   | 'tenant.reactivated'
   | 'tenant.deleted'
   | 'product.ingested'
+  | 'product.synthesis_started'
   | 'product.enriched'
+  | 'product.synthesis_failed'
   | 'product.review_required'
   | 'product.validated'
   | 'product.exported'
