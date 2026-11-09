@@ -39,7 +39,12 @@ export interface ProductSummary {
 }
 
 /** Enrichment source that produced a particular attribute. */
-export type EnrichmentSource = 'bedrock' | 'textract' | 'rekognition' | 'url-extract';
+export type EnrichmentSource =
+  | 'bedrock'
+  | 'textract'
+  | 'rekognition'
+  | 'url-extract'
+  | 'manual';
 
 /** An AI-enriched product attribute with confidence scoring. */
 export interface EnrichedAttribute {

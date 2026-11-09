@@ -164,3 +164,26 @@ Each top-level task is a shippable unit. Phases map to PRs: Phase 1 (deploy synt
     - _Requirements: 11.1, 11.5_
   - [ ] 12.3 Remove any temporary artifacts; confirm no fabricated/sample data introduced (launch "structure, no fake data" standard)
     - _Requirements: 10.3_
+
+
+## Phase 4 — Post-Submission Rejection Loop (depends on Phase 3)
+
+- [ ] 13. Rejection lifecycle + intake
+  - [ ] 13.1 Add `REJECTED` to LifecycleState + ALLOWED_TRANSITIONS (EXPORT_READY/PUBLISHED → REJECTED → REVIEW); map to canonical `ready`
+    - _Requirements: 12.2_
+  - [ ] 13.2 Rejection intake endpoint: record per-product rejection reasons against an Export_Job (manual entry + marketplace rejection-report upload)
+    - _Requirements: 12.1_
+  - [ ] 13.3 Attempt-history store per product per marketplace (rejection → correction → re-export), tenant-scoped + audited
+    - _Requirements: 12.4, 12.8_
+
+- [ ] 14. Correction + resubmission loop
+  - [ ] 14.1 Surface rejection reasons against the flagged fields; drive the review loop to correct them (targeted regenerate with reason as context)
+    - _Requirements: 12.2, 12.3_
+  - [ ] 14.2 Re-export the corrected batch (reuse Phase 3) and link the resubmission as a new attempt; REVIEW → EXPORT_READY → (manual re-upload) → PUBLISHED on recorded acceptance
+    - _Requirements: 12.4, 12.5_
+
+- [ ] 15. Learning signal (capture only)
+  - [ ] 15.1 Persist every rejection as a structured, tenant-scoped learning record (reason, field, marketplace, category, offending value, applied correction)
+    - _Requirements: 12.6_
+  - [ ] 15.2 Flag rejections that map to a Marketplace_Spec constraint MerchOS could have caught pre-export, to tighten the Validation_Engine / spec
+    - _Requirements: 12.7_

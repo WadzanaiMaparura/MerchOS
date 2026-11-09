@@ -202,6 +202,23 @@ Pricing, stock, and lead time remain the seller's responsibility (set on the mar
 4. THE pipeline SHALL use AWS Powertools (logger, tracer, metrics) consistently with existing services, with tenant and correlation IDs in structured logs.
 5. THE pipeline SHALL NOT expose another tenant's products, results, or exports under any request.
 
+### Requirement 12: Post-Submission Rejection Loop (Phase 4)
+
+**User Story:** As a seller, when a marketplace rejects some of my products after I upload the content file, I want to feed those rejections back into MerchOS so it corrects them and regenerates a file, repeating until the marketplace accepts — and I want MerchOS to get better at avoiding those rejections over time.
+
+> **Context:** At launch, submission to the marketplace is manual (file download, Requirement/Out-of-scope). Marketplaces (Takealot first) may reject individual products after upload with per-product reasons (e.g. missing required attribute, disallowed value, image spec failure). This requirement closes the loop: capture those rejections, correct the affected products, regenerate, and resubmit — and capture the rejections as a learning signal.
+
+#### Acceptance Criteria
+
+1. THE system SHALL let a seller record a marketplace rejection against a specific Export_Job / product, capturing the rejection reason(s) per product (free-text and, where the marketplace provides them, structured reason codes/fields). Intake SHALL support both manual entry and upload of the marketplace's rejection report where one exists.
+2. WHEN a rejection is recorded for a product, THE Pipeline SHALL move that product to a `REJECTED` state (a new Lifecycle_State) and surface the reasons to the seller against the specific fields where determinable.
+3. THE Pipeline SHALL let the seller correct a rejected product via the existing Review_Loop (approve/override/regenerate per field), including targeted regeneration informed by the rejection reason (e.g. regenerate the field the marketplace flagged), then return the product to `REVIEW` → `EXPORT_READY`.
+4. WHEN corrected, THE Pipeline SHALL regenerate the content file for the resubmission batch so the seller can re-upload, and SHALL track the resubmission as a new attempt linked to the prior rejection (an attempt history per product per marketplace).
+5. THE loop SHALL repeat (reject → correct → regenerate → resubmit) until the seller records acceptance, at which point the product reaches `PUBLISHED`.
+6. THE system SHALL persist every rejection (reason, field, marketplace, category, the offending value, and the correction the seller/engine applied) as a tenant-scoped, privacy-respecting **learning signal** that can be used to improve future synthesis (e.g. prompt refinement, marketplace-rule tightening, validation rules). Use of this signal to adjust the model/rules is itself future work; this requirement only mandates capturing it in a structured, reusable form.
+7. WHERE rejection reasons map to a Marketplace_Spec field constraint that MerchOS could have caught pre-export, THE system SHALL flag the gap so the Validation_Engine / Marketplace_Spec can be tightened (feeding Requirement 7/8 precision).
+8. EVERY rejection-loop operation SHALL enforce tenant isolation, RBAC, and audit logging, consistent with Requirement 11.
+
 ## Out of Scope
 
 - Offers/pricing files, pricing, stock, and lead-time handling (seller sets these on the marketplace).
@@ -211,3 +228,5 @@ Pricing, stock, and lead time remain the seller's responsibility (set on the mar
 - Completing every platform's Marketplace_Spec at launch — the multi-platform framework and all five platform adapters are built now, Takealot (`takealot-za`) is complete and enabled, and the remaining platforms/country variants are registered but greyed out until their verified specs are provided. eBay/Etsy are future platforms.
 - UI internationalisation, multi-currency, and tax handling (deferred per ADR-006).
 - Re-implementing the Product Intelligence Engine itself (already built under the `product-intelligence-engine` spec; this spec deploys and integrates it).
+- Automatically retraining or fine-tuning the AI model from rejection signals (Requirement 12.6). The rejection loop CAPTURES the learning signal in a structured, reusable form now; applying it to improve synthesis (prompt refinement, rule tightening, fine-tuning) is future work.
+- Direct marketplace API submission of corrected files in the rejection loop — resubmission is manual (file download/re-upload), same as initial submission.
