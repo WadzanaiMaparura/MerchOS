@@ -65,6 +65,15 @@ export function productSK(productId: string): string {
   return `PRODUCT#${productId}`;
 }
 
+/**
+ * Returns the sort key for a product's enrichment record:
+ * `PRODUCT#<productId>#ENRICHMENT`. Stored under the same partition as the
+ * product so a single tenant-scoped query returns product + enrichment.
+ */
+export function enrichmentSK(productId: string): string {
+  return `PRODUCT#${productId}#ENRICHMENT`;
+}
+
 /** Returns the sort key for a user record: `USER#<userId>` */
 export function userSK(userId: string): string {
   return `USER#${userId}`;
