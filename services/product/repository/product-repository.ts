@@ -17,9 +17,9 @@ import {
   UpdateCommand,
   QueryCommand,
 } from '@aws-sdk/lib-dynamodb';
-import { CanonicalProduct } from '@merch-os/types';
-import { PRODUCTS_TABLE, tenantPK, productSK } from '../../shared/utils/dynamo-client';
-import { ListProductsOptions, PaginatedProducts } from './types';
+import { CanonicalProduct, LifecycleState, LifecycleTransition } from '@merch-os/types';
+import { PRODUCTS_TABLE, tenantPK, productSK, enrichmentSK } from '../../shared/utils/dynamo-client';
+import { ListProductsOptions, PaginatedProducts, ProductEnrichmentRecord } from './types';
 import { ProductAlreadyExistsError, ProductNotFoundError, ProductPersistenceError } from './errors';
 
 // ---------------------------------------------------------------------------
@@ -58,6 +58,32 @@ function toItem(product: CanonicalProduct): ProductItem {
 function fromItem(item: Record<string, unknown>): CanonicalProduct {
   const { PK, SK, GSI1PK, GSI1SK, ...rest } = item;
   return rest as unknown as CanonicalProduct;
+}
+
+// ---------------------------------------------------------------------------
+// Enrichment item mapping (SK suffix #ENRICHMENT)
+// ---------------------------------------------------------------------------
+
+interface EnrichmentItem extends Record<string, unknown> {
+  PK: string;
+  SK: string;
+}
+
+function enrichmentToItem(
+  tenantId: string,
+  productId: string,
+  record: ProductEnrichmentRecord
+): EnrichmentItem {
+  return {
+    ...record,
+    PK: tenantPK(tenantId),
+    SK: enrichmentSK(productId),
+  };
+}
+
+function enrichmentFromItem(item: Record<string, unknown>): ProductEnrichmentRecord {
+  const { PK, SK, ...rest } = item;
+  return rest as unknown as ProductEnrichmentRecord;
 }
 
 // ---------------------------------------------------------------------------
@@ -337,5 +363,110 @@ export class ProductRepository {
         error instanceof Error ? error : undefined
       );
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Enrichment (auxiliary #ENRICHMENT item under the product's partition)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Reads the enrichment record for a product. Returns null when the product
+   * has no enrichment yet (e.g. created but never synthesised).
+   */
+  async getEnrichment(
+    tenantId: string,
+    productId: string
+  ): Promise<ProductEnrichmentRecord | null> {
+    const result = await this.docClient.send(
+      new GetCommand({
+        TableName: this.tableName,
+        Key: {
+          PK: tenantPK(tenantId),
+          SK: enrichmentSK(productId),
+        },
+      })
+    );
+
+    if (!result.Item) {
+      return null;
+    }
+
+    return enrichmentFromItem(result.Item);
+  }
+
+  /**
+   * Writes (creates or replaces) the enrichment record for a product. The
+   * `updatedAt` field is refreshed on every write. Tenant isolation is enforced
+   * via a condition that the item either does not exist or belongs to the
+   * calling tenant.
+   */
+  async putEnrichment(
+    tenantId: string,
+    productId: string,
+    record: Omit<ProductEnrichmentRecord, 'updatedAt'>
+  ): Promise<ProductEnrichmentRecord> {
+    const withTimestamp: ProductEnrichmentRecord = {
+      ...record,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const item = enrichmentToItem(tenantId, productId, withTimestamp);
+
+    try {
+      await this.docClient.send(
+        new PutCommand({
+          TableName: this.tableName,
+          Item: item,
+          ConditionExpression:
+            'attribute_not_exists(PK) OR PK = :callerTenantPK',
+          ExpressionAttributeValues: {
+            ':callerTenantPK': tenantPK(tenantId),
+          },
+        })
+      );
+    } catch (error: unknown) {
+      if (
+        error instanceof Error &&
+        error.name === 'ConditionalCheckFailedException'
+      ) {
+        // Cross-tenant write attempt — surface as not found to avoid leaking.
+        throw new ProductNotFoundError(tenantId, productId);
+      }
+      throw new ProductPersistenceError(
+        `Failed to write enrichment: ${productId}`,
+        error instanceof Error ? error : undefined
+      );
+    }
+
+    return withTimestamp;
+  }
+
+  /**
+   * Appends a lifecycle transition to the product's enrichment history and sets
+   * the precise UI lifecycle state. Creates the enrichment record (with an empty
+   * enrichment layer) if one does not yet exist, so lifecycle history is never
+   * lost for a product that has not been synthesised.
+   */
+  async appendLifecycleTransition(
+    tenantId: string,
+    productId: string,
+    transition: LifecycleTransition,
+    uiLifecycleState: LifecycleState
+  ): Promise<ProductEnrichmentRecord> {
+    const existing = await this.getEnrichment(tenantId, productId);
+
+    const record: Omit<ProductEnrichmentRecord, 'updatedAt'> = {
+      uiLifecycleState,
+      enrichment:
+        existing?.enrichment ?? {
+          attributes: {},
+          channelContent: {},
+          detectedLanguage: '',
+          enrichedAt: '',
+        },
+      lifecycleHistory: [...(existing?.lifecycleHistory ?? []), transition],
+    };
+
+    return this.putEnrichment(tenantId, productId, record);
   }
 }

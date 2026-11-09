@@ -43,9 +43,10 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     };
   }
 
-  // 3. Delegate to service
+  // 3. Delegate to service — return ProductSummary items (incl. precise UI
+  //    lifecycle state) rather than raw canonical products.
   try {
-    const result = await resolveProductService().listProducts(tenantContext.tenantId, { limit, nextToken });
+    const result = await resolveProductService().listProductSummaries(tenantContext.tenantId, { limit, nextToken });
     return {
       statusCode: 200,
       body: JSON.stringify({ products: result.items, nextToken: result.nextToken }),

@@ -206,6 +206,18 @@ export class ProductApiStack extends cdk.Stack {
       kmsPolicy,
     ]);
 
+    // Synthesize handler needs the Intelligence API base URL (read from SSM,
+    // published by the Product Intelligence stack) to call it server-to-server.
+    const intelligenceApiUrl = ssm.StringParameter.valueForStringParameter(
+      this,
+      `${ssmPrefix}/product-intelligence/api-url`,
+    );
+    const synthesizeProductFn = createLambda('SynthesizeProduct', path.join(handlersPath, 'synthesize-product.ts'), [
+      dynamoDbReadWritePolicy,
+      kmsPolicy,
+    ]);
+    synthesizeProductFn.addEnvironment('INTELLIGENCE_API_URL', intelligenceApiUrl);
+
     // -----------------------------------------------------------------------
     // Route Integrations (all require JWT authorization)
     // -----------------------------------------------------------------------
@@ -242,6 +254,13 @@ export class ProductApiStack extends cdk.Stack {
       path: '/products/{productId}',
       methods: [HttpMethod.DELETE],
       integration: new HttpLambdaIntegration('ArchiveProductIntegration', archiveProductFn),
+      authorizer: jwtAuthorizer,
+    });
+
+    this.httpApi.addRoutes({
+      path: '/products/{productId}/synthesize',
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration('SynthesizeProductIntegration', synthesizeProductFn),
       authorizer: jwtAuthorizer,
     });
 

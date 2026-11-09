@@ -41,6 +41,7 @@ export function Badge({ children, variant = 'default', className = '' }: BadgePr
 
 const LIFECYCLE_VARIANT: Record<LifecycleState, BadgeVariant> = {
   DRAFT: 'neutral',
+  GENERATING: 'info',
   INGESTED: 'info',
   ENRICHED: 'info',
   REVIEW: 'warning',
@@ -52,6 +53,7 @@ const LIFECYCLE_VARIANT: Record<LifecycleState, BadgeVariant> = {
 
 const LIFECYCLE_LABELS: Record<LifecycleState, string> = {
   DRAFT: 'Draft',
+  GENERATING: 'Generating',
   INGESTED: 'Ingested',
   ENRICHED: 'Enriched',
   REVIEW: 'Review',

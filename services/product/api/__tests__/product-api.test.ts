@@ -124,7 +124,9 @@ function makeSampleProduct(overrides: Partial<CanonicalProduct> = {}): Canonical
 const mockService = {
   createProduct: vi.fn(),
   getProduct: vi.fn(),
+  getProductDto: vi.fn(),
   listProducts: vi.fn(),
+  listProductSummaries: vi.fn(),
   updateProduct: vi.fn(),
   archiveProduct: vi.fn(),
 };
@@ -257,14 +259,14 @@ describe('POST /products — createProduct', () => {
 describe('GET /products/{productId} — getProduct', () => {
   it('returns 200 with product on success', async () => {
     const product = makeSampleProduct();
-    mockService.getProduct.mockResolvedValue(product);
+    mockService.getProductDto.mockResolvedValue(product);
 
     const event = makeEvent({ pathParameters: { productId: PRODUCT_ID } });
     const result = await getHandler(event);
 
     expect(result.statusCode).toBe(200);
     expect(JSON.parse(result.body as string)).toEqual({ product });
-    expect(mockService.getProduct).toHaveBeenCalledWith(TENANT_ID, PRODUCT_ID);
+    expect(mockService.getProductDto).toHaveBeenCalledWith(TENANT_ID, PRODUCT_ID);
   });
 
   it('returns 401 when tenant context is missing', async () => {
@@ -281,7 +283,7 @@ describe('GET /products/{productId} — getProduct', () => {
   });
 
   it('returns 404 when product does not exist', async () => {
-    mockService.getProduct.mockRejectedValue(new ProductNotFoundError(TENANT_ID, PRODUCT_ID));
+    mockService.getProductDto.mockRejectedValue(new ProductNotFoundError(TENANT_ID, PRODUCT_ID));
 
     const event = makeEvent({ pathParameters: { productId: PRODUCT_ID } });
     const result = await getHandler(event);
@@ -298,7 +300,7 @@ describe('GET /products/{productId} — getProduct', () => {
 describe('GET /products — listProducts', () => {
   it('returns 200 with products and no nextToken', async () => {
     const products = [makeSampleProduct(), makeSampleProduct({ productId: 'product-789' })];
-    mockService.listProducts.mockResolvedValue({ items: products, nextToken: undefined });
+    mockService.listProductSummaries.mockResolvedValue({ items: products, nextToken: undefined });
 
     const event = makeEvent();
     const result = await listHandler(event);
@@ -311,7 +313,7 @@ describe('GET /products — listProducts', () => {
 
   it('returns 200 with pagination nextToken', async () => {
     const products = [makeSampleProduct()];
-    mockService.listProducts.mockResolvedValue({ items: products, nextToken: 'page2token' });
+    mockService.listProductSummaries.mockResolvedValue({ items: products, nextToken: 'page2token' });
 
     const event = makeEvent({ queryStringParameters: { limit: '1' } });
     const result = await listHandler(event);
@@ -320,16 +322,16 @@ describe('GET /products — listProducts', () => {
     const body = JSON.parse(result.body as string);
     expect(body.products).toHaveLength(1);
     expect(body.nextToken).toBe('page2token');
-    expect(mockService.listProducts).toHaveBeenCalledWith(TENANT_ID, { limit: 1, nextToken: undefined });
+    expect(mockService.listProductSummaries).toHaveBeenCalledWith(TENANT_ID, { limit: 1, nextToken: undefined });
   });
 
   it('passes nextToken to service for continuation', async () => {
-    mockService.listProducts.mockResolvedValue({ items: [], nextToken: undefined });
+    mockService.listProductSummaries.mockResolvedValue({ items: [], nextToken: undefined });
 
     const event = makeEvent({ queryStringParameters: { nextToken: 'abc123' } });
     await listHandler(event);
 
-    expect(mockService.listProducts).toHaveBeenCalledWith(TENANT_ID, { limit: undefined, nextToken: 'abc123' });
+    expect(mockService.listProductSummaries).toHaveBeenCalledWith(TENANT_ID, { limit: undefined, nextToken: 'abc123' });
   });
 
   it('returns 401 when tenant context is missing', async () => {

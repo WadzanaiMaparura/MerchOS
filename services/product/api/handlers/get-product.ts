@@ -40,9 +40,10 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     };
   }
 
-  // 3. Delegate to service
+  // 3. Delegate to service — assemble the full Product DTO (canonical +
+  //    enrichment layer + lifecycle history + precise UI lifecycle state).
   try {
-    const product = await resolveProductService().getProduct(tenantContext.tenantId, productId);
+    const product = await resolveProductService().getProductDto(tenantContext.tenantId, productId);
     return {
       statusCode: 200,
       body: JSON.stringify({ product }),

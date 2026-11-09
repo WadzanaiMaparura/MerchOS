@@ -6,15 +6,18 @@
  * Does NOT contain: DynamoDB calls, marketplace logic, pricing rules, Cognito, S3.
  */
 
-import { CanonicalProduct } from '@merch-os/types';
+import { CanonicalProduct, Product, ProductSummary } from '@merch-os/types';
 import { ProductRepository } from '../repository/product-repository';
 import {
   ProductNotFoundError as RepoNotFoundError,
   ProductAlreadyExistsError as RepoAlreadyExistsError,
   ProductPersistenceError as RepoPersistenceError,
 } from '../repository/errors';
-import { ListProductsOptions, PaginatedProducts } from '../repository/types';
+import { ListProductsOptions, PaginatedProducts, ProductEnrichmentRecord } from '../repository/types';
 import { CreateProductInput, UpdateProductInput } from './types';
+import { assembleProductDto, assembleProductSummary } from './dto-mapper';
+import { applySynthesis, type GlueGenerationResult } from './synthesis-glue';
+import type { LifecycleTransition, LifecycleState, EnrichmentLayer } from '@merch-os/types';
 import {
   ProductAlreadyExistsError,
   ProductNotFoundError,
@@ -143,6 +146,144 @@ export class ProductService {
     options?: ListProductsOptions
   ): Promise<PaginatedProducts> {
     return this.repository.listByTenant(tenantId, options);
+  }
+
+  // ---------------------------------------------------------------------------
+  // DTO assembly (canonical + enrichment → API DTOs)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Returns the full `Product` API DTO: the canonical product stitched together
+   * with its enrichment layer, lifecycle history, and precise UI lifecycle
+   * state. Throws ProductNotFoundError if the product does not exist.
+   */
+  async getProductDto(tenantId: string, productId: string): Promise<Product> {
+    const product = await this.repository.get(tenantId, productId);
+    if (!product) {
+      throw new ProductNotFoundError(tenantId, productId);
+    }
+    const enrichment = await this.repository.getEnrichment(tenantId, productId);
+    return assembleProductDto(product, enrichment);
+  }
+
+  /**
+   * Returns a page of `ProductSummary` DTOs (list view). Each summary reflects
+   * the precise UI lifecycle state when an enrichment record exists.
+   *
+   * Enrichment is fetched per item; at launch page sizes (≤100) this is
+   * acceptable. If list latency becomes a concern, denormalise
+   * `uiLifecycleState` onto the product item or batch-get enrichment.
+   */
+  async listProductSummaries(
+    tenantId: string,
+    options?: ListProductsOptions
+  ): Promise<{ items: ProductSummary[]; nextToken?: string }> {
+    const page = await this.repository.listByTenant(tenantId, options);
+    const summaries = await Promise.all(
+      page.items.map(async (product) => {
+        const enrichment = await this.repository.getEnrichment(
+          tenantId,
+          product.productId
+        );
+        return assembleProductSummary(product, enrichment);
+      })
+    );
+    return page.nextToken !== undefined
+      ? { items: summaries, nextToken: page.nextToken }
+      : { items: summaries };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Enrichment + lifecycle (used by the synthesis glue and review loop)
+  // ---------------------------------------------------------------------------
+
+  /** Reads the enrichment record for a product (null if none). */
+  async getEnrichment(
+    tenantId: string,
+    productId: string
+  ): Promise<ProductEnrichmentRecord | null> {
+    return this.repository.getEnrichment(tenantId, productId);
+  }
+
+  /** Writes the enrichment layer + precise UI lifecycle state for a product. */
+  async putEnrichment(
+    tenantId: string,
+    productId: string,
+    enrichment: EnrichmentLayer,
+    uiLifecycleState: LifecycleState,
+    lifecycleHistory: LifecycleTransition[]
+  ): Promise<ProductEnrichmentRecord> {
+    return this.repository.putEnrichment(tenantId, productId, {
+      uiLifecycleState,
+      enrichment,
+      lifecycleHistory,
+    });
+  }
+
+  /** Appends a lifecycle transition and sets the precise UI lifecycle state. */
+  async appendLifecycleTransition(
+    tenantId: string,
+    productId: string,
+    transition: LifecycleTransition,
+    uiLifecycleState: LifecycleState
+  ): Promise<ProductEnrichmentRecord> {
+    return this.repository.appendLifecycleTransition(
+      tenantId,
+      productId,
+      transition,
+      uiLifecycleState
+    );
+  }
+
+  /**
+   * Applies synthesis results onto the product: runs the glue over the current
+   * content + enrichment, persists the updated canonical content, and writes the
+   * enrichment layer with the given precise UI lifecycle state + history.
+   * Returns the updated enrichment record. Throws ProductNotFoundError if the
+   * product is gone.
+   */
+  async applyAndPersistSynthesis(
+    tenantId: string,
+    productId: string,
+    results: GlueGenerationResult[],
+    uiLifecycleState: LifecycleState,
+    lifecycleHistory: LifecycleTransition[],
+    reviewThreshold?: number
+  ): Promise<ProductEnrichmentRecord> {
+    const product = await this.repository.get(tenantId, productId);
+    if (!product) {
+      throw new ProductNotFoundError(tenantId, productId);
+    }
+
+    const existingEnrichment = await this.repository.getEnrichment(tenantId, productId);
+    const baseEnrichment: EnrichmentLayer =
+      existingEnrichment?.enrichment ?? {
+        attributes: {},
+        channelContent: {},
+        detectedLanguage: '',
+        enrichedAt: '',
+      };
+
+    const applied = applySynthesis(
+      product.content,
+      baseEnrichment,
+      results,
+      reviewThreshold
+    );
+
+    // Persist updated canonical content (keep everything else unchanged).
+    const updatedProduct: CanonicalProduct = {
+      ...product,
+      content: applied.content,
+    };
+    await this.repository.update(tenantId, productId, updatedProduct);
+
+    // Persist the enrichment layer + precise lifecycle state + history.
+    return this.repository.putEnrichment(tenantId, productId, {
+      uiLifecycleState,
+      enrichment: applied.enrichment,
+      lifecycleHistory,
+    });
   }
 
   // ---------------------------------------------------------------------------
