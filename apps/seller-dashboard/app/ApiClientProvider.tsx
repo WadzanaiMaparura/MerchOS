@@ -20,7 +20,11 @@
 import React, { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchAuthSession, signOut } from 'aws-amplify/auth';
-import { ApiClientContext, createApiClient } from '@merch-os/api-client';
+import {
+  ApiClientContext,
+  IntelligenceClientContext,
+  createApiClient,
+} from '@merch-os/api-client';
 
 interface ApiClientProviderProps {
   children: React.ReactNode;
@@ -38,19 +42,42 @@ async function getAccessToken(): Promise<string> {
 export function ApiClientProvider({ children }: ApiClientProviderProps) {
   const router = useRouter();
 
+  const onUnauthorized = useMemo(
+    () => () => {
+      void signOut({ global: true }).finally(() => {
+        router.replace('/login');
+      });
+    },
+    [router]
+  );
+
   const client = useMemo(
     () =>
       createApiClient({
         baseUrl: process.env.NEXT_PUBLIC_API_URL ?? '',
         getAccessToken,
-        onUnauthorized: () => {
-          void signOut({ global: true }).finally(() => {
-            router.replace('/login');
-          });
-        },
+        onUnauthorized,
       }),
-    [router]
+    [onUnauthorized]
   );
 
-  return <ApiClientContext.Provider value={client}>{children}</ApiClientContext.Provider>;
+  // Separate client for the Product Intelligence API (its own base URL). Shares
+  // the same Cognito token getter and unauthorized handling as the main client.
+  const intelligenceClient = useMemo(
+    () =>
+      createApiClient({
+        baseUrl: process.env.NEXT_PUBLIC_INTELLIGENCE_API_URL ?? '',
+        getAccessToken,
+        onUnauthorized,
+      }),
+    [onUnauthorized]
+  );
+
+  return (
+    <ApiClientContext.Provider value={client}>
+      <IntelligenceClientContext.Provider value={intelligenceClient}>
+        {children}
+      </IntelligenceClientContext.Provider>
+    </ApiClientContext.Provider>
+  );
 }

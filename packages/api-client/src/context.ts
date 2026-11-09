@@ -23,3 +23,28 @@ export function useApiClient(): AxiosInstance {
   }
   return client;
 }
+
+/**
+ * Context providing an Axios instance pointed at the Product Intelligence API.
+ *
+ * The Intelligence API (`/intelligence/*`) is a SEPARATE HTTP API from the main
+ * MerchOS API, with its own base URL (NEXT_PUBLIC_INTELLIGENCE_API_URL). It is
+ * supplied as a distinct context so synthesis hooks target the right endpoint
+ * while every other hook keeps using the main client via useApiClient().
+ */
+export const IntelligenceClientContext = createContext<AxiosInstance | null>(null);
+
+/**
+ * Hook to access the Intelligence API Axios instance from context.
+ * Throws if used outside a provider that supplies IntelligenceClientContext.
+ */
+export function useIntelligenceClient(): AxiosInstance {
+  const client = useContext(IntelligenceClientContext);
+  if (!client) {
+    throw new Error(
+      'useIntelligenceClient must be used within a provider supplying ' +
+        'IntelligenceClientContext (see ApiClientProvider).'
+    );
+  }
+  return client;
+}

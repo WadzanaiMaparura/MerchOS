@@ -3,7 +3,12 @@ export { createApiClient } from './client';
 export type { ApiClientConfig } from './client';
 export { normalizeError, isApiError } from './errors';
 export type { ApiError } from './errors';
-export { ApiClientContext, useApiClient } from './context';
+export {
+  ApiClientContext,
+  useApiClient,
+  IntelligenceClientContext,
+  useIntelligenceClient,
+} from './context';
 
 // Inventory hooks
 export {
@@ -84,6 +89,19 @@ export {
   useProductExport,
   useProductUpload,
 } from './hooks/useProducts';
+
+// Product Intelligence (AI synthesis) hooks
+export {
+  useGenerateContent,
+  GENERATION_LIMIT_REACHED,
+} from './hooks/useGenerateContent';
+export type {
+  GenerationType,
+  GenerationMarketplaceId,
+  GenerationProductData,
+  GenerateContentPayload,
+  GenerationResult,
+} from './hooks/useGenerateContent';
 
 // Image Intelligence Engine hooks (async image pipeline)
 export {
