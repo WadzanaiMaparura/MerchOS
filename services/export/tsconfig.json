@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "./dist",
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false
+  },
+  "include": ["engine/**/*.ts", "api/**/*.ts"],
+  "exclude": ["node_modules", "dist", "engine/__tests__", "api/__tests__"]
+}
