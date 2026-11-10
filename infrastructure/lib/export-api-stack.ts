@@ -88,19 +88,50 @@ export class ExportApiStack extends cdk.Stack {
 
     const servicesRoot = path.join(__dirname, '../../services');
 
+    // The marketplace-schemas registry reads a single schemas-bundle.json at
+    // runtime (the schema data is too large to inline into the JS bundle). We
+    // copy that one file next to the handler during bundling and point the
+    // registry at it via SCHEMAS_BUNDLE_PATH.
+    const schemasBundleAbs = path
+      .join(
+        __dirname,
+        '../../packages/marketplace-schemas/generated/takealot-za/schemas-bundle.json'
+      )
+      .replace(/\\/g, '/');
+    const copyBundleCmd = (outputDir: string): string[] => [
+      `node -e "require('fs').copyFileSync('${schemasBundleAbs}', require('path').join('${outputDir.replace(
+        /\\/g,
+        '/'
+      )}', 'schemas-bundle.json'))"`,
+    ];
+
     const defaultLambdaProps: Partial<lambdaNodejs.NodejsFunctionProps> = {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'handler',
       timeout: cdk.Duration.seconds(30),
       // Export generation (esp. XLSX via exceljs) is heavier than CRUD.
       memorySize: 512,
-      environment: { ENVIRONMENT: env },
+      environment: {
+        ENVIRONMENT: env,
+        // Resolve the schemas bundle copied next to the handler (see below).
+        SCHEMAS_BUNDLE_PATH: '/var/task/schemas-bundle.json',
+      },
       bundling: {
         minify: true,
         sourceMap: true,
         target: 'node20',
         format: lambdaNodejs.OutputFormat.ESM,
         mainFields: ['module', 'main'],
+        // exceljs (used by the XLSX writer) does CommonJS `require('crypto')`
+        // internally. In an ESM bundle `require` is undefined, so esbuild emits
+        // a "Dynamic require not supported" shim that throws. Inject a real
+        // require via createRequire so those CJS deps resolve at runtime.
+        banner: "import{createRequire as __cr}from'module';const require=__cr(import.meta.url);",
+        commandHooks: {
+          beforeBundling: () => [],
+          beforeInstall: () => [],
+          afterBundling: (_inputDir: string, outputDir: string) => copyBundleCmd(outputDir),
+        },
       },
     };
 

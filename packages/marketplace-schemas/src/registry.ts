@@ -10,8 +10,7 @@
  * of truth — this module performs no hand-mapping of fields.
  */
 
-import { createRequire } from 'node:module';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import type { MarketplaceSchema } from '@merch-os/types';
@@ -22,38 +21,61 @@ import type {
 } from './raw-schema.js';
 import { toMarketplaceSchema } from './mapper.js';
 
+interface SchemasBundle {
+  index: RawIndexEntry[];
+  schemas: Record<string, RawTakealotSchema>;
+}
+
+/**
+ * The registry data lives in a single `schemas-bundle.json`. We read it lazily
+ * with readFileSync rather than a static JSON import because the bundle is large
+ * (~30MB) and a static import overwhelms some transform pipelines (e.g. vitest).
+ *
+ * Resolution order so this works in every consumer:
+ *   1. SCHEMAS_BUNDLE_PATH env var (explicit override, e.g. Lambda).
+ *   2. A `schemas-bundle.json` sitting next to the running module (how the CDK
+ *      Lambda bundling copies it — see export-api-stack commandHooks).
+ *   3. The package's generated/ directory (dev, tests, Node consumers).
+ */
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const GENERATED_DIR = join(__dirname, '..', 'generated', 'takealot-za');
+const BUNDLE_CANDIDATES = [
+  process.env['SCHEMAS_BUNDLE_PATH'],
+  join(__dirname, 'schemas-bundle.json'),
+  join(__dirname, '..', 'generated', 'takealot-za', 'schemas-bundle.json'),
+].filter((p): p is string => typeof p === 'string' && p.length > 0);
 
-let indexCache: RawIndexEntry[] | null = null;
-const rawCache = new Map<string, RawTakealotSchema>();
-
-function loadIndex(): RawIndexEntry[] {
-  if (indexCache) return indexCache;
-  const text = readFileSync(join(GENERATED_DIR, '_index.json'), 'utf8');
-  indexCache = JSON.parse(text) as RawIndexEntry[];
-  return indexCache;
-}
-
-function loadRawByFile(schemaFile: string): RawTakealotSchema {
-  const cached = rawCache.get(schemaFile);
+let cached: SchemasBundle | null = null;
+function load(): SchemasBundle {
   if (cached) return cached;
-  const text = readFileSync(join(GENERATED_DIR, schemaFile), 'utf8');
-  const raw = JSON.parse(text) as RawTakealotSchema;
-  rawCache.set(schemaFile, raw);
-  return raw;
+  let lastErr: unknown;
+  for (const candidate of BUNDLE_CANDIDATES) {
+    try {
+      cached = JSON.parse(readFileSync(candidate, 'utf8')) as SchemasBundle;
+      return cached;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw new Error(
+    `marketplace-schemas: could not load schemas-bundle.json from any of: ` +
+      `${BUNDLE_CANDIDATES.join(', ')} (${String(lastErr)})`
+  );
 }
+
+const data = new Proxy({} as SchemasBundle, {
+  get(_t, prop: keyof SchemasBundle) {
+    return load()[prop];
+  },
+});
 
 /** List all available Takealot (ZA) loadsheet schemas (index view). */
 export function listTakealotSchemas(): RawIndexEntry[] {
-  return loadIndex();
+  return data.index;
 }
 
 /** Load the raw extracted schema for a given template id (e.g. "99"). */
 export function getRawSchema(templateId: string): RawTakealotSchema | null {
-  const entry = loadIndex().find((e) => String(e.templateId) === String(templateId));
-  if (!entry) return null;
-  return loadRawByFile(entry.schemaFile);
+  return data.schemas[String(templateId)] ?? null;
 }
 
 /** Lookup a canonical `MarketplaceSchema` by Takealot template id. */
@@ -67,8 +89,7 @@ export function getSchema(templateId: string): MarketplaceSchema | null {
  * Returns null if no loaded loadsheet covers that node.
  */
 export function findTemplateForCategoryNode(nodeId: string): string | null {
-  for (const entry of loadIndex()) {
-    const raw = loadRawByFile(entry.schemaFile);
+  for (const raw of Object.values(data.schemas)) {
     if (raw.categoryRules[nodeId] || raw.categoryTree.some((c) => c.leafNodeId === nodeId)) {
       return String(raw.templateId);
     }
@@ -91,8 +112,5 @@ export function getCategoryRule(
 
 /** Enumerate all available generated schema files (for tooling/diagnostics). */
 export function listGeneratedFiles(): string[] {
-  return readdirSync(GENERATED_DIR).filter((f) => /^loadsheet-\d+\.json$/.test(f));
+  return data.index.map((e) => e.schemaFile);
 }
-
-// Keep a require handle available for CJS consumers / tooling that prefer it.
-export const _require = createRequire(import.meta.url);

@@ -45,6 +45,9 @@ export async function handler(
   if (!product || typeof product !== 'object' || !product.productId) {
     return errorResponse(400, 'VALIDATION_ERROR', 'A canonical "product" with a productId is required.');
   }
+  if (!product.content || typeof product.content !== 'object') {
+    return errorResponse(400, 'VALIDATION_ERROR', 'The product must include a "content" object.');
+  }
 
   // 2. Validate.
   try {
@@ -59,6 +62,10 @@ export async function handler(
     if (err instanceof SchemaNotFoundError) {
       return errorResponse(422, 'SCHEMA_NOT_FOUND', err.message);
     }
+    // Log the underlying cause so unexpected failures are diagnosable in
+    // CloudWatch (the client still gets an opaque 500).
+    // eslint-disable-next-line no-console
+    console.error('validate-product unexpected error:', err);
     return errorResponse(500, 'INTERNAL_ERROR', 'Validation failed unexpectedly.');
   }
 }

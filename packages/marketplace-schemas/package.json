@@ -8,6 +8,7 @@
   "types": "src/index.ts",
   "scripts": {
     "extract:takealot": "node scripts/extract-takealot.mjs",
+    "build:bundle": "node scripts/build-bundle.mjs",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run"

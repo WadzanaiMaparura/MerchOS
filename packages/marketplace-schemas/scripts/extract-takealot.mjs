@@ -478,7 +478,18 @@ async function main() {
       console.error(`FAILED ${f}: ${e.message}`);
     }
   }
-  console.log(`\nWrote ${index.length} schema file(s) + _index.json to generated/takealot-za/`);
+  // Assemble the single static-import bundle the registry consumes (so the
+  // package works inside bundled Lambdas without runtime file I/O).
+  const schemas = {};
+  for (const entry of index) {
+    const schema = JSON.parse(fs.readFileSync(path.join(OUT_DIR, entry.schemaFile), 'utf8'));
+    schemas[String(schema.templateId)] = schema;
+  }
+  fs.writeFileSync(path.join(OUT_DIR, 'schemas-bundle.json'), JSON.stringify({ index, schemas }));
+
+  console.log(
+    `\nWrote ${index.length} schema file(s) + _index.json + schemas-bundle.json to generated/takealot-za/`
+  );
 }
 
 main();
