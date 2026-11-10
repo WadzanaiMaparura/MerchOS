@@ -1,0 +1,23 @@
+{
+  "name": "@merch-os/marketplace-schemas",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Marketplace content-file schemas (Schema Registry) + per-platform target registry for MerchOS exports. Data-only; no AWS dependencies.",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "extract:takealot": "node scripts/extract-takealot.mjs",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@merch-os/types": "*"
+  },
+  "devDependencies": {
+    "adm-zip": "*",
+    "exceljs": "*",
+    "vitest": "*"
+  }
+}
