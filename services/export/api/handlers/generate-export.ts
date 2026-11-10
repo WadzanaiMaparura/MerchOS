@@ -15,16 +15,36 @@ import {
   ExportSchemaNotFoundError,
   type ExportRequest,
 } from '../export-service.js';
+import { S3ObjectStorage } from '../../delivery/index.js';
 
 let service: ExportService | undefined;
 
-/** Test seam: inject an ExportService. */
-export function setExportService(s: ExportService): void {
+/** Test seam: inject an ExportService (pass undefined to reset to production). */
+export function setExportService(s: ExportService | undefined): void {
   service = s;
 }
 
+/**
+ * Build the production ExportService. When the exports bucket is configured in
+ * the environment (deployed Lambda), delivery to S3 is enabled; otherwise the
+ * service generates export content without delivery.
+ */
 function resolveService(): ExportService {
-  return (service ??= new ExportService());
+  if (service) return service;
+  const bucket = process.env['EXPORTS_BUCKET'];
+  if (bucket) {
+    const storage = new S3ObjectStorage({
+      bucket,
+      ...(process.env['AWS_REGION'] ? { region: process.env['AWS_REGION'] } : {}),
+      ...(process.env['PLATFORM_KMS_KEY_ARN']
+        ? { kmsKeyId: process.env['PLATFORM_KMS_KEY_ARN'] }
+        : {}),
+    });
+    service = new ExportService(undefined, undefined, storage);
+  } else {
+    service = new ExportService();
+  }
+  return service;
 }
 
 function errorResponse(
@@ -57,18 +77,29 @@ export async function handler(
     const req: ExportRequest = { products: body.products, mode: body.mode };
     if (body.templateId !== undefined) req.templateId = body.templateId;
     if (body.partial !== undefined) req.partial = body.partial;
+    if (body.format !== undefined) req.format = body.format;
+    if (body.delivery !== undefined) req.delivery = body.delivery;
 
-    const { output, validated, excluded } = resolveService().export(req);
+    const { output, validated, excluded, artifact } = await resolveService().export(req);
+
+    // XLSX content is binary → base64 for JSON transport. CSV is plain text.
+    const isXlsx = output.format === 'XLSX';
+    const content = isXlsx
+      ? (output.content as Buffer).toString('base64')
+      : (output.content as string);
+
     return {
       statusCode: 200,
       body: JSON.stringify({
         export: {
           format: output.format,
           filename: output.filename,
-          content: output.content,
+          content,
+          encoding: isXlsx ? 'base64' : 'utf-8',
           rowCount: output.rowCount,
           columns: output.columns,
         },
+        artifact: artifact ?? null,
         validatedCount: validated.length,
         excludedCount: excluded.length,
         excluded,

@@ -12,9 +12,12 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "3.654.0",
+    "@aws-sdk/s3-request-presigner": "3.654.0",
     "@merch-os/marketplace-schemas": "*",
     "@merch-os/types": "*",
-    "@merch-os/validation": "*"
+    "@merch-os/validation": "*",
+    "exceljs": "4.4.0"
   },
   "devDependencies": {
     "@types/aws-lambda": "8.10.140",

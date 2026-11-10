@@ -17,6 +17,7 @@ import type { CanonicalProduct, ExportMode } from '@merch-os/types';
 import type { RawTakealotSchema } from '@merch-os/marketplace-schemas';
 import { mapCanonicalToTakealot, type MapOptions, type TakealotFieldMap } from '@merch-os/validation';
 import { serializeCsv, type CsvOptions } from './csv.js';
+import { serializeXlsx } from './xlsx.js';
 
 /** Column subsets per export mode (architecture §6.2, §5.5 Takealot notes). */
 const OFFER_FIELDS = [
@@ -84,6 +85,15 @@ export interface ExportOutput {
   columns: string[];
 }
 
+export interface XlsxExportOutput {
+  format: 'XLSX';
+  filename: string;
+  /** Workbook bytes (base64 is applied at the delivery/response boundary). */
+  content: Buffer;
+  rowCount: number;
+  columns: string[];
+}
+
 /** Build the cell value for a column, pulling from the field-map or offer data. */
 function cellFor(
   fieldId: string,
@@ -104,19 +114,13 @@ function cellFor(
   }
 }
 
-/**
- * Generate the export document. Pure and deterministic.
- */
-export function generateExport(input: GenerateExportInput): ExportOutput {
-  const { schema, mode, items } = input;
-  const columns = columnsForMode(schema, mode);
-
-  const csvOptions: CsvOptions = {
-    delimiter: schema.delimiter || ',',
-    ...input.csv,
-  };
-
-  const rows: string[][] = items.map((item) => {
+/** Build the ordered string cells for every item (shared by CSV + XLSX). */
+function buildRows(
+  schema: RawTakealotSchema,
+  columns: ReadonlyArray<string>,
+  items: ReadonlyArray<ExportItem>
+): string[][] {
+  return items.map((item) => {
     const fieldMap = mapCanonicalToTakealot(item.product, schema, item.mapOptions ?? {});
     // Default offer values from the canonical commercial domain when not given.
     const commercial = item.product.commercial;
@@ -131,9 +135,50 @@ export function generateExport(input: GenerateExportInput): ExportOutput {
     if (leadtime != null) offer.leadtimeDays = leadtime;
     return columns.map((col) => cellFor(col, fieldMap, offer));
   });
+}
 
+function filenameFor(
+  schema: RawTakealotSchema,
+  mode: ExportMode,
+  count: number,
+  ext: string
+): string {
+  return `takealot-${mode}-${schema.templateId ?? 'schema'}-${count}.${ext}`;
+}
+
+/**
+ * Generate a CSV export document. Pure and deterministic.
+ */
+export function generateExport(input: GenerateExportInput): ExportOutput {
+  const { schema, mode, items } = input;
+  const columns = columnsForMode(schema, mode);
+  const csvOptions: CsvOptions = { delimiter: schema.delimiter || ',', ...input.csv };
+  const rows = buildRows(schema, columns, items);
   const content = serializeCsv(columns, rows, csvOptions);
-  const filename = `takealot-${mode}-${schema.templateId ?? 'schema'}-${items.length}.csv`;
+  return {
+    format: 'CSV',
+    filename: filenameFor(schema, mode, items.length, 'csv'),
+    content,
+    rowCount: rows.length,
+    columns,
+  };
+}
 
-  return { format: 'CSV', filename, content, rowCount: rows.length, columns };
+/**
+ * Generate an XLSX export workbook (native Takealot product-creation format).
+ * Deterministic: workbook metadata is pinned so identical inputs yield an
+ * identical buffer.
+ */
+export async function generateExportXlsx(input: GenerateExportInput): Promise<XlsxExportOutput> {
+  const { schema, mode, items } = input;
+  const columns = columnsForMode(schema, mode);
+  const rows = buildRows(schema, columns, items);
+  const content = await serializeXlsx(columns, rows, { sheetName: 'Loadsheet' });
+  return {
+    format: 'XLSX',
+    filename: filenameFor(schema, mode, items.length, 'xlsx'),
+    content,
+    rowCount: rows.length,
+    columns,
+  };
 }

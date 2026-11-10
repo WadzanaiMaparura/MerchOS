@@ -8,9 +8,12 @@
 
 export {
   generateExport,
+  generateExportXlsx,
   columnsForMode,
   type GenerateExportInput,
   type ExportItem,
   type ExportOutput,
+  type XlsxExportOutput,
 } from './export-engine.js';
 export { serializeCsv, serializeRow, type CsvOptions } from './csv.js';
+export { serializeXlsx, type XlsxOptions } from './xlsx.js';

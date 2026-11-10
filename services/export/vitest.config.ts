@@ -15,7 +15,11 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['engine/__tests__/**/*.test.ts', 'api/__tests__/**/*.test.ts'],
+    include: [
+      'engine/__tests__/**/*.test.ts',
+      'api/__tests__/**/*.test.ts',
+      'delivery/__tests__/**/*.test.ts',
+    ],
     testTimeout: 30_000,
     coverage: { provider: 'v8' },
   },

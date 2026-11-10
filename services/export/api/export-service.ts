@@ -15,7 +15,18 @@ import {
 } from '@merch-os/marketplace-schemas';
 import type { CanonicalProduct, ExportMode, ValidationResult } from '@merch-os/types';
 import { ValidationService, type SchemaRegistryPort } from '@merch-os/validation';
-import { generateExport, type ExportItem, type ExportOutput } from '../engine/index.js';
+import {
+  generateExport,
+  generateExportXlsx,
+  type ExportItem,
+  type ExportOutput,
+  type XlsxExportOutput,
+} from '../engine/index.js';
+import {
+  deliverExport,
+  type ObjectStoragePort,
+  type DeliveryArtifact,
+} from '../delivery/index.js';
 
 export class ExportSchemaNotFoundError extends Error {
   constructor(public readonly detail: string) {
@@ -31,6 +42,8 @@ export class ExportBlockedError extends Error {
   }
 }
 
+export type ExportFormat = 'CSV' | 'XLSX';
+
 export interface ExportRequest {
   products: ReadonlyArray<{
     product: CanonicalProduct;
@@ -39,6 +52,8 @@ export interface ExportRequest {
     offer?: ExportItem['offer'];
   }>;
   mode: ExportMode;
+  /** Output format. Default CSV; XLSX for native product-creation loadsheets. */
+  format?: ExportFormat;
   /** Explicit template id; otherwise resolved from the first product's category. */
   templateId?: string;
   /**
@@ -48,14 +63,22 @@ export interface ExportRequest {
   partial?: boolean;
   /** Resolve a canonical image s3Key to a public URL for the export. */
   imageUrlResolver?: (s3Key: string) => string;
+  /** When provided (with tenantId), the export is delivered to object storage. */
+  delivery?: {
+    tenantId: string;
+    exportId: string;
+    expiresInSeconds?: number;
+  };
 }
 
 export interface ExportResponse {
-  output: ExportOutput;
+  output: ExportOutput | XlsxExportOutput;
   /** Validation result per exported product (all exportAllowed === true). */
   validated: ValidationResult[];
   /** Products excluded in a partial batch, with their failing validation. */
   excluded: ValidationResult[];
+  /** Present when delivery was requested and succeeded. */
+  artifact?: DeliveryArtifact;
 }
 
 export class ExportService {
@@ -66,7 +89,9 @@ export class ExportService {
       getByTemplateId: (id) => getRawSchema(id),
       findTemplateForNode: (node) => findTemplateForCategoryNode(node),
     },
-    validation?: ValidationService
+    validation?: ValidationService,
+    /** Optional object storage; required only when delivery is requested. */
+    private readonly storage?: ObjectStoragePort
   ) {
     this.validation = validation ?? new ValidationService(this.registry);
   }
@@ -88,7 +113,7 @@ export class ExportService {
     return schema;
   }
 
-  export(req: ExportRequest): ExportResponse {
+  async export(req: ExportRequest): Promise<ExportResponse> {
     if (req.products.length === 0) {
       throw new ExportSchemaNotFoundError('no products supplied');
     }
@@ -130,8 +155,32 @@ export class ExportService {
       throw new ExportBlockedError(excluded);
     }
 
-    // Stage 6: generate.
-    const output = generateExport({ schema, mode: req.mode, items: exportItems });
-    return { output, validated, excluded };
+    // Stage 6: generate (CSV or XLSX).
+    const genInput = { schema, mode: req.mode, items: exportItems };
+    const output: ExportOutput | XlsxExportOutput =
+      req.format === 'XLSX'
+        ? await generateExportXlsx(genInput)
+        : generateExport(genInput);
+
+    // Stage 7: delivery (optional).
+    const response: ExportResponse = { output, validated, excluded };
+    if (req.delivery) {
+      if (!this.storage) {
+        throw new ExportSchemaNotFoundError(
+          'delivery was requested but no object storage is configured'
+        );
+      }
+      response.artifact = await deliverExport(this.storage, {
+        tenantId: req.delivery.tenantId,
+        exportId: req.delivery.exportId,
+        filename: output.filename,
+        format: output.format,
+        body: output.content,
+        ...(req.delivery.expiresInSeconds !== undefined
+          ? { expiresInSeconds: req.delivery.expiresInSeconds }
+          : {}),
+      });
+    }
+    return response;
   }
 }

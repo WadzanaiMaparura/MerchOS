@@ -8,6 +8,6 @@
     "declaration": false,
     "declarationMap": false
   },
-  "include": ["engine/**/*.ts", "api/**/*.ts"],
-  "exclude": ["node_modules", "dist", "engine/__tests__", "api/__tests__"]
+  "include": ["engine/**/*.ts", "api/**/*.ts", "delivery/**/*.ts"],
+  "exclude": ["node_modules", "dist", "engine/__tests__", "api/__tests__", "delivery/__tests__"]
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 import { getRawSchema, type RawTakealotSchema } from '@merch-os/marketplace-schemas';
 import { ValidationService, type SchemaRegistryPort } from '@merch-os/validation';
@@ -79,9 +79,9 @@ function makeService(): ExportService {
 }
 
 describe('ExportService validation gate', () => {
-  it('exports products that pass validation', () => {
+  it('exports products that pass validation', async () => {
     const svc = makeService();
-    const res = svc.export({
+    const res = await svc.export({
       products: [{ product: validProduct(), topCategory: 'Women (29434)' }],
       mode: 'full-create',
     });
@@ -91,9 +91,9 @@ describe('ExportService validation gate', () => {
     expect(res.output.content).toContain('Valid Eyewear');
   });
 
-  it('blocks the whole batch when any product fails and partial is false', () => {
+  it('blocks the whole batch when any product fails and partial is false', async () => {
     const svc = makeService();
-    expect(() =>
+    await expect(
       svc.export({
         products: [
           { product: validProduct('ok'), topCategory: 'Women (29434)' },
@@ -101,12 +101,12 @@ describe('ExportService validation gate', () => {
         ],
         mode: 'full-create',
       })
-    ).toThrow(ExportBlockedError);
+    ).rejects.toThrow(ExportBlockedError);
   });
 
-  it('partial batch exports only passing products and reports the excluded', () => {
+  it('partial batch exports only passing products and reports the excluded', async () => {
     const svc = makeService();
-    const res = svc.export({
+    const res = await svc.export({
       products: [
         { product: validProduct('ok'), topCategory: 'Women (29434)' },
         { product: invalidProduct('bad'), topCategory: 'Women (29434)' },
@@ -119,6 +119,42 @@ describe('ExportService validation gate', () => {
     expect(res.excluded[0]!.productId).toBe('bad');
     expect(res.output.rowCount).toBe(1);
   });
+
+  it('generates XLSX when format is XLSX', async () => {
+    const svc = makeService();
+    const res = await svc.export({
+      products: [{ product: validProduct(), topCategory: 'Women (29434)' }],
+      mode: 'full-create',
+      format: 'XLSX',
+    });
+    expect(res.output.format).toBe('XLSX');
+    expect(Buffer.isBuffer(res.output.content)).toBe(true);
+    // XLSX is a ZIP container → starts with "PK".
+    expect((res.output.content as Buffer).subarray(0, 2).toString('latin1')).toBe('PK');
+  });
+
+  it('delivers to object storage and returns a signed URL when requested', async () => {
+    const puts: Array<{ key: string; contentType: string }> = [];
+    const storage = {
+      bucket: 'merch-os-exports-test',
+      putObject: async (a: { key: string; contentType: string }) => {
+        puts.push({ key: a.key, contentType: a.contentType });
+      },
+      getSignedDownloadUrl: async (key: string) => `https://signed/${key}`,
+    };
+    const svc = new ExportService(stubRegistry, new ValidationService(stubRegistry), storage);
+    const res = await svc.export({
+      products: [{ product: validProduct(), topCategory: 'Women (29434)' }],
+      mode: 'full-create',
+      delivery: { tenantId: 'tenant-1', exportId: 'exp-1' },
+    });
+    expect(res.artifact).toBeDefined();
+    expect(res.artifact!.bucket).toBe('merch-os-exports-test');
+    expect(res.artifact!.key).toContain('tenants/tenant-1/exports/exp-1/');
+    expect(res.artifact!.downloadUrl).toContain('https://signed/');
+    expect(puts).toHaveLength(1);
+    expect(puts[0]!.contentType).toContain('text/csv');
+  });
 });
 
 const evt = (body: unknown): APIGatewayProxyEventV2 =>
@@ -126,6 +162,7 @@ const evt = (body: unknown): APIGatewayProxyEventV2 =>
 
 describe('generate-export handler', () => {
   beforeEach(() => setExportService(makeService()));
+  afterEach(() => setExportService(undefined));
 
   it('returns 200 with the export file for valid products', async () => {
     const res = (await handler(

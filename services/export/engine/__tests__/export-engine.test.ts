@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { getRawSchema } from '@merch-os/marketplace-schemas';
 import type { CanonicalProduct } from '@merch-os/types';
 import { serializeRow, serializeCsv } from '../csv.js';
-import { generateExport, columnsForMode } from '../export-engine.js';
+import { generateExport, generateExportXlsx, columnsForMode } from '../export-engine.js';
 
 function product(overrides: Partial<CanonicalProduct['content']> = {}): CanonicalProduct {
   return {
@@ -134,5 +134,21 @@ describe('Export Engine (template 248)', () => {
     });
     expect(out.content).toContain('https://cdn/k1');
     expect(out.content).toContain('https://cdn/k2');
+  });
+
+  it('generates a deterministic XLSX workbook (byte-identical, ZIP header)', async () => {
+    const input = {
+      schema,
+      mode: 'full-create' as const,
+      items: [{ product: product(), mapOptions: { topCategory: 'Women (29434)', category: 'Accessories->Eyewear (29451)' } }],
+    };
+    const a = await generateExportXlsx(input);
+    const b = await generateExportXlsx(input);
+    expect(a.format).toBe('XLSX');
+    expect(a.filename.endsWith('.xlsx')).toBe(true);
+    // XLSX is a ZIP → "PK" magic bytes.
+    expect(a.content.subarray(0, 2).toString('latin1')).toBe('PK');
+    // Deterministic: pinned workbook metadata yields identical bytes.
+    expect(Buffer.compare(a.content, b.content)).toBe(0);
   });
 });

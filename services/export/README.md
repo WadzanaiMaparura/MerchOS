@@ -23,11 +23,40 @@ return the failing ones in `excluded`).
 ```
 engine/   pure, deterministic generation (no I/O)
   csv.ts              RFC-4180 CSV serialization (CRLF, correct escaping)
-  export-engine.ts    canonical products + schema + mode -> CSV document
+  xlsx.ts             deterministic XLSX workbook (pinned metadata)
+  export-engine.ts    canonical products + schema + mode -> CSV or XLSX
+delivery/ persistence (injectable; only this layer touches AWS)
+  delivery.ts         pure deliverExport() against an ObjectStoragePort
+  s3-storage.ts       S3 adapter: PutObject (SSE-KMS) + presigned download URL
 api/      service boundary
-  export-service.ts        schema lookup + validation gate + generation
+  export-service.ts        schema lookup + validation gate + generation + delivery
   handlers/generate-export.ts   POST /export Lambda handler
 ```
+
+## Output formats
+
+- **CSV** (default) — comma-separated, used for offers and general export.
+- **XLSX** — native Takealot product-creation loadsheet. Request with
+  `format: 'XLSX'`. Workbook metadata is pinned so output is byte-identical for
+  identical inputs. In the handler response, XLSX `content` is base64-encoded
+  (`encoding: 'base64'`); CSV is plain UTF-8.
+
+## Delivery (stage 7)
+
+When a `delivery: { tenantId, exportId }` is supplied and the service has an
+`ObjectStoragePort`, the export is written to the exports bucket at
+`tenants/{tenantId}/exports/{exportId}/{filename}` and a time-limited signed
+download URL is returned in `artifact`. The engine stays pure — S3 access lives
+only in `delivery/s3-storage.ts`, injected at the service boundary. In the
+deployed Lambda the handler builds an `S3ObjectStorage` from `EXPORTS_BUCKET` /
+`PLATFORM_KMS_KEY_ARN` env vars.
+
+## Infrastructure
+
+`infrastructure/lib/export-api-stack.ts` provisions an HTTP API (Cognito JWT) with
+`POST /validate` and `POST /export`, ESM-bundled Lambdas, and least-privilege IAM
+(the export Lambda may write `tenants/*/exports/*` in the exports bucket and use
+the platform KMS key; the validate Lambda needs no data-store access).
 
 ## Export modes (architecture §6.2)
 

@@ -13,6 +13,7 @@ import { InventoryApiStack } from '../lib/inventory-api-stack';
 import { SupplierIntelligenceStack } from '../lib/supplier-intelligence-stack';
 import { ImageIntelligenceStack } from '../lib/image-intelligence-stack';
 import { ProductIntelligenceStack } from '../lib/product-intelligence-stack';
+import { ExportApiStack } from '../lib/export-api-stack';
 
 const app = new cdk.App();
 
@@ -110,5 +111,20 @@ const productIntelligenceStack = new ProductIntelligenceStack(app, `MerchOS-Prod
 });
 productIntelligenceStack.addDependency(foundationStack);
 productIntelligenceStack.addDependency(authStack);
+
+// Export API (validate + export pipeline). Reads the exports bucket name and
+// the platform KMS key from Foundation; auth from the Cognito pool/client.
+// The validate Lambda is pure (schema-driven); the export Lambda writes to the
+// exports bucket (SSE-KMS) and presigns download URLs. Reads Foundation's
+// /s3/exports-bucket SSM parameter at deploy time, so depend on Foundation.
+const exportApiStack = new ExportApiStack(app, `MerchOS-ExportApi-${env}`, {
+  env: cdkEnv,
+  environment: env,
+  userPool: authStack.userPool,
+  sellerDashboardClient: authStack.sellerDashboardClient,
+  platformKey: foundationStack.platformKey,
+});
+exportApiStack.addDependency(foundationStack);
+exportApiStack.addDependency(authStack);
 
 app.synth();
