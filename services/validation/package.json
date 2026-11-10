@@ -1,0 +1,23 @@
+{
+  "name": "@merch-os/validation",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Validation Engine — deterministic gatekeeper that validates a CanonicalProduct against a marketplace schema before export",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@merch-os/marketplace-schemas": "*",
+    "@merch-os/types": "*"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "8.10.140",
+    "typescript": "5.4.5",
+    "vitest": "1.6.0"
+  }
+}
