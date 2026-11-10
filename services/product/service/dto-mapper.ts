@@ -44,6 +44,45 @@ export function resolveUiLifecycleState(
   return toDto(product.lifecycleState);
 }
 
+/**
+ * Produce the fullest `CanonicalProduct` for export/validation by merging the
+ * AI enrichment layer's attribute VALUES into `content.attributes`.
+ *
+ * Rationale: category-specific attributes can live in two places — written
+ * through to the canonical `content.attributes` (seller/manual/synthesis), or
+ * still only in the `#ENRICHMENT` record as `EnrichedAttribute.value` (AI-
+ * generated but not yet written through). The canonical/manual values are
+ * authoritative, so they WIN: enrichment values only fill keys that are absent
+ * (or null/empty) in `content.attributes`. The returned product is otherwise an
+ * unmodified copy — this never invents data, only surfaces values the product
+ * already holds across its two stored items.
+ */
+export function mergeEnrichmentIntoCanonical(
+  product: CanonicalProduct,
+  enrichment: ProductEnrichmentRecord | null
+): CanonicalProduct {
+  const enrichedAttrs = enrichment?.enrichment?.attributes;
+  if (!enrichedAttrs || Object.keys(enrichedAttrs).length === 0) {
+    return product;
+  }
+
+  const merged: Record<string, string | number | boolean> = {
+    ...product.content.attributes,
+  };
+  for (const [key, attr] of Object.entries(enrichedAttrs)) {
+    const existing = merged[key];
+    const isAbsent = existing === undefined || existing === null || existing === '';
+    if (isAbsent && attr?.value !== undefined && attr.value !== null) {
+      merged[key] = attr.value;
+    }
+  }
+
+  return {
+    ...product,
+    content: { ...product.content, attributes: merged },
+  };
+}
+
 /** Map canonical image refs to the DTO ImageReference shape. */
 function toImageReferences(product: CanonicalProduct): ImageReference[] {
   return (product.content.imageRefs ?? []).map((ref, index) => ({

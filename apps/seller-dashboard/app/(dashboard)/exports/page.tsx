@@ -18,6 +18,7 @@ import React, { useMemo, useState } from 'react';
 import { Card, Alert, Badge, useToast } from '@merch-os/ui';
 import {
   useProducts,
+  useCanonicalProduct,
   useValidateProduct,
   useGenerateExport,
   exportResultToBlob,
@@ -25,62 +26,19 @@ import {
 } from '@merch-os/api-client';
 import type { CanonicalProduct, ValidationResult } from '@merch-os/types';
 
-/** Build a minimal CanonicalProduct from the selected product + form inputs. */
-function buildCanonicalProduct(
-  productId: string,
-  tenantId: string,
-  title: string,
-  sku: string,
-  category: string
-): CanonicalProduct {
-  const now = new Date().toISOString();
+/**
+ * Apply the user-chosen Takealot category onto the fetched canonical product.
+ * The product may already carry a mapping; the form value takes precedence so
+ * the seller can validate against a specific category without mutating storage.
+ */
+function withCategory(product: CanonicalProduct, category: string): CanonicalProduct {
+  if (!category.trim()) return product;
   return {
-    productId,
-    tenantId,
-    content: {
-      title,
-      shortDescription: null,
-      longDescription: null,
-      bulletPoints: [],
-      brand: '',
-      manufacturer: null,
-      sku,
-      barcode: null,
-      mpn: null,
-      weight: null,
-      weightUnit: null,
-      length: null,
-      width: null,
-      height: null,
-      dimensionUnit: null,
-      materials: [],
-      attributes: {},
-      imageRefs: [],
-      variants: [],
-    },
-    commercial: {
-      sellingPrice: null,
-      rrp: null,
-      salePrice: null,
-      currency: 'ZAR',
-      stockQuantity: 0,
-      lowStockThreshold: null,
-      fulfilmentMethod: null,
-      leadtimeDays: null,
-      handlingTimeDays: null,
-      listingStatus: 'draft',
-      saleStartDate: null,
-      saleEndDate: null,
-    },
+    ...product,
     platformSpecific: {
-      platformIdentifiers: {},
-      categoryMappings: { takealot: category },
-      metadata: {},
-      exportHistory: {},
+      ...product.platformSpecific,
+      categoryMappings: { ...product.platformSpecific.categoryMappings, takealot: category },
     },
-    lifecycleState: 'ready',
-    createdAt: now,
-    updatedAt: now,
   };
 }
 
@@ -144,21 +102,17 @@ export default function ExportsPage() {
   const [result, setResult] = useState<ValidationResult | null>(null);
 
   const products = data?.items ?? [];
-  const selected = useMemo(
-    () => products.find((p) => p.productId === selectedId),
-    [products, selectedId]
+
+  // Fetch the full canonical product (enrichment merged) for the selection.
+  const { data: fetched, isFetching: isFetchingCanonical } = useCanonicalProduct(
+    selectedId,
+    { enabled: !!selectedId }
   );
 
-  const canonical = useMemo(() => {
-    if (!selected) return null;
-    return buildCanonicalProduct(
-      selected.productId,
-      selected.tenantId,
-      selected.title,
-      selected.sku,
-      category
-    );
-  }, [selected, category]);
+  const canonical = useMemo(
+    () => (fetched ? withCategory(fetched, category) : null),
+    [fetched, category]
+  );
 
   const onValidate = async () => {
     if (!canonical) return;
@@ -282,10 +236,10 @@ export default function ExportsPage() {
             <button
               type="button"
               onClick={onValidate}
-              disabled={!canonical || validate.isPending}
+              disabled={!canonical || isFetchingCanonical || validate.isPending}
               className="inline-flex items-center rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {validate.isPending ? 'Validating…' : 'Validate'}
+              {isFetchingCanonical ? 'Loading product…' : validate.isPending ? 'Validating…' : 'Validate'}
             </button>
             <button
               type="button"

@@ -90,6 +90,7 @@ export {
   useProductSearch,
   useProductExport,
   useProductUpload,
+  useCanonicalProduct,
 } from './hooks/useProducts';
 
 // Product Intelligence (AI synthesis) hooks

@@ -15,7 +15,11 @@ import {
 } from '../repository/errors';
 import { ListProductsOptions, PaginatedProducts, ProductEnrichmentRecord } from '../repository/types';
 import { CreateProductInput, UpdateProductInput } from './types';
-import { assembleProductDto, assembleProductSummary } from './dto-mapper';
+import {
+  assembleProductDto,
+  assembleProductSummary,
+  mergeEnrichmentIntoCanonical,
+} from './dto-mapper';
 import { applySynthesis, type GlueGenerationResult } from './synthesis-glue';
 import { assertTransition } from './lifecycle';
 import type {
@@ -170,6 +174,26 @@ export class ProductService {
     }
     const enrichment = await this.repository.getEnrichment(tenantId, productId);
     return assembleProductDto(product, enrichment);
+  }
+
+  /**
+   * Returns the fullest `CanonicalProduct` for export/validation: the stored
+   * canonical product with the AI enrichment layer's attribute values merged
+   * into `content.attributes` (canonical/manual values win). This is what the
+   * export pipeline consumes — unlike the `Product` DTO, it preserves
+   * `variants`, `platformSpecific`, and the full typed content. Throws
+   * ProductNotFoundError if the product does not exist.
+   */
+  async getCanonicalProduct(
+    tenantId: string,
+    productId: string
+  ): Promise<CanonicalProduct> {
+    const product = await this.repository.get(tenantId, productId);
+    if (!product) {
+      throw new ProductNotFoundError(tenantId, productId);
+    }
+    const enrichment = await this.repository.getEnrichment(tenantId, productId);
+    return mergeEnrichmentIntoCanonical(product, enrichment);
   }
 
   /**
