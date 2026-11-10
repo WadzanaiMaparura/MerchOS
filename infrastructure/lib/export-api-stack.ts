@@ -70,7 +70,13 @@ export class ExportApiStack extends cdk.Stack {
       corsPreflight: {
         allowHeaders: ['Content-Type', 'Authorization', 'X-Amz-Date'],
         allowMethods: [CorsHttpMethod.POST, CorsHttpMethod.OPTIONS],
-        allowOrigins: [`https://${env === 'production' ? 'app' : env}.merchos.io`],
+        // Exact origins (required with allowCredentials — wildcards are rejected
+        // by browsers for credentialed requests). Non-production also permits
+        // the local seller-dashboard dev server so the UI is testable locally.
+        allowOrigins: [
+          `https://${env === 'production' ? 'app' : env}.merchos.io`,
+          ...(env === 'production' ? [] : ['http://localhost:3000']),
+        ],
         allowCredentials: true,
         maxAge: cdk.Duration.hours(1),
       },

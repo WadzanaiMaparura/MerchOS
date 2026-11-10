@@ -8,6 +8,8 @@ export {
   useApiClient,
   IntelligenceClientContext,
   useIntelligenceClient,
+  ExportClientContext,
+  useExportClient,
 } from './context';
 
 // Inventory hooks
@@ -237,6 +239,22 @@ export type {
   CreateSupplierPayload,
   UpdateSupplierPayload,
 } from './hooks/useSuppliers';
+
+// Export / Validation (marketplace export pipeline) hooks
+export {
+  useValidateProduct,
+  useGenerateExport,
+  exportResultToBlob,
+} from './hooks/useExport';
+export type {
+  ValidateProductPayload,
+  GenerateExportPayload,
+  GenerateExportResult,
+  ExportFileResult,
+  ExportArtifact,
+  ExportProductItem,
+  ExportOfferFields,
+} from './hooks/useExport';
 
 // Notifications
 export { WebSocketManager } from './notifications/websocket-manager';

@@ -23,6 +23,7 @@ import { fetchAuthSession, signOut } from 'aws-amplify/auth';
 import {
   ApiClientContext,
   IntelligenceClientContext,
+  ExportClientContext,
   createApiClient,
 } from '@merch-os/api-client';
 
@@ -73,10 +74,24 @@ export function ApiClientProvider({ children }: ApiClientProviderProps) {
     [onUnauthorized]
   );
 
+  // Separate client for the Export API (validate + export pipeline, its own
+  // base URL). Shares the same Cognito token getter and unauthorized handling.
+  const exportClient = useMemo(
+    () =>
+      createApiClient({
+        baseUrl: process.env.NEXT_PUBLIC_EXPORT_API_URL ?? '',
+        getAccessToken,
+        onUnauthorized,
+      }),
+    [onUnauthorized]
+  );
+
   return (
     <ApiClientContext.Provider value={client}>
       <IntelligenceClientContext.Provider value={intelligenceClient}>
-        {children}
+        <ExportClientContext.Provider value={exportClient}>
+          {children}
+        </ExportClientContext.Provider>
       </IntelligenceClientContext.Provider>
     </ApiClientContext.Provider>
   );
