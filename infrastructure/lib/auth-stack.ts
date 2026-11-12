@@ -535,7 +535,18 @@ export class AuthStack extends cdk.Stack {
     // Wire triggers to the UserPool (same stack — no circular dependency)
     this.userPool.addTrigger(cognito.UserPoolOperation.PRE_SIGN_UP, preSignUpFn);
     this.userPool.addTrigger(cognito.UserPoolOperation.POST_CONFIRMATION, postConfirmationFn);
-    this.userPool.addTrigger(cognito.UserPoolOperation.PRE_TOKEN_GENERATION, preTokenGenerationFn);
+    // PRE_TOKEN_GENERATION MUST be wired as V2_0: the handler injects
+    // custom:tenantId / custom:role into the ACCESS token via
+    // claimsOverrideDetails, and only the V2_0 trigger version can add claims to
+    // access tokens. CDK's addTrigger defaults to V1_0, which silently drops
+    // access-token claim overrides — leaving every access token without a tenant
+    // claim and breaking tenant-context on every downstream API. (Requires a
+    // Cognito feature plan that supports V2_0; this pool is on PLUS.)
+    this.userPool.addTrigger(
+      cognito.UserPoolOperation.PRE_TOKEN_GENERATION_CONFIG,
+      preTokenGenerationFn,
+      cognito.LambdaVersion.V2_0
+    );
     this.userPool.addTrigger(cognito.UserPoolOperation.CUSTOM_MESSAGE, customMessageFn);
 
     // -----------------------------------------------------------------------

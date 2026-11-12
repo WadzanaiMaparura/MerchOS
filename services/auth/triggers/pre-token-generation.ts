@@ -11,7 +11,7 @@
  * Requirements: FR-3.3, FR-4.2
  */
 
-import type { PreTokenGenerationTriggerEvent } from 'aws-lambda';
+import type { PreTokenGenerationV2TriggerEvent } from 'aws-lambda';
 import { Logger } from '@aws-lambda-powertools/logger';
 
 // ---------------------------------------------------------------------------
@@ -33,8 +33,8 @@ const logger = new Logger({ serviceName: 'merch-os-pre-token-generation' });
  * authorization checks.
  */
 export async function handler(
-  event: PreTokenGenerationTriggerEvent,
-): Promise<PreTokenGenerationTriggerEvent> {
+  event: PreTokenGenerationV2TriggerEvent,
+): Promise<PreTokenGenerationV2TriggerEvent> {
   // The effective tenant id is the immutable custom:tenantId (invited users,
   // set at creation) OR the server-managed mutable custom:tenantIdAssigned
   // (self-signup users, set by PostConfirmation). We always surface it under
@@ -62,13 +62,21 @@ export async function handler(
       logger.warn('No role found in user attributes', { userId });
     }
 
-    // Inject custom claims into the access token
-    event.response.claimsOverrideDetails = {
-      ...event.response.claimsOverrideDetails,
-      claimsToAddOrOverride: {
-        ...event.response.claimsOverrideDetails?.claimsToAddOrOverride,
-        'custom:tenantId': tenantId,
-        'custom:role': role,
+    // Inject custom claims into the ACCESS token. The V2_0 trigger uses
+    // `claimsAndScopeOverrideDetails.accessTokenGeneration.claimsToAddOrOverride`
+    // — the V1 `claimsOverrideDetails` shape only affected the ID token and is
+    // ignored under V2_0, which is what previously left access tokens without a
+    // tenant claim and broke tenant-context on every API.
+    event.response.claimsAndScopeOverrideDetails = {
+      ...event.response.claimsAndScopeOverrideDetails,
+      accessTokenGeneration: {
+        ...event.response.claimsAndScopeOverrideDetails?.accessTokenGeneration,
+        claimsToAddOrOverride: {
+          ...event.response.claimsAndScopeOverrideDetails?.accessTokenGeneration
+            ?.claimsToAddOrOverride,
+          'custom:tenantId': tenantId,
+          'custom:role': role,
+        },
       },
     };
 
