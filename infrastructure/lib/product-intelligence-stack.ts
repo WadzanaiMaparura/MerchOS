@@ -139,6 +139,16 @@ export class ProductIntelligenceStack extends cdk.Stack {
 
     const handlersPath = path.join(__dirname, '../../services/product-intelligence/handlers');
 
+    // The RBAC middleware validates the token's `iss` against COGNITO_ISSUER.
+    // Without it set, every authorized call is rejected with INVALID_ISSUER.
+    // Build it from the same Cognito pool the JWT authorizer trusts
+    // (tenant-pool-id), resolved from SSM (published by the Auth stack).
+    const cognitoPoolIdForIssuer = ssm.StringParameter.valueForStringParameter(
+      this,
+      `${ssmPrefix}/cognito/tenant-pool-id`,
+    );
+    const cognitoIssuer = `https://cognito-idp.${this.region}.amazonaws.com/${cognitoPoolIdForIssuer}`;
+
     const commonEnv: Record<string, string> = {
       ENVIRONMENT: env,
       // Handler code reads PRODUCT_INTELLIGENCE_TABLE; keep TABLE_NAME too for
@@ -149,6 +159,8 @@ export class ProductIntelligenceStack extends cdk.Stack {
       // Keep EVENT_BUS_ARN as well for IAM/reference parity.
       EVENT_BUS_NAME: eventBusName,
       EVENT_BUS_ARN: eventBusArn,
+      // Expected token issuer for RBAC middleware (FR-3.3 / FR-4.2).
+      COGNITO_ISSUER: cognitoIssuer,
       POWERTOOLS_SERVICE_NAME: 'product-intelligence',
       LOG_LEVEL: env === 'production' ? 'WARN' : 'DEBUG',
     };
@@ -167,6 +179,12 @@ export class ProductIntelligenceStack extends cdk.Stack {
         format: lambdaNodejs.OutputFormat.ESM,
         mainFields: ['module', 'main'],
         // Powertools packages are bundled (not externalized) — see note above.
+        // Some bundled deps (e.g. powertools → aws-xray-sdk) do CommonJS
+        // `require('util')` internally. In an ESM bundle `require` is undefined,
+        // so esbuild emits a "Dynamic require not supported" shim that throws at
+        // INIT — crashing the Lambda before the handler runs (observed as a 500
+        // on /intelligence/generate). Inject a real require via createRequire.
+        banner: "import{createRequire as __cr}from'module';const require=__cr(import.meta.url);",
       },
     };
 
