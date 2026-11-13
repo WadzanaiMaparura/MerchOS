@@ -679,7 +679,7 @@ export const handler = middy(baseHandler)
   .use(
     rbacMiddleware({
       resource: 'intelligence',
-      action: 'write',
+      action: 'create',
     }),
   )
   .use(

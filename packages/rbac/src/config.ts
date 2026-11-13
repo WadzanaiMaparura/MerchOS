@@ -10,6 +10,11 @@ export const defaultPermissionConfig: PermissionRegistryConfig = {
         { resource: 'products', actions: ['create', 'read', 'update', 'delete'] },
         { resource: 'suppliers', actions: ['create', 'read', 'update', 'delete'] },
         { resource: 'ai-listings', actions: ['create', 'read', 'update', 'delete'] },
+        // Product Intelligence API (services/product-intelligence) guards its
+        // routes with resource 'intelligence'. Sellers synthesise their own
+        // listing content: 'create' for generate/batch, 'read' for
+        // results/history/usage.
+        { resource: 'intelligence', actions: ['create', 'read'] },
         { resource: 'images', actions: ['create', 'read', 'update', 'delete'] },
         { resource: 'inventory', actions: ['read', 'update'] },
         { resource: 'analytics', actions: ['read'] },
@@ -34,6 +39,7 @@ export const defaultPermissionConfig: PermissionRegistryConfig = {
         { resource: 'products', actions: ['create', 'read', 'update', 'delete'] },
         { resource: 'suppliers', actions: ['create', 'read', 'update', 'delete'] },
         { resource: 'ai-listings', actions: ['create', 'read', 'update', 'delete'] },
+        { resource: 'intelligence', actions: ['create', 'read', 'update', 'delete'] },
         { resource: 'images', actions: ['create', 'read', 'update', 'delete'] },
         { resource: 'inventory', actions: ['create', 'read', 'update', 'delete'] },
         { resource: 'analytics', actions: ['create', 'read', 'update', 'delete'] },
