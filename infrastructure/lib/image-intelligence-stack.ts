@@ -196,6 +196,12 @@ export class ImageIntelligenceStack extends cdk.Stack {
           '@aws-lambda-powertools/tracer',
           '@aws-lambda-powertools/metrics',
         ],
+        // With ESM output, a CJS dependency doing require('util') makes esbuild
+        // emit a "Dynamic require not supported" shim that throws at INIT —
+        // crashing the Lambda before the handler runs (this is the same 500
+        // the Supplier/Product Intelligence stacks hit). Inject a real require
+        // via createRequire.
+        banner: "import{createRequire as __cr}from'module';const require=__cr(import.meta.url);",
       },
     };
 
