@@ -69,7 +69,14 @@ export function useStockAdjustment() {
 
   return useMutation<void, ApiError, StockAdjustmentPayload>({
     mutationFn: async (payload) => {
-      await client.post('/inventory/adjustments', payload);
+      // The deployed contract is PUT /inventory/{sku} with a strict body of
+      // { warehouseId, onHand } — sku is authoritative in the path, and any
+      // extra field (sku/reason/source) is rejected by the server schema.
+      // `newQuantity` is the absolute target on-hand value.
+      await client.put(`/inventory/${encodeURIComponent(payload.sku)}`, {
+        warehouseId: payload.warehouseId,
+        onHand: payload.newQuantity,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
