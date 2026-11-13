@@ -159,11 +159,12 @@ export class ImageIntelligenceStack extends cdk.Stack {
     const handlersPath = path.join(__dirname, '../../services/image-intelligence/handlers');
     const region = this.region;
 
-    const powertoolsLayer = lambda.LayerVersion.fromLayerVersionArn(
-      this,
-      'PowertoolsLayer',
-      `arn:aws:lambda:${region}:094274105915:layer:AWSLambdaPowertoolsTypeScriptV2:latest`,
-    );
+    // NOTE: Powertools is BUNDLED into each function (esbuild), not provided as
+    // a Lambda layer — matching the Supplier/Product Intelligence stacks. The
+    // public Powertools layer ARN must end in a numeric version; a `:latest`
+    // alias is rejected by the Lambda API ("Member must satisfy ... :[0-9]+"),
+    // which fails stack creation. Bundling avoids pinning/drifting a layer
+    // version and keeps all stacks consistent.
 
     const commonEnv: Record<string, string> = {
       ENVIRONMENT: env,
@@ -183,7 +184,6 @@ export class ImageIntelligenceStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(29),
       memorySize: 256,
       tracing: lambda.Tracing.ACTIVE,
-      layers: [powertoolsLayer],
       environment: commonEnv,
       bundling: {
         minify: true,
@@ -191,11 +191,6 @@ export class ImageIntelligenceStack extends cdk.Stack {
         target: 'node20',
         format: lambdaNodejs.OutputFormat.ESM,
         mainFields: ['module', 'main'],
-        externalModules: [
-          '@aws-lambda-powertools/logger',
-          '@aws-lambda-powertools/tracer',
-          '@aws-lambda-powertools/metrics',
-        ],
         // With ESM output, a CJS dependency doing require('util') makes esbuild
         // emit a "Dynamic require not supported" shim that throws at INIT —
         // crashing the Lambda before the handler runs (this is the same 500
@@ -351,14 +346,12 @@ export class ImageIntelligenceStack extends cdk.Stack {
       resources: [`arn:aws:bedrock:*::foundation-model/${enhancementModelId}`],
     });
 
-    // Processor Lambdas — Sharp-using ones externalize `sharp` and attach the layer.
+    // Processor Lambdas — Sharp-using ones externalize `sharp` (native binary
+    // supplied via the Sharp layer) and bundle everything else, including
+    // Powertools. Note this still spreads defaultLambdaProps.bundling, so the
+    // createRequire banner is preserved.
     const sharpBundling: Partial<lambdaNodejs.BundlingOptions> = {
-      externalModules: [
-        '@aws-lambda-powertools/logger',
-        '@aws-lambda-powertools/tracer',
-        '@aws-lambda-powertools/metrics',
-        'sharp',
-      ],
+      externalModules: ['sharp'],
     };
 
     const moderationFn = createFn(
@@ -382,7 +375,7 @@ export class ImageIntelligenceStack extends cdk.Stack {
       {
         timeout: cdk.Duration.seconds(120),
         memorySize: 1024,
-        layers: [powertoolsLayer, sharpLayer],
+        layers: [sharpLayer],
         bundling: { ...defaultLambdaProps.bundling, ...sharpBundling },
       },
     );
@@ -394,7 +387,7 @@ export class ImageIntelligenceStack extends cdk.Stack {
       {
         timeout: cdk.Duration.seconds(180),
         memorySize: 1536,
-        layers: [powertoolsLayer, sharpLayer],
+        layers: [sharpLayer],
         bundling: { ...defaultLambdaProps.bundling, ...sharpBundling },
       },
     );
