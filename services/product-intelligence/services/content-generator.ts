@@ -741,14 +741,35 @@ export class ContentGenerator {
     startTime: number,
   ): GenerationResult {
     const latencyMs = Date.now() - startTime;
-    const errorMessage =
-      error instanceof Error ? error.message : String(error);
 
-    // Check if the error is a structured BedrockUnavailableError
-    const errorCode =
-      error && typeof error === 'object' && 'code' in error
-        ? String((error as { code: string }).code)
-        : 'GENERATION_FAILED';
+    // Check if the error is a structured error object (e.g. BedrockUnavailableError)
+    const isStructuredError =
+      error !== null && typeof error === 'object' && 'code' in error;
+
+    // Extract a human-readable message. Structured errors (plain objects) are
+    // NOT Error instances, so `String(error)` would yield "[object Object]".
+    // Prefer an explicit `message` field, then Error.message, then JSON.
+    let errorMessage: string;
+    if (error instanceof Error) {
+      errorMessage = error.message;
+    } else if (
+      isStructuredError &&
+      typeof (error as unknown as { message?: unknown }).message === 'string'
+    ) {
+      errorMessage = (error as unknown as { message: string }).message;
+    } else if (error !== null && typeof error === 'object') {
+      try {
+        errorMessage = JSON.stringify(error);
+      } catch {
+        errorMessage = 'Unknown error (unserializable)';
+      }
+    } else {
+      errorMessage = String(error);
+    }
+
+    const errorCode = isStructuredError
+      ? String((error as { code: string }).code)
+      : 'GENERATION_FAILED';
 
     return {
       resultId: randomUUID(),
