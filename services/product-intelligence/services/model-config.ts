@@ -17,15 +17,19 @@ import type { ModelConfig } from '../types/usage.types';
 /**
  * Bedrock model identifiers — EU cross-region INFERENCE PROFILE ids.
  *
- * The current Claude models in eu-west-1 (Haiku 4.5 / Sonnet 4.5) support only
- * INFERENCE_PROFILE inference, not ON_DEMAND, so they MUST be invoked via an
- * inference-profile id (the `eu.` cross-region profile), not a bare
- * `anthropic.*` foundation-model id. Verified via
- * `bedrock list-inference-profiles`. Keep in sync with the IAM policy in
- * infrastructure/lib/product-intelligence-stack.ts.
+ * The Claude models in eu-west-1 support only INFERENCE_PROFILE inference,
+ * not ON_DEMAND, so they MUST be invoked via an inference-profile id (the
+ * `eu.` cross-region profile), not a bare `anthropic.*` foundation-model id.
+ * Verified via `bedrock list-inference-profiles`. Keep in sync with the IAM
+ * policy in infrastructure/lib/product-intelligence-stack.ts.
+ *
+ * Current generation (Nov 2026): Haiku 5.5 / Sonnet 5.5, both ACTIVE.
+ * Previously Haiku 4.5 (ACTIVE) and Sonnet 4.5 (LEGACY, Bedrock EOL
+ * 2027-04-08) — upgraded to current-gen to avoid running on a deprecated
+ * model.
  */
-const CLAUDE_3_HAIKU = 'eu.anthropic.claude-haiku-4-5-20251001-v1:0';
-const CLAUDE_3_SONNET = 'eu.anthropic.claude-sonnet-4-5-20250929-v1:0';
+const CLAUDE_HAIKU = 'eu.anthropic.claude-haiku-5-5';
+const CLAUDE_SONNET = 'eu.anthropic.claude-sonnet-5-5';
 
 /**
  * Default model configuration for each generation type.
@@ -44,55 +48,55 @@ const CLAUDE_3_SONNET = 'eu.anthropic.claude-sonnet-4-5-20250929-v1:0';
 const MODEL_CONFIG_MAP: Record<GenerationType, ModelConfig> = {
   title: {
     generationType: 'title',
-    modelId: CLAUDE_3_HAIKU,
+    modelId: CLAUDE_HAIKU,
     maxTokens: 512,
     temperature: 0.7,
   },
   description: {
     generationType: 'description',
-    modelId: CLAUDE_3_SONNET,
+    modelId: CLAUDE_SONNET,
     maxTokens: 2048,
     temperature: 0.7,
   },
   bullets: {
     generationType: 'bullets',
-    modelId: CLAUDE_3_HAIKU,
+    modelId: CLAUDE_HAIKU,
     maxTokens: 1024,
     temperature: 0.5,
   },
   seo: {
     generationType: 'seo',
-    modelId: CLAUDE_3_SONNET,
+    modelId: CLAUDE_SONNET,
     maxTokens: 2048,
     temperature: 0.3,
   },
   category: {
     generationType: 'category',
-    modelId: CLAUDE_3_HAIKU,
+    modelId: CLAUDE_HAIKU,
     maxTokens: 512,
     temperature: 0.3,
   },
   brand: {
     generationType: 'brand',
-    modelId: CLAUDE_3_HAIKU,
+    modelId: CLAUDE_HAIKU,
     maxTokens: 512,
     temperature: 0.3,
   },
   attributes: {
     generationType: 'attributes',
-    modelId: CLAUDE_3_HAIKU,
+    modelId: CLAUDE_HAIKU,
     maxTokens: 1024,
     temperature: 0.3,
   },
   keywords: {
     generationType: 'keywords',
-    modelId: CLAUDE_3_HAIKU,
+    modelId: CLAUDE_HAIKU,
     maxTokens: 1024,
     temperature: 0.5,
   },
   compliance: {
     generationType: 'compliance',
-    modelId: CLAUDE_3_SONNET,
+    modelId: CLAUDE_SONNET,
     maxTokens: 4096,
     temperature: 0.3,
   },

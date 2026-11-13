@@ -233,8 +233,8 @@ export class ProductIntelligenceStack extends cdk.Stack {
     });
 
     // Bedrock InvokeModel — scoped to Bedrock foundation-models and EU
-    // inference-profiles (Req 17.3). The current Claude models (Haiku 4.5 /
-    // Sonnet 4.5) are INFERENCE_PROFILE only, so runtime invokes the `eu.`
+    // inference-profiles (Req 17.3). The Claude models (Haiku 5.5 /
+    // Sonnet 5.5) are INFERENCE_PROFILE only, so runtime invokes the `eu.`
     // cross-region inference profile. We scope by resource type (wildcard id)
     // rather than exact ARNs — model selection is pinned in
     // services/product-intelligence/services/model-config.ts.
