@@ -24,6 +24,15 @@ packages/**/*.js.map
 # CDK
 cdk.out/
 .cdk.staging/
+# CDK deploy/diff logs (transient)
+infrastructure/cdk-deploy-*.log
+infrastructure/cdk-diff-*.log
+
+# Secrets / signing keys — NEVER commit. The image signed-URL private key
+# lives in Secrets Manager; the public key is in cdk.context.json.
+.img-signing-private.pem
+.img-signing-public.pem
+*.pem
 
 # IDE
 .idea/
