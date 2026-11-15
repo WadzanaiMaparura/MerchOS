@@ -19,14 +19,32 @@ export type SubscriptionStatus =
 export type BillingCycle = 'monthly' | 'annual';
 
 /**
+ * Identifier for the payment provider backing a subscription. Provider-neutral
+ * so the platform can support PayFast (ZA) today and others later.
+ */
+export type PaymentProviderId = 'payfast' | 'stripe' | 'manual';
+
+/**
  * Current subscription record for a tenant.
  * DynamoDB: PK TENANT#<tenantId>, SK SUBSCRIPTION#current
+ *
+ * NOTE: `stripe*` fields are retained (now optional) for backward compatibility
+ * with any existing code/data. New code uses the provider-neutral fields
+ * `provider` / `providerRef` / `mPaymentId`.
  */
 export interface Subscription {
   tenantId: string;
   planId: PlanId;
-  stripeCustomerId: string;
-  stripeSubscriptionId: string;
+  /** @deprecated Use `provider`/`providerRef`. Kept optional for back-compat. */
+  stripeCustomerId?: string;
+  /** @deprecated Use `provider`/`providerRef`. Kept optional for back-compat. */
+  stripeSubscriptionId?: string;
+  /** Provider-neutral payment provider id (e.g. 'payfast'). */
+  provider?: PaymentProviderId;
+  /** Provider-side reference (e.g. PayFast m_payment_id / token). */
+  providerRef?: string;
+  /** PayFast m_payment_id that most recently activated this subscription. */
+  mPaymentId?: string;
   billingCycle: BillingCycle;
   status: SubscriptionStatus;
   /** ISO 8601 timestamp */
@@ -73,7 +91,11 @@ export interface PlanLimits {
 export interface Invoice {
   tenantId: string;
   invoiceId: string;
-  stripeInvoiceId: string;
+  /** @deprecated Provider-specific. Optional for back-compat. */
+  stripeInvoiceId?: string;
+  /** Provider-neutral provider id and reference. */
+  provider?: PaymentProviderId;
+  providerRef?: string;
   amountDue: number;
   amountPaid: number;
   currency: string;

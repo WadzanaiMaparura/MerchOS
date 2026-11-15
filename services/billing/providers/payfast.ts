@@ -1,0 +1,308 @@
+/**
+ * PayFast payment provider adapter (South Africa).
+ *
+ * Implements the provider-neutral {@link PaymentProvider} interface for PayFast
+ * hosted checkout ("Custom Integration" redirect) and ITN (Instant Transaction
+ * Notification) verification.
+ *
+ * SECURITY-SENSITIVE. The signature algorithm and verification are reproduced
+ * from the PayFast spec below. Two independent rules protect against tampering:
+ *   1. Signature verification (this file) — proves the payload came from PayFast
+ *      (knowledge of merchant key + passphrase).
+ *   2. Server-side amount check + idempotency (the ITN handler) — never trust
+ *      the posted amount; it is re-derived from our own subscription intent.
+ *
+ * ---------------------------------------------------------------------------
+ * PayFast MD5 signature algorithm (both outbound checkout and inbound ITN):
+ *
+ *   1. Build a parameter string by concatenating `key=value&` pairs IN ORDER:
+ *        - Outbound (checkout): the EXACT order the fields are placed in the
+ *          submitted form (NOT alphabetical). We control this order via
+ *          CHECKOUT_FIELD_ORDER below.
+ *        - Inbound (ITN): the order the fields were POSTED to us, excluding the
+ *          `signature` field itself. We preserve POST order by parsing the raw
+ *          urlencoded body left-to-right.
+ *   2. URL-encode each VALUE using PHP urlencode() semantics:
+ *        - spaces become '+'
+ *        - all other reserved chars are percent-encoded with UPPERCASE hex.
+ *      Keys are NOT encoded. Empty values are omitted entirely.
+ *   3. Trim the trailing '&'.
+ *   4. If a passphrase is configured, append `&passphrase=<urlencoded passphrase>`.
+ *   5. signature = md5(parameterString) as lowercase hex.
+ *
+ * Reference: PayFast developer docs ("Custom Integration" / "Confirm the
+ * payment" signature section). Content was rephrased for compliance with
+ * licensing restrictions.
+ * ---------------------------------------------------------------------------
+ */
+
+import crypto from 'node:crypto';
+
+import type {
+  CheckoutRequest,
+  CheckoutResult,
+  ItnVerificationResult,
+  PaymentProvider,
+} from './payment-provider';
+import { getPlan, centsToDecimalString } from '../config/plans';
+
+// ---------------------------------------------------------------------------
+// Config
+// ---------------------------------------------------------------------------
+
+type PayFastMode = 'sandbox' | 'live';
+
+export interface PayFastConfig {
+  merchantId: string;
+  merchantKey: string;
+  /** Optional passphrase. If set it MUST be included in the signature. */
+  passphrase?: string;
+  mode: PayFastMode;
+  /** Absolute URL PayFast POSTs the ITN to (our webhook). */
+  notifyUrl: string;
+}
+
+/** PayFast process (redirect) endpoints. */
+const PROCESS_URL: Record<PayFastMode, string> = {
+  sandbox: 'https://sandbox.payfast.co.za/eng/process',
+  live: 'https://www.payfast.co.za/eng/process',
+};
+
+/**
+ * The EXACT field order PayFast expects for the checkout signature. The
+ * signature must be computed over the fields in this order, and the same order
+ * is used to build the redirect querystring.
+ */
+const CHECKOUT_FIELD_ORDER = [
+  'merchant_id',
+  'merchant_key',
+  'return_url',
+  'cancel_url',
+  'notify_url',
+  'm_payment_id',
+  'amount',
+  'item_name',
+  'email_address',
+  // custom_str1 carries our tenantId. PayFast echoes it back on the ITN so the
+  // webhook (which has no JWT) can locate the correct tenant partition.
+  'custom_str1',
+] as const;
+
+/** Reads PayFast config from environment variables. */
+export function loadPayFastConfigFromEnv(): PayFastConfig {
+  const mode = (process.env['PAYFAST_MODE'] as PayFastMode) ?? 'sandbox'; // PLACEHOLDER — default to sandbox until live creds confirmed
+  const passphrase = process.env['PAYFAST_PASSPHRASE'];
+  return {
+    merchantId: process.env['PAYFAST_MERCHANT_ID'] ?? '',
+    merchantKey: process.env['PAYFAST_MERCHANT_KEY'] ?? '',
+    ...(passphrase ? { passphrase } : {}),
+    mode,
+    notifyUrl: process.env['PAYFAST_NOTIFY_URL'] ?? '',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// URL-encoding + signature helpers (unit-testable in isolation)
+// ---------------------------------------------------------------------------
+
+/**
+ * PHP urlencode()-compatible encoder.
+ *
+ * encodeURIComponent() differs from PHP urlencode() in two ways PayFast cares
+ * about: it does NOT turn spaces into '+', and it leaves !*'()~ unescaped. We
+ * normalise to the PHP behaviour so our signature matches PayFast's.
+ */
+export function payfastUrlEncode(value: string): string {
+  return encodeURIComponent(value)
+    .replace(/%20/g, '+')
+    // Percent-encode the chars encodeURIComponent leaves alone that PHP encodes.
+    .replace(/[!*'()~]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
+/**
+ * Builds the signature parameter string from ordered key/value pairs.
+ * Empty values are skipped (matches PayFast behaviour of omitting blank fields).
+ * Appends the passphrase last if provided.
+ */
+export function buildSignatureString(
+  orderedPairs: Array<[string, string]>,
+  passphrase?: string
+): string {
+  const parts: string[] = [];
+  for (const [key, value] of orderedPairs) {
+    if (value === undefined || value === null || value === '') continue;
+    parts.push(`${key}=${payfastUrlEncode(value)}`);
+  }
+  let str = parts.join('&');
+  if (passphrase !== undefined && passphrase !== '') {
+    str += `&passphrase=${payfastUrlEncode(passphrase)}`;
+  }
+  return str;
+}
+
+/** Computes the lowercase-hex MD5 signature over ordered pairs. */
+export function computeSignature(
+  orderedPairs: Array<[string, string]>,
+  passphrase?: string
+): string {
+  const str = buildSignatureString(orderedPairs, passphrase);
+  return crypto.createHash('md5').update(str).digest('hex');
+}
+
+/**
+ * Parses a urlencoded body into ordered [key, value] pairs, preserving the
+ * original POST order. PayFast ITN signature must be verified in POST order, so
+ * we cannot use URLSearchParams iteration guarantees loosely — we split the raw
+ * body ourselves and decode `+` as space and percent-escapes.
+ */
+export function parseUrlEncodedOrdered(rawBody: string): Array<[string, string]> {
+  const pairs: Array<[string, string]> = [];
+  if (!rawBody) return pairs;
+  for (const segment of rawBody.split('&')) {
+    if (segment === '') continue;
+    const eq = segment.indexOf('=');
+    const rawKey = eq === -1 ? segment : segment.slice(0, eq);
+    const rawVal = eq === -1 ? '' : segment.slice(eq + 1);
+    const key = decodeURIComponent(rawKey.replace(/\+/g, ' '));
+    const val = decodeURIComponent(rawVal.replace(/\+/g, ' '));
+    pairs.push([key, val]);
+  }
+  return pairs;
+}
+
+// ---------------------------------------------------------------------------
+// Adapter
+// ---------------------------------------------------------------------------
+
+export class PayFastProvider implements PaymentProvider {
+  readonly name = 'payfast';
+  private readonly config: PayFastConfig;
+
+  constructor(config?: PayFastConfig) {
+    this.config = config ?? loadPayFastConfigFromEnv();
+  }
+
+  async initiateCheckout(req: CheckoutRequest): Promise<CheckoutResult> {
+    const plan = getPlan(req.planId);
+    if (plan.priceZARCents === null) {
+      // Enterprise / custom plans are quote-based and cannot self-checkout.
+      throw new Error(`Plan ${req.planId} has no self-service price (custom/enterprise)`);
+    }
+
+    const mPaymentId = crypto.randomUUID();
+    const amount = centsToDecimalString(plan.priceZARCents);
+
+    // Build the field map in the EXACT required order (see CHECKOUT_FIELD_ORDER).
+    const values: Record<(typeof CHECKOUT_FIELD_ORDER)[number], string> = {
+      merchant_id: this.config.merchantId,
+      merchant_key: this.config.merchantKey,
+      return_url: req.returnUrl,
+      cancel_url: req.cancelUrl,
+      notify_url: this.config.notifyUrl,
+      m_payment_id: mPaymentId,
+      amount,
+      item_name: plan.name,
+      email_address: req.email,
+      custom_str1: req.tenantId,
+    };
+
+    const orderedPairs = CHECKOUT_FIELD_ORDER.map(
+      (k) => [k, values[k]] as [string, string]
+    );
+
+    const signature = computeSignature(orderedPairs, this.config.passphrase);
+
+    // The redirect querystring uses the same order plus the signature last.
+    const query = orderedPairs
+      .filter(([, v]) => v !== '')
+      .map(([k, v]) => `${k}=${payfastUrlEncode(v)}`)
+      .concat([`signature=${signature}`])
+      .join('&');
+
+    const redirectUrl = `${PROCESS_URL[this.config.mode]}?${query}`;
+
+    return { redirectUrl, mPaymentId };
+  }
+
+  async verifyItn(
+    rawBody: string,
+    _headers: Record<string, string | undefined>,
+    _sourceIp?: string
+  ): Promise<ItnVerificationResult> {
+    const ordered = parseUrlEncodedOrdered(rawBody);
+
+    // Extract posted signature and build a flat map for business reads.
+    const raw: Record<string, string> = {};
+    let postedSignature: string | undefined;
+    const pairsForSig: Array<[string, string]> = [];
+    for (const [key, value] of ordered) {
+      raw[key] = value;
+      if (key === 'signature') {
+        postedSignature = value;
+        continue; // the signature field is excluded from the recomputation
+      }
+      pairsForSig.push([key, value]);
+    }
+
+    if (!postedSignature) {
+      return { valid: false, raw, reason: 'missing_signature' };
+    }
+
+    // (a) Recompute the signature over the posted fields in POST order.
+    const expected = computeSignature(pairsForSig, this.config.passphrase);
+    const signatureValid = timingSafeEqualHex(expected, postedSignature);
+
+    if (!signatureValid) {
+      return { valid: false, raw, reason: 'signature_mismatch' };
+    }
+
+    // ----------------------------------------------------------------------
+    // TODO: postback validation to PayFast /eng/query/validate
+    //   PayFast recommends a server-to-server confirmation POST of the received
+    //   payload to https://{sandbox|www}.payfast.co.za/eng/query/validate and
+    //   expecting the body "VALID". This requires an outbound network call and
+    //   is intentionally STUBBED here (CODE ONLY — no network calls).
+    // TODO: source-IP allowlist — verify sourceIp is within PayFast's published
+    //   ranges (resolve www.payfast.co.za / sandbox host). Also STUBBED.
+    // These two checks are defence-in-depth; the signature + server-side amount
+    // re-derivation in the handler remain the primary controls.
+    // ----------------------------------------------------------------------
+
+    // (b) Surface gross amount (in cents) and payment status for the handler.
+    const amountGross = raw['amount_gross'];
+    const amountGrossCents =
+      amountGross !== undefined ? decimalStringToCents(amountGross) : undefined;
+
+    const result: ItnVerificationResult = {
+      valid: true,
+      raw,
+    };
+    if (raw['m_payment_id'] !== undefined) result.mPaymentId = raw['m_payment_id'];
+    if (amountGrossCents !== undefined) result.amountGrossCents = amountGrossCents;
+    if (raw['payment_status'] !== undefined) result.paymentStatus = raw['payment_status'];
+    return result;
+  }
+}
+
+/** Timing-safe comparison of two hex strings of equal length. */
+function timingSafeEqualHex(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(a, 'hex'), Buffer.from(b, 'hex'));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Converts a PayFast decimal amount string (e.g. "499.00") to integer cents.
+ * Returns undefined for malformed input rather than throwing.
+ */
+export function decimalStringToCents(decimal: string): number | undefined {
+  const m = /^(\d+)(?:\.(\d{1,2}))?$/.exec(decimal.trim());
+  if (!m) return undefined;
+  const rands = Number(m[1]);
+  const fraction = (m[2] ?? '').padEnd(2, '0');
+  const cents = Number(fraction);
+  return rands * 100 + cents;
+}

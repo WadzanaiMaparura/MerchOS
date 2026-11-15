@@ -109,6 +109,20 @@ export function invoiceSK(invoiceId: string): string {
   return `INVOICE#${invoiceId}`;
 }
 
+/** Returns the sort key for a monthly credit ledger record: `CREDITS#<yyyyMM>` */
+export function creditsSK(yyyyMM: string): string {
+  return `CREDITS#${yyyyMM}`;
+}
+
+/**
+ * Returns the sort key for a payment idempotency record: `PAYMENT#<mPaymentId>`.
+ * Written with attribute_not_exists so a replayed provider webhook (ITN) for the
+ * same m_payment_id cannot be applied twice.
+ */
+export function paymentSK(mPaymentId: string): string {
+  return `PAYMENT#${mPaymentId}`;
+}
+
 // ---------------------------------------------------------------------------
 // Error types
 // ---------------------------------------------------------------------------
