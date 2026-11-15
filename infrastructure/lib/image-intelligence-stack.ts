@@ -557,10 +557,16 @@ export class ImageIntelligenceStack extends cdk.Stack {
     const moderateStep = withRetries(
       new tasks.LambdaInvoke(this, 'ModerateImage', {
         lambdaFunction: moderationFn,
+        // Select only the fields the handler ALWAYS returns. `rejectedLabels`
+        // is present only when the image is REJECTED, so pulling it in the
+        // resultSelector unconditionally throws States.Runtime on the (normal)
+        // pass path. The quarantine handler already tolerates its absence
+        // (`event.moderation.rejectedLabels ?? []`), so omitting it here is
+        // safe. The Choice reads $.moderation.passed; quarantine reads
+        // $.moderation.sourceKey — both always present.
         payload: sfn.TaskInput.fromJsonPathAt('$'),
         resultSelector: {
           'passed.$': '$.Payload.passed',
-          'rejectedLabels.$': '$.Payload.rejectedLabels',
           'sourceKey.$': '$.Payload.sourceKey',
         },
         resultPath: '$.moderation',
