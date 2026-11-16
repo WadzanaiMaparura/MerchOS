@@ -134,7 +134,7 @@ export async function findGenuineInvitationByEmail(
           FilterExpression: '#status = :status',
           ExpressionAttributeNames: { '#status': 'status' },
           ExpressionAttributeValues: { ':email': email, ':status': 'pending' },
-          ExclusiveStartKey: exclusiveStartKey,
+          ...(exclusiveStartKey ? { ExclusiveStartKey: exclusiveStartKey } : {}),
         }),
       );
 

@@ -31,11 +31,11 @@ interface ImportQueueMessage {
   supplierId: string;
   sourceType: SourceType;
   sourceReference: string;
-  fileName?: string;
-  contentType?: string;
-  fileSizeBytes?: number;
-  url?: string;
-  crawlDepth?: number;
+  fileName?: string | undefined;
+  contentType?: string | undefined;
+  fileSizeBytes?: number | undefined;
+  url?: string | undefined;
+  crawlDepth?: number | undefined;
 }
 
 // ---------------------------------------------------------------------------

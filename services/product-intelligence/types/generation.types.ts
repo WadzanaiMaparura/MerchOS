@@ -37,21 +37,21 @@ export type MarketplaceId = 'takealot' | 'makro' | 'amazon' | 'shopify' | 'wooco
  */
 export interface ProductData {
   /** Product name or title */
-  name?: string;
+  name?: string | undefined;
   /** Raw product description text */
-  description?: string;
+  description?: string | undefined;
   /** Product category */
-  category?: string;
+  category?: string | undefined;
   /** Brand name */
-  brand?: string;
+  brand?: string | undefined;
   /** Key-value pairs of product attributes (e.g., color, size, material) */
-  attributes?: Record<string, string>;
+  attributes?: Record<string, string> | undefined;
   /** URLs of product images */
-  images?: string[];
+  images?: string[] | undefined;
   /** Product price information */
-  price?: { amount: number; currency: string };
+  price?: { amount: number; currency: string } | undefined;
   /** Existing content to optimize or validate */
-  existingContent?: string;
+  existingContent?: string | undefined;
 }
 
 /**

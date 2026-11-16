@@ -57,13 +57,13 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
   const parseResult = updateProductSchema.safeParse(body);
   if (!parseResult.success) {
     const firstError = parseResult.error.errors[0];
-    const field = firstError.path.length > 0 ? firstError.path.join('.') : undefined;
+    const field = firstError && firstError.path.length > 0 ? firstError.path.join('.') : undefined;
     return {
       statusCode: 400,
       body: JSON.stringify({
         error: {
           code: 'VALIDATION_ERROR',
-          message: firstError.message,
+          message: firstError?.message ?? 'Validation failed',
           ...(field && { field }),
         },
       }),

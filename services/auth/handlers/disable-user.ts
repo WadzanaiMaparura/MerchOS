@@ -134,7 +134,7 @@ export const handler = middy(baseHandler)
   .use(
     rbacMiddleware({
       resource: 'users',
-      action: 'disable',
+      action: 'update',
     }),
   )
   .use(tenantContextMiddleware());

@@ -33,9 +33,9 @@ export interface SEOAnalysisInput {
   /** Product data used as context for analysis */
   productData: ProductData;
   /** Optional target marketplace for platform-specific SEO guidelines */
-  marketplace?: MarketplaceId;
+  marketplace?: MarketplaceId | undefined;
   /** Whether to generate a meta description (defaults to true) */
-  generateMetaDescription?: boolean;
+  generateMetaDescription?: boolean | undefined;
 }
 
 // ---------------------------------------------------------------------------

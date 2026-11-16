@@ -47,9 +47,9 @@ export interface TitleGenerationInput {
   /** Product data used as context for generation */
   productData: ProductData;
   /** Optional target marketplace for platform-specific rules */
-  marketplace?: MarketplaceId;
+  marketplace?: MarketplaceId | undefined;
   /** Additional attributes to incorporate into the title */
-  attributes?: Record<string, string>;
+  attributes?: Record<string, string> | undefined;
 }
 
 /**
@@ -59,11 +59,11 @@ export interface DescriptionGenerationInput {
   /** Product data used as context for generation */
   productData: ProductData;
   /** Optional target marketplace for platform-specific rules */
-  marketplace?: MarketplaceId;
+  marketplace?: MarketplaceId | undefined;
   /** Desired tone for the description */
-  tone?: 'professional' | 'casual' | 'luxury';
+  tone?: 'professional' | 'casual' | 'luxury' | undefined;
   /** Target word count range with 10% tolerance */
-  wordCountRange?: { min: number; max: number };
+  wordCountRange?: { min: number; max: number } | undefined;
 }
 
 /**
@@ -73,11 +73,11 @@ export interface BulletGenerationInput {
   /** Product data used as context for generation */
   productData: ProductData;
   /** Optional target marketplace for platform-specific rules */
-  marketplace?: MarketplaceId;
+  marketplace?: MarketplaceId | undefined;
   /** Number of bullets to produce (default 5, configurable 1-20) */
-  count?: number;
+  count?: number | undefined;
   /** Additional attributes to incorporate into bullets */
-  attributes?: Record<string, string>;
+  attributes?: Record<string, string> | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -679,7 +679,7 @@ export class ContentGenerator {
     template: PromptTemplate;
     bedrockResult: BedrockInvocationResult;
     startTime: number;
-    marketplace?: MarketplaceId;
+    marketplace?: MarketplaceId | undefined;
     truncated: boolean;
   }): GenerationResult {
     const {

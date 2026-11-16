@@ -27,7 +27,7 @@ export interface BrandDetectionInput {
   /** Product data providing additional context for brand identification */
   productData: ProductData;
   /** Optional list of known brands to validate detections against */
-  brandRegistry?: string[];
+  brandRegistry?: string[] | undefined;
 }
 
 // ---------------------------------------------------------------------------

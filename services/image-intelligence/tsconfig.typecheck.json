@@ -19,5 +19,13 @@
     "jsx": "react-jsx",
     "composite": false,
     "noEmit": true
-  }
+  },
+  "include": [
+    "handlers/**/*.ts",
+    "processors/**/*.ts",
+    "schemas/**/*.ts",
+    "utils/**/*.ts",
+    "types/**/*.ts",
+    "typecheck-shims/**/*.d.ts"
+  ]
 }

@@ -26,7 +26,7 @@ import { logger } from '../../shared/middleware/powertools';
 // Types
 // ---------------------------------------------------------------------------
 
-interface ListUsersEvent extends APIGatewayProxyEventV2 {
+interface ListUsersEvent extends Omit<APIGatewayProxyEventV2, 'queryStringParameters'> {
   queryStringParameters: {
     tenantId: string;
     limit: number;
@@ -76,7 +76,7 @@ async function baseHandler(event: ListUsersEvent): Promise<APIGatewayProxyResult
       UserPoolId: userPoolId,
       GroupName: 'Seller',
       Limit: limit,
-      NextToken: nextToken,
+      ...(nextToken ? { NextToken: nextToken } : {}),
     });
 
     const response = await cognitoClient.send(command);
@@ -141,7 +141,7 @@ export const handler = middy(baseHandler)
   .use(
     rbacMiddleware({
       resource: 'users',
-      action: 'list',
+      action: 'read',
     }),
   )
   .use(tenantContextMiddleware())

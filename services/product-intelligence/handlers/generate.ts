@@ -44,7 +44,7 @@ import { responseCache } from '../services/response-cache';
 import { promptManager } from '../services/prompt-manager';
 import { marketplaceAdapter } from '../services/marketplace-adapter';
 import type { CacheKeyInput } from '../types/cache.types';
-import type { MarketplaceId } from '../types/generation.types';
+import type { MarketplaceId, ProductData } from '../types/generation.types';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -210,7 +210,10 @@ async function storeResult(
  * 5. Response cache set after successful generation
  */
 async function routeToService(request: GenerateRequestInput): Promise<GenerationResult> {
-  const { type, productData, marketplace, options } = request;
+  const { type, marketplace, options } = request;
+  // zod's inferred type is looser than ProductData under exactOptionalPropertyTypes;
+  // the payload has already been validated by generateRequestSchema.
+  const productData = request.productData as ProductData;
 
   // Content-generator types: full orchestration is internal
   switch (type) {
@@ -248,7 +251,9 @@ async function routeToService(request: GenerateRequestInput): Promise<Generation
 /**
  * Normalizes request data into a deterministic string for cache key computation.
  */
-function normalizeRequestInput(request: GenerateRequestInput): string {
+function normalizeRequestInput(
+  request: Omit<GenerateRequestInput, 'productData'> & { productData: ProductData },
+): string {
   const { type, productData, marketplace, options } = request;
   const payload = {
     type,
@@ -284,7 +289,7 @@ function normalizeRequestInput(request: GenerateRequestInput): string {
  */
 async function routeNonContentGeneratorService(
   type: GenerationType,
-  productData: GenerateRequestInput['productData'],
+  productData: ProductData,
   marketplace: MarketplaceId | undefined,
   options: Record<string, unknown> | undefined,
 ): Promise<GenerationResult> {

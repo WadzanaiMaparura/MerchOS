@@ -30,7 +30,7 @@ import { logger } from '../../shared/middleware/powertools';
 // Types
 // ---------------------------------------------------------------------------
 
-interface UpdateRoleEvent extends APIGatewayProxyEventV2 {
+interface UpdateRoleEvent extends Omit<APIGatewayProxyEventV2, 'body'> {
   body: {
     role: string;
   };
@@ -206,7 +206,7 @@ export const handler = middy(baseHandler)
   .use(
     rbacMiddleware({
       resource: 'users',
-      action: 'updateRole',
+      action: 'update',
     }),
   )
   .use(tenantContextMiddleware())

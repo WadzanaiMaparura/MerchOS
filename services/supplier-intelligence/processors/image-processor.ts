@@ -62,7 +62,7 @@ export interface OcrParsedRecord extends ParsedRecord {
   /** Fields that have been flagged for manual review (confidence < 0.70) */
   flaggedFields: string[];
   /** S3 key of the hero image in the assets bucket */
-  heroImageKey?: string;
+  heroImageKey?: string | undefined;
 }
 
 /** Result of the image processing operation. */
@@ -246,9 +246,9 @@ const SKU_PATTERNS = [
 ];
 
 interface ExtractedFields {
-  title?: string;
-  price?: string;
-  sku?: string;
+  title?: string | undefined;
+  price?: string | undefined;
+  sku?: string | undefined;
   confidence: OcrFieldConfidence;
 }
 

@@ -140,7 +140,7 @@ async function queryActiveJobCount(tableName: string, tenantId: string): Promise
           ':s3': 'PERSISTING',
         },
         Select: 'COUNT',
-        ExclusiveStartKey: lastEvaluatedKey,
+        ...(lastEvaluatedKey ? { ExclusiveStartKey: lastEvaluatedKey } : {}),
       }),
     );
 

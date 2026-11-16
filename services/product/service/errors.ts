@@ -33,7 +33,7 @@ export class ProductPersistenceError extends Error {
 
 export class ProductValidationError extends Error {
   public readonly code = 'PRODUCT_VALIDATION_ERROR';
-  public readonly field?: string;
+  public readonly field?: string | undefined;
   constructor(message: string, field?: string) {
     super(message);
     this.name = 'ProductValidationError';

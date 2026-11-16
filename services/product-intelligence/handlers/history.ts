@@ -126,10 +126,10 @@ function mapItemToGenerationResult(item: Record<string, unknown>): GenerationRes
       cached: cached as boolean,
       modelId: (rest['modelId'] as string) ?? '',
       latencyMs: (rest['latencyMs'] as number) ?? 0,
-      ...(marketplace && { marketplace: marketplace as GenerationResult['metadata']['marketplace'] }),
-      ...(marketplaceCompliance && {
+      ...(marketplace ? { marketplace: marketplace as GenerationResult['metadata']['marketplace'] } : {}),
+      ...(marketplaceCompliance ? {
         marketplaceCompliance: marketplaceCompliance as GenerationResult['metadata']['marketplaceCompliance'],
-      }),
+      } : {}),
     },
     createdAt: createdAt as string,
   } as GenerationResult;

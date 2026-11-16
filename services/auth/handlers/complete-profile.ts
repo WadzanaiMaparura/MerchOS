@@ -54,7 +54,7 @@ interface CompleteProfileBody {
   consentChannels: ConsentChannel[];
 }
 
-interface CompleteProfileEvent extends APIGatewayProxyEventV2 {
+interface CompleteProfileEvent extends Omit<APIGatewayProxyEventV2, 'body'> {
   body: CompleteProfileBody;
 }
 
@@ -69,7 +69,7 @@ function json(statusCode: number, body: unknown): APIGatewayProxyResultV2 {
   };
 }
 
-function extractClaims(event: APIGatewayProxyEventV2): JwtClaims | undefined {
+function extractClaims(event: Omit<APIGatewayProxyEventV2, 'body'>): JwtClaims | undefined {
   const requestContext = event.requestContext as unknown as Record<string, unknown>;
   const authorizer = requestContext?.['authorizer'] as Record<string, unknown> | undefined;
   const jwt = authorizer?.['jwt'] as Record<string, unknown> | undefined;

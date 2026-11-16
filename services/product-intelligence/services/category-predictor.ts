@@ -27,7 +27,7 @@ export interface CategoryPredictionInput {
   /** Product data used to classify the product into categories */
   productData: ProductData;
   /** Optional target marketplace for taxonomy mapping */
-  marketplace?: MarketplaceId;
+  marketplace?: MarketplaceId | undefined;
 }
 
 /**

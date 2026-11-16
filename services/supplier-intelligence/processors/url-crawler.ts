@@ -62,9 +62,9 @@ export interface RobotsTxtResult {
   /** Whether crawling the target URL path is permitted */
   allowed: boolean;
   /** Human-readable explanation when crawling is disallowed */
-  reason?: string;
+  reason?: string | undefined;
   /** Crawl delay in seconds specified by robots.txt for the user-agent, if any */
-  crawlDelay?: number;
+  crawlDelay?: number | undefined;
 }
 
 /** @deprecated Use RobotsTxtResult instead */
