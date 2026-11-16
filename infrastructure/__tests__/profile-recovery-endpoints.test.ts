@@ -84,16 +84,18 @@ function resourcesForRole(template: Template, prefix: string): string[] {
 }
 
 describe('Profile-recovery endpoint preservation', () => {
-  it('preserves profile-recovery routes AND the pre-existing login/refresh/register-pending routes', () => {
+  it('preserves profile-recovery and register-pending routes, and keeps ADR-005 identity routes absent', () => {
     const { authApi } = synth();
     const keys = routeKeys(authApi);
     // Recovered endpoints are present...
     expect(keys).toContain('GET /auth/profile-status');
     expect(keys).toContain('POST /auth/complete-profile');
-    // ...and the routes a deploy must NOT delete remain present.
-    expect(keys).toContain('POST /auth/login');
-    expect(keys).toContain('POST /auth/refresh');
+    // ...the unauthenticated pre-signup capture route remains present...
     expect(keys).toContain('POST /auth/register-pending');
+    // ...and per ADR-005 identity operations run client-side via aws-amplify, so
+    // these server routes are intentionally absent.
+    expect(keys).not.toContain('POST /auth/login');
+    expect(keys).not.toContain('POST /auth/refresh');
   });
 
   it('creates dedicated ProfileStatus and CompleteProfile Lambdas', () => {

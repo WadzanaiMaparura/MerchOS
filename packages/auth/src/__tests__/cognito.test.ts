@@ -4,15 +4,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const signUpMock = vi.fn();
 const confirmSignUpMock = vi.fn();
 
-vi.mock('@aws-amplify/auth', () => ({
+vi.mock('aws-amplify/auth', () => ({
   signUp: (...args: unknown[]) => signUpMock(...args),
   confirmSignUp: (...args: unknown[]) => confirmSignUpMock(...args),
 }));
 
-// Mock the @aws-amplify/core singleton's Amplify.configure to avoid real
+// Mock the aws-amplify singleton's Amplify.configure to avoid real
 // side effects and to assert the configuration shape used for SRP sign-in.
 const configureMock = vi.fn();
-vi.mock('@aws-amplify/core', () => ({
+vi.mock('aws-amplify', () => ({
   Amplify: { configure: (...args: unknown[]) => configureMock(...args) },
 }));
 

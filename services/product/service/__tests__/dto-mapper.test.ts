@@ -42,6 +42,7 @@ function makeProduct(overrides?: Partial<CanonicalProduct>): CanonicalProduct {
           width: 800,
           height: 800,
           fileSize: 1000,
+          variantId: null,
         },
       ],
       variants: [],

@@ -35,7 +35,7 @@ import RegisterPage from '@/app/(auth)/register/page';
 const VALID = {
   fullName: 'Ada Lovelace',
   email: 'ada@example.com',
-  phone: '+27831234567',
+  phone: '831234567', // national digits; PhoneInput prepends the default +27
   org: 'Analytical Engines',
   password: 'Str0ng!passw0rd',
 };
@@ -96,15 +96,15 @@ describe('Registration form — validation', () => {
     cognitoSignUpMock.mockResolvedValue({ isSignUpComplete: false, userId: 'u1' });
   });
 
-  it('rejects a phone number without a leading + / country code', async () => {
+  it('rejects a phone number that is too short to be a valid international number', async () => {
     const user = userEvent.setup();
     render(<RegisterPage />);
     await fillValidForm(user);
 
-    // Overwrite phone with a national-format number (no +).
+    // PhoneInput always emits E.164 (+<dial><digits>), so the invalid case is a number that is too short.
     const phone = screen.getByLabelText(/phone number/i);
     await user.clear(phone);
-    await user.type(phone, '0831234567');
+    await user.type(phone, '12');
 
     await user.click(screen.getByRole('button', { name: /create account/i }));
 
@@ -188,7 +188,7 @@ describe('Registration form — pending-registration wiring', () => {
     );
     expect(payload.fullName).toBe(VALID.fullName);
     expect(payload.email).toBe(VALID.email);
-    expect(payload.phoneNumber).toBe(VALID.phone);
+    expect(payload.phoneNumber).toBe('+27' + VALID.phone);
     expect(payload.organisationName).toBe(VALID.org);
     expect(payload.marketingConsent).toBe(true);
     expect(payload).not.toHaveProperty('password');

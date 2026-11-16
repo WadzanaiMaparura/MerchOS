@@ -8,6 +8,9 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    // Generous timeouts: suites run in parallel under turbo/CI and userEvent typing is slow under load.
+    testTimeout: 30000,
+    hookTimeout: 30000,
     setupFiles: ['./vitest.setup.ts'],
     include: ['__tests__/**/*.test.ts', '__tests__/**/*.test.tsx'],
   },

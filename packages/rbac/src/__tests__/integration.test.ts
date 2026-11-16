@@ -369,12 +369,12 @@ describe('Integration: End-to-end authorization flow', () => {
           {
             roleId: 'Seller',
             permissions: [
-              ...defaultPermissionConfig.roles[0].permissions,
+              ...defaultPermissionConfig.roles[0]!.permissions,
               { resource: 'custom-reports', actions: ['read'] },
             ],
           },
-          defaultPermissionConfig.roles[1], // Support
-          defaultPermissionConfig.roles[2], // Admin
+          defaultPermissionConfig.roles[1]!, // Support
+          defaultPermissionConfig.roles[2]!, // Admin
         ],
       };
 

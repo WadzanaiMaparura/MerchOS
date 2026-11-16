@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mocked } from 'vitest';
 import { CanonicalProduct } from '@merch-os/types';
 import { ProductService } from '../product-service';
 import { ProductRepository } from '../../repository/product-repository';
@@ -25,7 +25,7 @@ function createMockRepository() {
     findBySku: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
-  } as unknown as vi.Mocked<ProductRepository>;
+  } as unknown as Mocked<ProductRepository>;
 }
 
 // ---------------------------------------------------------------------------
@@ -106,7 +106,7 @@ function makeCreateInput(
 // ---------------------------------------------------------------------------
 
 describe('ProductService', () => {
-  let repo: vi.Mocked<ProductRepository>;
+  let repo: Mocked<ProductRepository>;
   let service: ProductService;
 
   beforeEach(() => {
