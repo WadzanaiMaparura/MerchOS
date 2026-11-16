@@ -26,6 +26,6 @@
     "schemas/**/*.ts",
     "utils/**/*.ts",
     "types/**/*.ts",
-    "typecheck-shims/**/*.d.ts"
+    "typecheck-shims/**/*.ts"
   ]
 }
