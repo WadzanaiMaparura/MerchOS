@@ -42,6 +42,7 @@ import {
   recordPayment,
   getPayment,
   markPaymentApplied,
+  upsertInvoice,
 } from '../../services/subscription-store';
 import { grantCredits } from '../../services/credit-ledger';
 
@@ -175,6 +176,17 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
   if (plan.monthlyCredits !== null) {
     await grantCredits(tenantId, currentBillingMonth(now), plan.monthlyCredits);
   }
+
+  // Billing-history record for the seller (idempotent on the payment id).
+  await upsertInvoice(tenantId, {
+    invoiceId: mPaymentId,
+    planId: intent.planId,
+    amountCents: expectedCents,
+    periodStart: now.toISOString(),
+    periodEnd: periodEnd.toISOString(),
+    provider: 'payfast',
+    providerRef: mPaymentId,
+  });
 
   // Last step: only now is the payment considered fully applied.
   await markPaymentApplied(tenantId, mPaymentId);

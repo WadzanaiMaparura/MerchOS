@@ -7,7 +7,7 @@ import type {
   PaginatedResponse,
   PlanId,
 } from '@merch-os/types';
-import { useApiClient } from '../context';
+import { useBillingClient } from '../context';
 import type { ApiError } from '../errors';
 
 /** Query key factory for billing domain */
@@ -27,12 +27,30 @@ export interface PlanChangePayload {
   planId: PlanId;
 }
 
+/** Result of starting a plan change: where to send the buyer to pay. */
+export interface PlanChangeResult {
+  /** Signed PayFast hosted-checkout URL. Navigate the browser here. */
+  redirectUrl: string;
+  /** Our payment reference (PayFast m_payment_id). */
+  mPaymentId: string;
+}
+
+export interface UseBillingOptions {
+  /**
+   * Poll interval in ms, or false to disable. Used right after returning from
+   * the PayFast hosted page, while the server-to-server payment notification
+   * (ITN) is still being processed and the plan has not flipped to active yet.
+   */
+  refetchIntervalMs?: number | false;
+}
+
 /**
- * Fetches the tenant's billing overview including plan, usage, and limits.
+ * Fetches the tenant's billing overview: plan, status, credits, limits and the
+ * purchasable plan catalogue. Targets the Billing API (separate base URL).
  * Validates: Requirements 8.1, 8.2
  */
-export function useBilling() {
-  const client = useApiClient();
+export function useBilling(options?: UseBillingOptions) {
+  const client = useBillingClient();
 
   return useQuery<BillingOverview, ApiError>({
     queryKey: billingKeys.overview(),
@@ -40,6 +58,7 @@ export function useBilling() {
       const { data } = await client.get<BillingOverview>('/billing');
       return data;
     },
+    refetchInterval: options?.refetchIntervalMs ?? false,
   });
 }
 
@@ -49,7 +68,7 @@ export function useBilling() {
  * Validates: Requirements 8.3
  */
 export function useInvoices(params?: InvoiceListParams) {
-  const client = useApiClient();
+  const client = useBillingClient();
   const page = params?.page ?? 1;
   const pageSize = params?.pageSize ?? 20;
 
@@ -68,17 +87,19 @@ export function useInvoices(params?: InvoiceListParams) {
 }
 
 /**
- * Mutation to change the tenant's subscription plan.
- * Invalidates billing queries on success.
+ * Mutation to start a plan change. Does NOT change the plan: it returns a signed
+ * PayFast checkout URL the caller must navigate to. The plan only changes once
+ * PayFast confirms payment server-to-server.
  * Validates: Requirements 8.6
  */
 export function usePlanChange() {
-  const client = useApiClient();
+  const client = useBillingClient();
   const queryClient = useQueryClient();
 
-  return useMutation<void, ApiError, PlanChangePayload>({
+  return useMutation<PlanChangeResult, ApiError, PlanChangePayload>({
     mutationFn: async (payload) => {
-      await client.post('/billing/plan', payload);
+      const { data } = await client.post<PlanChangeResult>('/billing/plan', payload);
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: billingKeys.all });

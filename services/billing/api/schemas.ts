@@ -18,16 +18,24 @@ export const changePlanSchema = z
 
 export type ChangePlanInput = z.infer<typeof changePlanSchema>;
 
-/** Pagination query params shared by list endpoints. */
+/**
+ * Page-number pagination for list endpoints, matching the contract the
+ * seller-dashboard hooks already use (`page` / `pageSize`).
+ */
 export const paginationQuerySchema = z
   .object({
-    limit: z
+    page: z
+      .preprocess(
+        (v) => (v === undefined || v === '' ? undefined : Number(v)),
+        z.number().int().positive().optional()
+      )
+      .optional(),
+    pageSize: z
       .preprocess(
         (v) => (v === undefined || v === '' ? undefined : Number(v)),
         z.number().int().positive().max(100).optional()
       )
       .optional(),
-    nextToken: z.string().min(1).optional(),
   })
   .strict();
 

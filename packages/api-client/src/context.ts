@@ -73,3 +73,29 @@ export function useExportClient(): AxiosInstance {
   }
   return client;
 }
+
+/**
+ * Context providing an Axios instance pointed at the Billing API.
+ *
+ * The Billing API (`/billing`, `/billing/invoices`, `/billing/plan`) is a
+ * SEPARATE HTTP API from the main MerchOS API, with its own base URL
+ * (NEXT_PUBLIC_BILLING_API_URL). Supplied as a distinct context so billing hooks
+ * target the right endpoint while every other hook keeps using the main client
+ * via useApiClient().
+ */
+export const BillingClientContext = createContext<AxiosInstance | null>(null);
+
+/**
+ * Hook to access the Billing API Axios instance from context.
+ * Throws if used outside a provider that supplies BillingClientContext.
+ */
+export function useBillingClient(): AxiosInstance {
+  const client = useContext(BillingClientContext);
+  if (!client) {
+    throw new Error(
+      'useBillingClient must be used within a provider supplying ' +
+        'BillingClientContext (see ApiClientProvider).'
+    );
+  }
+  return client;
+}

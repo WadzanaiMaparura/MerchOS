@@ -18,6 +18,7 @@ import {
   subscriptionSK,
   paymentSK,
   checkoutSK,
+  invoiceSK,
   tenantPK,
 } from '../../shared/utils/dynamo-client';
 
@@ -108,6 +109,51 @@ export async function upsertSubscription(
     },
   });
   return record;
+}
+
+// ---------------------------------------------------------------------------
+// Invoices
+// ---------------------------------------------------------------------------
+
+export interface UpsertInvoiceInput {
+  /** Stable id — we use the payment's m_payment_id so a resumed ITN overwrites, never duplicates. */
+  invoiceId: string;
+  planId: PlanId;
+  /** Amount in integer ZAR cents. */
+  amountCents: number;
+  periodStart: string;
+  periodEnd: string;
+  provider: PaymentProviderId;
+  providerRef?: string;
+}
+
+/**
+ * Writes a PAID invoice record for a confirmed payment. Idempotent on invoiceId.
+ *
+ * NOTE: this is an invoice RECORD for the seller's billing history, not a VAT
+ * tax-invoice document. PDF / tax-invoice generation is a separate follow-up.
+ */
+export async function upsertInvoice(tenantId: string, input: UpsertInvoiceInput): Promise<void> {
+  const client = createTenantDynamoClient(tenantId);
+  await client.put({
+    TableName: BILLING_TABLE,
+    Item: {
+      PK: tenantPK(tenantId),
+      SK: invoiceSK(input.invoiceId),
+      tenantId,
+      invoiceId: input.invoiceId,
+      planId: input.planId,
+      amountDue: input.amountCents,
+      amountPaid: input.amountCents,
+      currency: 'ZAR',
+      status: 'paid',
+      periodStart: input.periodStart,
+      periodEnd: input.periodEnd,
+      provider: input.provider,
+      ...(input.providerRef !== undefined ? { providerRef: input.providerRef } : {}),
+      createdAt: new Date().toISOString(),
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------

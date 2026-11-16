@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   useBilling,
   useInvoices,
@@ -16,52 +16,50 @@ import {
 } from '@merch-os/ui';
 import type { ColumnDef } from '@merch-os/ui';
 import { useRole } from '@merch-os/auth';
-import type { InvoiceSummary, InvoiceStatus, PlanId } from '@merch-os/types';
+import type {
+  InvoiceSummary,
+  InvoiceStatus,
+  PlanId,
+  PlanCatalogueEntry,
+  CreditBalance,
+} from '@merch-os/types';
 
-// --- Plan definitions for plan change flow ---
+// --- Checkout return handling ---------------------------------------------
+//
+// After paying on PayFast's hosted page the buyer is sent back here with
+// ?checkout=success. The plan only changes when PayFast's server-to-server
+// notification (ITN) is processed, which can land a few seconds AFTER the
+// browser returns. So on return we poll the billing overview until the plan
+// reflects the purchase, instead of showing a stale plan.
 
-interface PlanOption {
-  planId: PlanId;
-  name: string;
-  price: string;
-  billingNote: string;
-  limits: {
-    enrichmentCalls: number | null;
-    imageCalls: number | null;
-    csvExports: number | null;
-  };
+/** How often to re-check the plan while confirming a payment. */
+const CONFIRM_POLL_MS = 3000;
+/** Stop polling (and tell the user) if confirmation takes this long. */
+const CONFIRM_TIMEOUT_MS = 120_000;
+/** sessionStorage key remembering which plan the buyer was paying for. */
+const PENDING_PLAN_KEY = 'merchos.billing.pendingPlan';
+
+// --- Formatting helpers -----------------------------------------------------
+
+/** Integer ZAR cents -> "R999" / "R1,999.50". */
+function formatZAR(cents: number): string {
+  return `R${(cents / 100).toLocaleString('en-ZA', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
-const AVAILABLE_PLANS: PlanOption[] = [
-  {
-    planId: 'starter',
-    name: 'Starter',
-    price: '$29/mo',
-    billingNote: 'Best for small catalogues',
-    limits: { enrichmentCalls: 500, imageCalls: 200, csvExports: 10 },
-  },
-  {
-    planId: 'growth',
-    name: 'Growth',
-    price: '$79/mo',
-    billingNote: 'For growing businesses',
-    limits: { enrichmentCalls: 2000, imageCalls: 1000, csvExports: 50 },
-  },
-  {
-    planId: 'professional',
-    name: 'Professional',
-    price: '$199/mo',
-    billingNote: 'High-volume sellers',
-    limits: { enrichmentCalls: 10000, imageCalls: 5000, csvExports: 200 },
-  },
-  {
-    planId: 'enterprise',
-    name: 'Enterprise',
-    price: 'Custom',
-    billingNote: 'Unlimited usage, dedicated support',
-    limits: { enrichmentCalls: null, imageCalls: null, csvExports: null },
-  },
-];
+function formatLimit(n: number | null): string {
+  return n === null ? 'Unlimited' : n.toLocaleString('en-ZA');
+}
+
+function formatDate(iso: string): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+}
 
 // --- Invoice status badge variant mapping ---
 
@@ -132,22 +130,71 @@ function AccessDenied() {
   );
 }
 
-// EMPTY PLACEHOLDER: the structure renders before the billing backend is
-// connected, but with no fabricated figures — blank values (em dash) and zero
-// usage. Replaced field-for-field once useBilling() returns real data.
+// EMPTY PLACEHOLDER: the structure renders before the billing response arrives,
+// but with no fabricated figures — blank values (em dash) and zero usage.
 const EMPTY_BILLING = {
   planId: undefined as unknown as PlanId,
   planName: '—',
   billingCycle: 'monthly' as const,
   subscriptionStatus: 'unknown',
-  currentPeriodStart: '—',
-  currentPeriodEnd: '—',
+  currentPeriodStart: '',
+  currentPeriodEnd: '',
   usage: { aiCalls: 0, imageCalls: 0, csvExports: 0 },
   limits: { maxAiCallsPerMonth: 0, maxImageCallsPerMonth: 0, maxCsvExportsPerMonth: 0 },
+  credits: undefined as CreditBalance | undefined,
+  plans: [] as PlanCatalogueEntry[],
 };
 
 function BillingContent() {
-  const { data: billingData } = useBilling();
+  // --- Checkout return state (read after mount to avoid SSR hydration mismatch)
+  const [checkout, setCheckout] = useState<'success' | 'cancelled' | null>(null);
+  const [pendingPlan, setPendingPlan] = useState<PlanId | null>(null);
+  const [pollIntervalMs, setPollIntervalMs] = useState<number | false>(false);
+  const [confirmTimedOut, setConfirmTimedOut] = useState(false);
+
+  useEffect(() => {
+    const param = new URLSearchParams(window.location.search).get('checkout');
+    if (param === 'success') {
+      setCheckout('success');
+      setPollIntervalMs(CONFIRM_POLL_MS);
+      try {
+        setPendingPlan((sessionStorage.getItem(PENDING_PLAN_KEY) as PlanId | null) ?? null);
+      } catch {
+        /* sessionStorage unavailable — fall back to "any active plan" */
+      }
+    } else if (param === 'cancelled') {
+      setCheckout('cancelled');
+    }
+  }, []);
+
+  const { data: billingData } = useBilling({ refetchIntervalMs: pollIntervalMs });
+
+  // Confirmed = active AND (if we know what they were buying) on that plan.
+  const isConfirmed =
+    billingData?.subscriptionStatus === 'active' &&
+    (pendingPlan === null || billingData.planId === pendingPlan);
+
+  useEffect(() => {
+    if (checkout === 'success' && isConfirmed) {
+      setPollIntervalMs(false);
+      try {
+        sessionStorage.removeItem(PENDING_PLAN_KEY);
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [checkout, isConfirmed]);
+
+  useEffect(() => {
+    if (checkout !== 'success') return undefined;
+    const timer = setTimeout(() => {
+      setConfirmTimedOut(true);
+      setPollIntervalMs(false);
+    }, CONFIRM_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [checkout]);
+
+  const confirming = checkout === 'success' && !isConfirmed && !confirmTimedOut;
 
   const [invoicePage, setInvoicePage] = useState(1);
   const { data: invoicesData, isLoading: invoicesLoading } = useInvoices({ page: invoicePage, pageSize: 20 });
@@ -160,8 +207,11 @@ function BillingContent() {
   const planChangeMutation = usePlanChange();
 
   // Use live billing when available; otherwise render the structure with empty
-  // placeholder values (no fabricated figures) until the backend is connected.
+  // placeholder values (no fabricated figures) until the response arrives.
   const billing = (billingData ?? EMPTY_BILLING) as NonNullable<typeof billingData> | typeof EMPTY_BILLING;
+  const plans: PlanCatalogueEntry[] = billing.plans ?? [];
+  const credits = billing.credits;
+  const selectedPlanEntry = plans.find((p) => p.planId === selectedPlan);
 
   const handlePdfDownload = async (invoice: InvoiceSummary) => {
     if (!invoice.downloadUrl) {
@@ -179,13 +229,19 @@ function BillingContent() {
 
   const handlePlanChangeConfirm = () => {
     if (!selectedPlan) return;
+    const chosen = selectedPlan;
     planChangeMutation.mutate(
-      { planId: selectedPlan },
+      { planId: chosen },
       {
-        onSuccess: () => {
-          setConfirmOpen(false);
-          setShowPlanChange(false);
-          setSelectedPlan(null);
+        onSuccess: (result) => {
+          // Remember what they are buying so the return trip can confirm THAT plan,
+          // then hand the browser to PayFast's hosted payment page.
+          try {
+            sessionStorage.setItem(PENDING_PLAN_KEY, chosen);
+          } catch {
+            /* ignore */
+          }
+          window.location.assign(result.redirectUrl);
         },
       }
     );
@@ -214,7 +270,7 @@ function BillingContent() {
     {
       id: 'billingPeriod',
       header: 'Billing Period',
-      cell: (row) => `${row.billingPeriodStart} — ${row.billingPeriodEnd}`,
+      cell: (row) => `${formatDate(row.billingPeriodStart)} — ${formatDate(row.billingPeriodEnd)}`,
     },
     {
       id: 'pdf',
@@ -257,6 +313,36 @@ function BillingContent() {
         </button>
       </div>
 
+      {/* Checkout return banners */}
+      {confirming && (
+        <Alert variant="info" title="Confirming your payment…">
+          Thanks, we&apos;re waiting for PayFast to confirm your payment. This usually takes a few
+          seconds. You don&apos;t need to do anything or pay again.
+        </Alert>
+      )}
+      {checkout === 'success' && isConfirmed && (
+        <Alert variant="success" title="Payment confirmed">
+          You&apos;re now on the {billing.planName} plan.
+        </Alert>
+      )}
+      {checkout === 'success' && !isConfirmed && confirmTimedOut && (
+        <Alert variant="warning" title="Still confirming your payment">
+          This is taking longer than usual. Your payment is safe: refresh this page in a minute. If
+          your plan hasn&apos;t updated after that, contact support and quote this page.
+        </Alert>
+      )}
+      {checkout === 'cancelled' && (
+        <Alert variant="info" title="Payment not completed">
+          You left the payment page before paying, so you haven&apos;t been charged and your plan is
+          unchanged.
+        </Alert>
+      )}
+      {planChangeMutation.isError && (
+        <Alert variant="error" title="Couldn't start checkout">
+          {planChangeMutation.error?.message || 'Something went wrong starting your payment. Please try again.'}
+        </Alert>
+      )}
+
       {/* Subscription Overview (Requirement 8.1) — compact summary row */}
       <Card title="Subscription Overview">
         <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-4">
@@ -281,96 +367,130 @@ function BillingContent() {
           <div>
             <dt className="text-xs font-medium uppercase tracking-wide text-gray-400">Current Period</dt>
             <dd className="mt-0.5 text-sm font-semibold text-gray-900">
-              {billing.currentPeriodStart} &ndash; {billing.currentPeriodEnd}
+              {formatDate(billing.currentPeriodStart)} &ndash; {formatDate(billing.currentPeriodEnd)}
             </dd>
           </div>
         </dl>
       </Card>
 
-      {/* Usage Meters (Requirement 8.2) */}
-      <Card title="Usage This Billing Period">
-        <div className="space-y-4">
-          <ProgressBar
-            label="Enrichment Calls"
-            value={billing.usage.aiCalls}
-            max={billing.limits.maxAiCallsPerMonth ?? 999999}
-          />
-          <ProgressBar
-            label="Image Calls"
-            value={billing.usage.imageCalls}
-            max={billing.limits.maxImageCallsPerMonth ?? 999999}
-          />
-          <ProgressBar
-            label="CSV Exports"
-            value={billing.usage.csvExports}
-            max={billing.limits.maxCsvExportsPerMonth ?? 999999}
-          />
-        </div>
-      </Card>
+      {/* Credits (Requirement 8.2) — the credit model replaces per-feature counters */}
+      {credits ? (
+        <Card title="Credits This Billing Period">
+          {credits.granted === null ? (
+            <p className="text-sm text-gray-600">
+              Your plan includes unlimited credits. {credits.consumed.toLocaleString('en-ZA')} used
+              this period.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              <ProgressBar
+                label="Credits used"
+                value={credits.consumed}
+                max={Math.max(credits.granted, 1)}
+              />
+              <p className="text-sm text-gray-600">
+                {(credits.remaining ?? 0).toLocaleString('en-ZA')} of{' '}
+                {credits.granted.toLocaleString('en-ZA')} credits remaining
+                {credits.overage > 0
+                  ? ` · ${credits.overage.toLocaleString('en-ZA')} extra credits used beyond your plan`
+                  : ''}
+                .
+              </p>
+            </div>
+          )}
+        </Card>
+      ) : (
+        <Card title="Usage This Billing Period">
+          <div className="space-y-4">
+            <ProgressBar
+              label="Enrichment Calls"
+              value={billing.usage.aiCalls}
+              max={billing.limits.maxAiCallsPerMonth ?? 999999}
+            />
+            <ProgressBar
+              label="Image Calls"
+              value={billing.usage.imageCalls}
+              max={billing.limits.maxImageCallsPerMonth ?? 999999}
+            />
+            <ProgressBar
+              label="CSV Exports"
+              value={billing.usage.csvExports}
+              max={billing.limits.maxCsvExportsPerMonth ?? 999999}
+            />
+          </div>
+        </Card>
+      )}
 
       {/* Plan Change Flow (Requirement 8.6) */}
       {showPlanChange && (
         <Card title="Available Plans">
           <p className="mb-4 text-sm text-gray-600">
-            Select a plan to upgrade or downgrade. Changes take effect at the start of your next billing cycle.
+            Choose a plan. You&apos;ll be taken to PayFast to pay securely, and your plan changes as
+            soon as the payment is confirmed. Prices are in South African Rand.
           </p>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {AVAILABLE_PLANS.map((plan) => (
-              <div
-                key={plan.planId}
-                className={`rounded-lg border p-4 ${
-                  plan.planId === billing.planId
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-blue-300'
-                }`}
-              >
-                <h3 className="text-lg font-semibold text-gray-900">
-                  {plan.name}
-                </h3>
-                <p className="text-2xl font-bold text-gray-900">{plan.price}</p>
-                <p className="text-sm text-gray-500">{plan.billingNote}</p>
-                <ul className="mt-3 space-y-1 text-sm text-gray-600">
-                  <li>
-                    Enrichment:{' '}
-                    {plan.limits.enrichmentCalls
-                      ? `${plan.limits.enrichmentCalls.toLocaleString()}/mo`
-                      : 'Unlimited'}
-                  </li>
-                  <li>
-                    Image Calls:{' '}
-                    {plan.limits.imageCalls
-                      ? `${plan.limits.imageCalls.toLocaleString()}/mo`
-                      : 'Unlimited'}
-                  </li>
-                  <li>
-                    CSV Exports:{' '}
-                    {plan.limits.csvExports
-                      ? `${plan.limits.csvExports.toLocaleString()}/mo`
-                      : 'Unlimited'}
-                  </li>
-                </ul>
-                {plan.planId !== billing.planId && (
-                  <button
-                    onClick={() => {
-                      setSelectedPlan(plan.planId);
-                      setConfirmOpen(true);
-                    }}
-                    className="mt-4 w-full rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+          {plans.length === 0 ? (
+            <p className="text-sm text-gray-500">Loading plans…</p>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+              {plans.map((plan, index) => {
+                const isCurrent = plan.planId === billing.planId && billing.subscriptionStatus === 'active';
+                const currentIndex = plans.findIndex((p) => p.planId === billing.planId);
+                const selfService = plan.priceZARCents !== null;
+                return (
+                  <div
+                    key={plan.planId}
+                    className={`rounded-lg border p-4 ${
+                      isCurrent ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'
+                    }`}
                   >
-                    {AVAILABLE_PLANS.findIndex((p) => p.planId === plan.planId) >
-                    AVAILABLE_PLANS.findIndex((p) => p.planId === billing.planId)
-                      ? 'Upgrade'
-                      : 'Downgrade'}
-                  </button>
-                )}
-                {plan.planId === billing.planId && (
-                  <p className="mt-4 text-center text-sm font-medium text-blue-700">
-                    Current Plan
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
+                    <h3 className="text-lg font-semibold text-gray-900">{plan.name}</h3>
+                    <p className="text-2xl font-bold text-gray-900">
+                      {plan.priceZARCents === null ? (
+                        'Custom'
+                      ) : (
+                        <>
+                          {formatZAR(plan.priceZARCents)}
+                          <span className="text-sm font-normal text-gray-500"> /month</span>
+                        </>
+                      )}
+                    </p>
+                    <ul className="mt-3 space-y-1 text-sm text-gray-600">
+                      <li>
+                        Credits:{' '}
+                        {plan.monthlyCredits === null
+                          ? 'Unlimited'
+                          : `${plan.monthlyCredits.toLocaleString('en-ZA')}/mo`}
+                      </li>
+                      <li>Products: {formatLimit(plan.limits.maxProducts)}</li>
+                      <li>Users: {formatLimit(plan.limits.maxUsers)}</li>
+                      <li>Channels: {plan.limits.maxChannels >= 999 ? 'Unlimited' : plan.limits.maxChannels}</li>
+                    </ul>
+                    {isCurrent && (
+                      <p className="mt-4 text-center text-sm font-medium text-blue-700">Current Plan</p>
+                    )}
+                    {!isCurrent && selfService && (
+                      <button
+                        onClick={() => {
+                          setSelectedPlan(plan.planId);
+                          setConfirmOpen(true);
+                        }}
+                        className="mt-4 w-full rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                      >
+                        {billing.subscriptionStatus !== 'active'
+                          ? 'Subscribe'
+                          : index > currentIndex
+                            ? 'Upgrade'
+                            : 'Downgrade'}
+                      </button>
+                    )}
+                    {!isCurrent && !selfService && (
+                      <p className="mt-4 text-center text-sm text-gray-500">Contact us for pricing</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </Card>
       )}
 
@@ -394,11 +514,13 @@ function BillingContent() {
       <ConfirmationModal
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        title="Confirm Plan Change"
-        description={`Are you sure you want to switch to the ${
-          AVAILABLE_PLANS.find((p) => p.planId === selectedPlan)?.name ?? ''
-        } plan? The change will take effect at the start of your next billing cycle.`}
-        confirmLabel="Confirm Change"
+        title="Continue to payment"
+        description={`You're about to subscribe to the ${selectedPlanEntry?.name ?? ''} plan${
+          selectedPlanEntry?.priceZARCents != null
+            ? ` for ${formatZAR(selectedPlanEntry.priceZARCents)} per month`
+            : ''
+        }. You'll be redirected to PayFast to complete payment securely. Your plan changes as soon as the payment is confirmed.`}
+        confirmLabel="Continue to PayFast"
         cancelLabel="Cancel"
         onConfirm={handlePlanChangeConfirm}
         onCancel={() => {

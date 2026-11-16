@@ -10,6 +10,8 @@ export {
   useIntelligenceClient,
   ExportClientContext,
   useExportClient,
+  BillingClientContext,
+  useBillingClient,
 } from './context';
 
 // Inventory hooks
@@ -32,7 +34,12 @@ export {
   usePlanChange,
   billingKeys,
 } from './hooks/useBilling';
-export type { InvoiceListParams, PlanChangePayload } from './hooks/useBilling';
+export type {
+  InvoiceListParams,
+  PlanChangePayload,
+  PlanChangeResult,
+  UseBillingOptions,
+} from './hooks/useBilling';
 
 // Channels hooks
 export {

@@ -66,6 +66,8 @@ export interface BillingOverview {
    * that only read usage/limits keep working unchanged.
    */
   credits?: CreditBalance;
+  /** The purchasable plan catalogue (ZAR) for the plan picker. */
+  plans?: PlanCatalogueEntry[];
 }
 
 /** A plan entry exposed to the frontend plan picker / pricing table. */

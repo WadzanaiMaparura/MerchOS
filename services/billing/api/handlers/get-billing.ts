@@ -19,7 +19,7 @@ import {
   extractTenantContext,
 } from '../../../shared/middleware/tenant-context';
 import { logger } from '../../../shared/middleware/logger';
-import { getPlan } from '../../config/plans';
+import { getPlan, PLAN_CATALOGUE } from '../../config/plans';
 import { getBalance } from '../../services/credit-ledger';
 import { getSubscription } from '../../services/subscription-store';
 import { mapErrorToResponse, ApiErrors } from '../error-mapper';
@@ -51,14 +51,7 @@ async function baseHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayPro
     // Credit model: granted/remaining are null for unmetered (enterprise).
     const unmetered = plan.monthlyCredits === null;
 
-    const overview: BillingOverview & {
-      credits: {
-        granted: number | null;
-        consumed: number;
-        overage: number;
-        remaining: number | null;
-      };
-    } = {
+    const overview: BillingOverview = {
       planName: plan.name,
       planId,
       billingCycle: 'monthly',
@@ -82,6 +75,9 @@ async function baseHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayPro
         overage: balance.overage,
         remaining: unmetered ? null : balance.remaining,
       },
+      // The plan catalogue (ZAR, integer cents) so the plan picker renders the
+      // real prices/allowances instead of hardcoded copies that can drift.
+      plans: Object.values(PLAN_CATALOGUE),
     };
 
     return {

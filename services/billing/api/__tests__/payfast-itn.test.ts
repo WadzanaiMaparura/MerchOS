@@ -6,6 +6,7 @@ vi.mock('../../services/subscription-store', () => ({
   recordPayment: vi.fn(),
   getPayment: vi.fn(),
   markPaymentApplied: vi.fn(),
+  upsertInvoice: vi.fn(),
 }));
 vi.mock('../../services/credit-ledger', () => ({
   grantCredits: vi.fn(),
@@ -72,6 +73,10 @@ describe('PayFast ITN — happy path', () => {
       expect.objectContaining({ planId: 'growth', status: 'active', provider: 'payfast', mPaymentId: 'pay-1' })
     );
     expect(ledger.grantCredits).toHaveBeenCalledWith('tenant-1', expect.stringMatching(/^\d{6}$/), 400);
+    expect(store.upsertInvoice).toHaveBeenCalledWith(
+      'tenant-1',
+      expect.objectContaining({ invoiceId: 'pay-1', amountCents: 99900, planId: 'growth' })
+    );
 
     const order = [
       vi.mocked(store.upsertSubscription).mock.invocationCallOrder[0]!,
