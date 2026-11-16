@@ -13,6 +13,7 @@ import { InvokeModelCommand, BedrockRuntimeClient } from '@aws-sdk/client-bedroc
 
 import { BrandDetector, type BrandDetectionInput } from '../../services/brand-detector';
 import { resetClientsForTesting } from '../../services/bedrock-client';
+import { getModelConfig } from '../../services/model-config';
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -227,9 +228,10 @@ describe('BrandDetector', () => {
 
       const calls = bedrockMock.commandCalls(InvokeModelCommand);
       expect(calls).toHaveLength(1);
-      expect(calls[0]!.args[0].input.modelId).toBe(
-        'anthropic.claude-3-haiku-20240307-v1:0',
-      );
+      // Assert against the configured brand model rather than a literal id: the
+      // model is pinned in model-config.ts and changes with each model upgrade
+      // (this assertion went stale when the config moved to inference profiles).
+      expect(calls[0]!.args[0].input.modelId).toBe(getModelConfig('brand').modelId);
     });
   });
 });
