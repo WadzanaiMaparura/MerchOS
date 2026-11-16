@@ -57,8 +57,9 @@ export function extractTenantContext(event: Record<string, unknown>): TenantCont
 
   if (!tenantId) return null;
 
+  const userId = tenantCtx?.['userId'] as string | undefined;
   return {
     tenantId,
-    userId: tenantCtx?.['userId'] as string | undefined,
+    ...(userId !== undefined ? { userId } : {}),
   };
 }

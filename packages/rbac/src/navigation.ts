@@ -29,7 +29,10 @@ export function filterNavigationItems(
       const filteredChildren = item.children
         ? filterNavigationItems(item.children, role, registry)
         : undefined;
-      acc.push({ ...item, children: filteredChildren });
+      acc.push({
+        ...item,
+        ...(filteredChildren !== undefined ? { children: filteredChildren } : {}),
+      });
     }
     return acc;
   }, []);

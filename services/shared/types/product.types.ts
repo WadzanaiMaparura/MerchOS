@@ -41,9 +41,15 @@ import { InventoryRecord } from './inventory.types';
  * Valid states in the product lifecycle state machine.
  * Transitions: DRAFT → INGESTED → ENRICHED → REVIEW → VALIDATED → EXPORT_READY → PUBLISHED → ARCHIVED
  * Any state may transition back to REVIEW on tenant attribute edit.
+ *
+ * GENERATING is the in-flight AI synthesis state (DRAFT → GENERATING → REVIEW, or
+ * back to DRAFT on failure). It mirrors the external contract in
+ * packages/types/src/common.ts; the authoritative transition table lives in
+ * services/product/service/lifecycle.ts.
  */
 export type LifecycleState =
   | 'DRAFT'
+  | 'GENERATING'
   | 'INGESTED'
   | 'ENRICHED'
   | 'REVIEW'

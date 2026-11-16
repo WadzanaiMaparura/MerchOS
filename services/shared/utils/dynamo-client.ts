@@ -302,6 +302,10 @@ export class TenantDynamoClient {
   async transactWrite(
     input: TransactWriteCommandInput
   ): Promise<TransactWriteCommandOutput> {
+    if (!input.TransactItems || input.TransactItems.length === 0) {
+      // Fail loudly with a clear message instead of a TypeError on `.map`.
+      throw new Error('transactWrite requires at least one TransactItem');
+    }
     const enhancedItems = input.TransactItems.map((item) => {
       if (item.Put) {
         const tenantCondition =

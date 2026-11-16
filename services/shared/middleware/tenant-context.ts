@@ -235,9 +235,10 @@ export function extractTenantContext(event: Record<string, unknown>): TenantCont
   // Pattern 1: tenantContextMiddleware already resolved context
   const tenantCtx = authorizer['tenantContext'] as Record<string, unknown> | undefined;
   if (tenantCtx?.['tenantId']) {
+    const userId = tenantCtx['userId'] as string | undefined;
     return {
       tenantId: tenantCtx['tenantId'] as string,
-      userId: tenantCtx['userId'] as string | undefined,
+      ...(userId !== undefined ? { userId } : {}),
     };
   }
 
@@ -248,9 +249,10 @@ export function extractTenantContext(event: Record<string, unknown>): TenantCont
     const claims = jwt['claims'] as Record<string, unknown> | undefined;
     const tenantId = claims?.['custom:tenantId'] as string | undefined;
     if (tenantId) {
+      const sub = claims?.['sub'] as string | undefined;
       return {
         tenantId,
-        userId: claims?.['sub'] as string | undefined,
+        ...(sub !== undefined ? { userId: sub } : {}),
       };
     }
   }
