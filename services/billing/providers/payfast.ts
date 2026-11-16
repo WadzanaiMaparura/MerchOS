@@ -37,6 +37,7 @@
  */
 
 import crypto from 'node:crypto';
+import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
 
 import type {
   CheckoutRequest,
@@ -74,19 +75,80 @@ const PROCESS_URL: Record<PayFastMode, string> = {
  * is used to build the redirect querystring.
  */
 const CHECKOUT_FIELD_ORDER = [
+  // Merchant details
   'merchant_id',
   'merchant_key',
   'return_url',
   'cancel_url',
   'notify_url',
+  // Customer details — PayFast's documented order puts these BEFORE the
+  // transaction details. Getting this wrong yields "generated signature does
+  // not match submitted signature" on the hosted page.
+  'email_address',
+  // Transaction details
   'm_payment_id',
   'amount',
   'item_name',
-  'email_address',
   // custom_str1 carries our tenantId. PayFast echoes it back on the ITN so the
   // webhook (which has no JWT) can locate the correct tenant partition.
   'custom_str1',
 ] as const;
+
+/** Shape of the JSON stored in the PayFast Secrets Manager secret. */
+interface PayFastSecretPayload {
+  merchantId?: string;
+  merchantKey?: string;
+  passphrase?: string;
+}
+
+/** Module-level cache so warm invocations don't re-fetch the secret. */
+let cachedSecret: PayFastSecretPayload | undefined;
+
+/** Test seam: clear the cached secret. */
+export function resetPayFastSecretCache(): void {
+  cachedSecret = undefined;
+}
+
+/**
+ * Loads PayFast config for production use.
+ *
+ * Merchant credentials (merchantId, merchantKey, passphrase) are read from the
+ * Secrets Manager secret named by PAYFAST_SECRET_ARN so they never appear in
+ * Lambda environment variables or the CloudFormation template. Non-secret
+ * settings (mode, notify URL) come from env. When PAYFAST_SECRET_ARN is unset
+ * (local dev / unit tests) it falls back to plain env vars.
+ *
+ * `overrides` lets a handler supply request-derived values — notably the
+ * notify URL, which is built from the API's own domain at request time to avoid
+ * a CloudFormation circular dependency between the Lambda and the HTTP API.
+ */
+export async function loadPayFastConfig(
+  overrides: Partial<PayFastConfig> = {}
+): Promise<PayFastConfig> {
+  const base = loadPayFastConfigFromEnv();
+  const secretArn = process.env['PAYFAST_SECRET_ARN'];
+
+  let merged: PayFastConfig = base;
+  if (secretArn) {
+    if (!cachedSecret) {
+      const sm = new SecretsManagerClient({ region: process.env['AWS_REGION'] ?? 'eu-west-1' });
+      const res = await sm.send(new GetSecretValueCommand({ SecretId: secretArn }));
+      cachedSecret = JSON.parse(res.SecretString ?? '{}') as PayFastSecretPayload;
+    }
+    merged = {
+      ...base,
+      merchantId: cachedSecret.merchantId ?? base.merchantId,
+      merchantKey: cachedSecret.merchantKey ?? base.merchantKey,
+      ...(cachedSecret.passphrase ? { passphrase: cachedSecret.passphrase } : {}),
+    };
+  }
+
+  const config: PayFastConfig = { ...merged, ...overrides };
+  if (!config.merchantId || !config.merchantKey) {
+    throw new Error('PayFast merchant credentials are not configured');
+  }
+  return config;
+}
 
 /** Reads PayFast config from environment variables. */
 export function loadPayFastConfigFromEnv(): PayFastConfig {
@@ -202,7 +264,8 @@ export class PayFastProvider implements PaymentProvider {
       m_payment_id: mPaymentId,
       amount,
       item_name: plan.name,
-      email_address: req.email,
+      // Empty string is skipped by both the signature and the querystring.
+      email_address: req.email ?? '',
       custom_str1: req.tenantId,
     };
 

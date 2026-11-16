@@ -12,7 +12,12 @@ import type { PlanId } from '@merch-os/types';
 export interface CheckoutRequest {
   tenantId: string;
   planId: PlanId;
-  email: string;
+  /**
+   * Buyer email, if known. Optional: the API authenticates with Cognito ACCESS
+   * tokens, which carry no `email` claim, and PayFast's email_address field is
+   * optional. When omitted the buyer enters it on the hosted payment page.
+   */
+  email?: string;
   returnUrl: string;
   cancelUrl: string;
 }

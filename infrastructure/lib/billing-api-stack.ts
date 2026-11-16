@@ -1,0 +1,327 @@
+/**
+ * MerchOS Billing API Stack
+ *
+ * Provisions the subscription / credit / payment (PayFast) API:
+ * - DynamoDB billing table (single-table, `TENANT#<id>` partition), CMK-encrypted
+ * - Secrets Manager secret holding the PayFast merchant credentials
+ * - HTTP API (v2) with Cognito JWT authorizer on the seller routes
+ *     GET  /billing                -> BillingOverview
+ *     GET  /billing/invoices       -> InvoiceSummary[]
+ *     POST /billing/plan           -> PayFast hosted-checkout redirect
+ *     POST /billing/payfast/itn    -> PayFast ITN webhook (NO JWT — PayFast
+ *                                     cannot present one; authenticity is
+ *                                     verified by signature inside the handler)
+ * - Least-privilege IAM per Lambda
+ * - SSM parameter exports for cross-stack references
+ *
+ * Lessons from earlier stacks baked in up front: ESM createRequire banner,
+ * COGNITO_ISSUER for rbacMiddleware, KMS access on every role that touches the
+ * CMK-encrypted table, and Powertools bundled (no Lambda layer).
+ */
+
+import * as cdk from 'aws-cdk-lib';
+import * as cognito from 'aws-cdk-lib/aws-cognito';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import * as kms from 'aws-cdk-lib/aws-kms';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
+import { CorsHttpMethod, HttpApi, HttpMethod } from 'aws-cdk-lib/aws-apigatewayv2';
+import { HttpJwtAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
+import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
+import { Construct } from 'constructs';
+import * as path from 'path';
+
+export interface BillingApiStackProps extends cdk.StackProps {
+  environment: string;
+  userPool: cognito.UserPool;
+  sellerDashboardClient: cognito.UserPoolClient;
+  platformKey: kms.Key;
+}
+
+export class BillingApiStack extends cdk.Stack {
+  public readonly httpApi: HttpApi;
+  public readonly billingTable: dynamodb.Table;
+  public readonly payfastSecret: secretsmanager.Secret;
+
+  constructor(scope: Construct, id: string, props: BillingApiStackProps) {
+    super(scope, id, props);
+
+    const env = props.environment;
+    const region = this.region;
+    const ssmPrefix = `/merch-os/${env}`;
+
+    cdk.Tags.of(this).add('Environment', env);
+    cdk.Tags.of(this).add('Subsystem', 'Billing');
+    cdk.Tags.of(this).add('TenantScope', 'tenant');
+    cdk.Tags.of(this).add('CostCenter', 'merch-os-platform');
+    cdk.Tags.of(this).add('ManagedBy', 'cdk');
+
+    // -----------------------------------------------------------------------
+    // Deploy-time settings (CDK context, with safe defaults)
+    // -----------------------------------------------------------------------
+
+    // 'sandbox' until live PayFast credentials are deliberately switched on.
+    const payfastMode =
+      (this.node.tryGetContext('payfastMode') as string | undefined) ?? 'sandbox';
+    // Where PayFast sends the buyer back to (the seller-dashboard origin).
+    const appBaseUrl =
+      (this.node.tryGetContext('appBaseUrl') as string | undefined) ??
+      `https://${env === 'production' ? 'app' : env}.merchos.io`;
+
+    // -----------------------------------------------------------------------
+    // DynamoDB — billing table
+    //
+    // All items live under PK = TENANT#<tenantId>:
+    //   SK = SUBSCRIPTION#current   current subscription
+    //   SK = CREDITS#<yyyyMM>       monthly credit ledger
+    //   SK = PAYMENT#<mPaymentId>   payment idempotency record
+    //   SK = INVOICE#<invoiceId>    invoice records
+    // -----------------------------------------------------------------------
+
+    this.billingTable = new dynamodb.Table(this, 'BillingTable', {
+      tableName: `merch-os-billing-${env}`,
+      partitionKey: { name: 'PK', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'SK', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      encryption: dynamodb.TableEncryption.CUSTOMER_MANAGED,
+      encryptionKey: props.platformKey,
+      pointInTimeRecovery: true,
+      // Unpaid CHECKOUT#<id> intents carry a `ttl` (epoch seconds) and expire on
+      // their own; payment/subscription/credit/invoice records have no ttl.
+      timeToLiveAttribute: 'ttl',
+      // Billing records are financial data — never delete with the stack.
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    // -----------------------------------------------------------------------
+    // Secrets Manager — PayFast merchant credentials
+    //
+    // JSON: { "merchantId": "...", "merchantKey": "...", "passphrase": "..." }
+    // Created with a generated placeholder value; the real values are written
+    // out-of-band (aws secretsmanager put-secret-value) so they never touch
+    // source control or the CloudFormation template. Read by the Lambdas at
+    // runtime, never placed in Lambda environment variables.
+    // -----------------------------------------------------------------------
+
+    this.payfastSecret = new secretsmanager.Secret(this, 'PayFastSecret', {
+      secretName: `merch-os/${env}/payfast`,
+      description: 'PayFast merchant credentials (merchantId, merchantKey, passphrase)',
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    // -----------------------------------------------------------------------
+    // HTTP API + JWT authorizer
+    // -----------------------------------------------------------------------
+
+    this.httpApi = new HttpApi(this, 'BillingHttpApi', {
+      apiName: `merch-os-billing-api-${env}`,
+      description: 'MerchOS Billing API — subscriptions, credits and PayFast payments',
+      corsPreflight: {
+        allowHeaders: ['Content-Type', 'Authorization', 'X-Amz-Date'],
+        allowMethods: [CorsHttpMethod.GET, CorsHttpMethod.POST, CorsHttpMethod.OPTIONS],
+        allowOrigins: [
+          `https://${env === 'production' ? 'app' : env}.merchos.io`,
+          ...(env === 'production' ? [] : ['http://localhost:3000']),
+        ],
+        allowCredentials: true,
+        maxAge: cdk.Duration.hours(1),
+      },
+    });
+
+    // Default stage throttle (also bounds ITN webhook abuse).
+    const defaultStage = this.httpApi.defaultStage?.node.defaultChild as
+      | cdk.aws_apigatewayv2.CfnStage
+      | undefined;
+    if (defaultStage) {
+      defaultStage.defaultRouteSettings = {
+        throttlingBurstLimit: 50,
+        throttlingRateLimit: 25,
+      };
+    }
+
+    const jwtAuthorizer = new HttpJwtAuthorizer(
+      'BillingCognitoJwtAuthorizer',
+      `https://cognito-idp.${region}.amazonaws.com/${props.userPool.userPoolId}`,
+      { jwtAudience: [props.sellerDashboardClient.userPoolClientId] }
+    );
+
+    // -----------------------------------------------------------------------
+    // Shared Lambda configuration (ESM bundling)
+    // -----------------------------------------------------------------------
+
+    const handlersPath = path.join(__dirname, '../../services/billing/api/handlers');
+
+    const commonEnv: Record<string, string> = {
+      ENVIRONMENT: env,
+      BILLING_TABLE: this.billingTable.tableName,
+      // rbacMiddleware validates the token issuer against this value; without it
+      // every token is rejected with INVALID_ISSUER (401).
+      COGNITO_ISSUER: `https://cognito-idp.${region}.amazonaws.com/${props.userPool.userPoolId}`,
+      PAYFAST_SECRET_ARN: this.payfastSecret.secretArn,
+      PAYFAST_MODE: payfastMode,
+      APP_BASE_URL: appBaseUrl,
+      POWERTOOLS_SERVICE_NAME: 'billing',
+      LOG_LEVEL: env === 'production' ? 'WARN' : 'DEBUG',
+    };
+
+    const defaultLambdaProps: Partial<lambdaNodejs.NodejsFunctionProps> = {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: 'handler',
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 256,
+      tracing: lambda.Tracing.ACTIVE,
+      environment: commonEnv,
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        target: 'node20',
+        format: lambdaNodejs.OutputFormat.ESM,
+        mainFields: ['module', 'main'],
+        // CJS dependencies doing require('util') crash an ESM bundle at INIT with
+        // "Dynamic require not supported". Inject a real require (same fix as the
+        // Supplier / Product Intelligence / Image stacks).
+        banner: "import{createRequire as __cr}from'module';const require=__cr(import.meta.url);",
+      },
+    };
+
+    // -----------------------------------------------------------------------
+    // IAM statements — least privilege
+    // -----------------------------------------------------------------------
+
+    // TenantDynamoClient uses Get/Put/Update/Query only (no delete, no scan).
+    const billingTableAccess = new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:Query'],
+      resources: [this.billingTable.tableArn, `${this.billingTable.tableArn}/index/*`],
+    });
+    const billingTableReadOnly = new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['dynamodb:GetItem', 'dynamodb:Query'],
+      resources: [this.billingTable.tableArn, `${this.billingTable.tableArn}/index/*`],
+    });
+    // The table is encrypted with the platform CMK — every role touching it needs this.
+    const kmsPolicy = new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['kms:Decrypt', 'kms:Encrypt', 'kms:GenerateDataKey'],
+      resources: [props.platformKey.keyArn],
+    });
+    const payfastSecretRead = new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['secretsmanager:GetSecretValue'],
+      resources: [this.payfastSecret.secretArn],
+    });
+
+    const createLambda = (
+      logicalId: string,
+      entry: string,
+      policyStatements: iam.PolicyStatement[]
+    ): lambdaNodejs.NodejsFunction => {
+      const role = new iam.Role(this, `${logicalId}Role`, {
+        assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com') as unknown as iam.IPrincipal,
+        description: `Execution role for Billing ${logicalId} Lambda`,
+        managedPolicies: [
+          iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
+          iam.ManagedPolicy.fromAwsManagedPolicyName('AWSXRayDaemonWriteAccess'),
+        ],
+      });
+      for (const statement of policyStatements) role.addToPolicy(statement);
+
+      return new lambdaNodejs.NodejsFunction(this, logicalId, {
+        ...defaultLambdaProps,
+        functionName: `merch-os-billing-${logicalId.toLowerCase()}-${env}`,
+        entry,
+        role: role as unknown as iam.IRole,
+      });
+    };
+
+    // -----------------------------------------------------------------------
+    // Lambdas
+    // -----------------------------------------------------------------------
+
+    const getBillingFn = createLambda('GetBilling', path.join(handlersPath, 'get-billing.ts'), [
+      billingTableReadOnly,
+      kmsPolicy,
+    ]);
+
+    const listInvoicesFn = createLambda(
+      'ListInvoices',
+      path.join(handlersPath, 'list-invoices.ts'),
+      [billingTableReadOnly, kmsPolicy]
+    );
+
+    // change-plan writes the pending subscription intent and reads the PayFast secret.
+    const changePlanFn = createLambda('ChangePlan', path.join(handlersPath, 'change-plan.ts'), [
+      billingTableAccess,
+      kmsPolicy,
+      payfastSecretRead,
+    ]);
+
+    // ITN activates subscriptions, records payments and grants credits.
+    const payfastItnFn = createLambda('PayfastItn', path.join(handlersPath, 'payfast-itn.ts'), [
+      billingTableAccess,
+      kmsPolicy,
+      payfastSecretRead,
+    ]);
+
+    // -----------------------------------------------------------------------
+    // Routes
+    // -----------------------------------------------------------------------
+
+    this.httpApi.addRoutes({
+      path: '/billing',
+      methods: [HttpMethod.GET],
+      integration: new HttpLambdaIntegration('GetBillingIntegration', getBillingFn),
+      authorizer: jwtAuthorizer,
+    });
+
+    this.httpApi.addRoutes({
+      path: '/billing/invoices',
+      methods: [HttpMethod.GET],
+      integration: new HttpLambdaIntegration('ListInvoicesIntegration', listInvoicesFn),
+      authorizer: jwtAuthorizer,
+    });
+
+    this.httpApi.addRoutes({
+      path: '/billing/plan',
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration('ChangePlanIntegration', changePlanFn),
+      authorizer: jwtAuthorizer,
+    });
+
+    // PayFast ITN webhook — intentionally NO authorizer. PayFast calls this
+    // server-to-server and cannot present a Cognito JWT. The handler verifies the
+    // MD5 signature, payment status, expected amount and idempotency itself.
+    this.httpApi.addRoutes({
+      path: '/billing/payfast/itn',
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration('PayfastItnIntegration', payfastItnFn),
+    });
+
+    // -----------------------------------------------------------------------
+    // SSM exports + stack outputs
+    // -----------------------------------------------------------------------
+
+    new ssm.StringParameter(this, 'BillingApiUrlParam', {
+      parameterName: `${ssmPrefix}/billing-api/url`,
+      stringValue: this.httpApi.apiEndpoint,
+    });
+
+    new ssm.StringParameter(this, 'BillingTableNameParam', {
+      parameterName: `${ssmPrefix}/billing-api/table-name`,
+      stringValue: this.billingTable.tableName,
+    });
+
+    new cdk.CfnOutput(this, 'BillingApiEndpoint', {
+      value: this.httpApi.apiEndpoint,
+      exportName: `${id}-BillingApiEndpoint`,
+    });
+
+    new cdk.CfnOutput(this, 'PayFastSecretArn', {
+      value: this.payfastSecret.secretArn,
+      exportName: `${id}-PayFastSecretArn`,
+    });
+  }
+}

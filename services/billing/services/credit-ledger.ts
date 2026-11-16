@@ -9,6 +9,14 @@
  * This module is intentionally dependency-light so OTHER services
  * (product-intelligence, image-intelligence) can import `consumeCredit` /
  * `getBalance` directly to meter their own usage without pulling in HTTP/middy.
+ *
+ * DynamoDB gotchas this file is written around (both bit us in testing):
+ *   - `consumed` is a DynamoDB RESERVED WORD. Every attribute is therefore
+ *     referenced through ExpressionAttributeNames (#g/#c/#o/...), never bare.
+ *   - ConditionExpressions cannot contain arithmetic or `if_not_exists`
+ *     (those are UpdateExpression-only). The hard-cap check is therefore done
+ *     as optimistic concurrency: read the balance, then write with a condition
+ *     that `consumed` is still the value we read, retrying on contention.
  */
 
 import {
@@ -28,6 +36,9 @@ export type CreditPolicy = 'hard_cap' | 'soft_cap' | 'overage';
  */
 export const DEFAULT_CREDIT_POLICY: CreditPolicy = 'soft_cap';
 
+/** Max optimistic-concurrency retries for the hard-cap path. */
+const HARD_CAP_MAX_ATTEMPTS = 5;
+
 /** Thrown when a hard-capped tenant attempts to consume beyond its allowance. */
 export class CreditLimitError extends Error {
   readonly code = 'CREDIT_LIMIT_EXCEEDED';
@@ -45,6 +56,15 @@ export interface CreditBalanceResult {
   remaining: number;
 }
 
+/** Attribute-name aliases (see header: `consumed` is reserved). */
+const NAMES = {
+  '#g': 'granted',
+  '#c': 'consumed',
+  '#o': 'overage',
+  '#m': 'billingMonth',
+  '#u': 'updatedAt',
+} as const;
+
 /**
  * Returns the credit balance for a tenant+month. Returns all-zero if no record
  * exists yet (treated as "no allowance granted").
@@ -58,22 +78,19 @@ export async function getBalance(
     TableName: BILLING_TABLE,
     Key: { PK: tenantPK(tenantId), SK: creditsSK(yyyyMM) },
   });
-
-  const item = res.Item;
-  const granted = typeof item?.['granted'] === 'number' ? (item['granted'] as number) : 0;
-  const consumed = typeof item?.['consumed'] === 'number' ? (item['consumed'] as number) : 0;
-  const overage = typeof item?.['overage'] === 'number' ? (item['overage'] as number) : 0;
-  const remaining = Math.max(0, granted - consumed);
-
-  return { granted, consumed, overage, remaining };
+  return toBalance(res.Item as Record<string, unknown> | undefined);
 }
 
 /**
  * Sets (initialises) the monthly granted allowance for a tenant+month.
  *
- * Idempotent-ish: `granted` is set to `amount`. `consumed`/`overage` are only
+ * Idempotent: `granted` is set to `amount`. `consumed`/`overage` are only
  * initialised to 0 if they do not already exist, so re-granting the same month
- * (e.g. a replayed activation) does NOT reset consumption.
+ * (e.g. a resumed/replayed activation) does NOT reset consumption.
+ *
+ * Uses UpdateItem so it creates the record if absent. (TenantDynamoClient.update
+ * appends `attribute_exists(PK)`; for the very first grant of a month we use a
+ * Put-if-absent first so that condition can then be satisfied.)
  */
 export async function grantCredits(
   tenantId: string,
@@ -84,17 +101,37 @@ export async function grantCredits(
     throw new Error(`grantCredits: invalid amount ${amount}`);
   }
   const client = createTenantDynamoClient(tenantId);
+  const key = { PK: tenantPK(tenantId), SK: creditsSK(yyyyMM) };
+  const now = new Date().toISOString();
+
+  // Create the month's record if it doesn't exist yet. The tenant-isolation
+  // condition on put + our own attribute_not_exists makes this a no-op when it
+  // already exists (we swallow only that specific conditional failure).
+  try {
+    await client.put({
+      TableName: BILLING_TABLE,
+      Item: {
+        ...key,
+        granted: 0,
+        consumed: 0,
+        overage: 0,
+        billingMonth: yyyyMM,
+        createdAt: now,
+        updatedAt: now,
+      },
+      ConditionExpression: 'attribute_not_exists(PK)',
+    });
+  } catch (error) {
+    if (!isConditionalCheckFailed(error)) throw error;
+    // already exists — fine, fall through to set the allowance.
+  }
+
   await client.update({
     TableName: BILLING_TABLE,
-    Key: { PK: tenantPK(tenantId), SK: creditsSK(yyyyMM) },
-    UpdateExpression:
-      'SET granted = :g, consumed = if_not_exists(consumed, :z), overage = if_not_exists(overage, :z), billingMonth = :m, updatedAt = :now',
-    ExpressionAttributeValues: {
-      ':g': amount,
-      ':z': 0,
-      ':m': yyyyMM,
-      ':now': new Date().toISOString(),
-    },
+    Key: key,
+    UpdateExpression: 'SET #g = :g, #m = :m, #u = :now',
+    ExpressionAttributeNames: { '#g': NAMES['#g'], '#m': NAMES['#m'], '#u': NAMES['#u'] },
+    ExpressionAttributeValues: { ':g': amount, ':m': yyyyMM, ':now': now },
   });
 }
 
@@ -102,12 +139,12 @@ export async function grantCredits(
  * Atomically consumes `count` credits for a tenant+month.
  *
  * Behaviour depends on `policy`:
- *   - 'hard_cap': uses a ConditionExpression so the ADD only succeeds while
- *     consumed + count <= granted. On breach, throws {@link CreditLimitError}
- *     and consumes nothing.
+ *   - 'hard_cap': read the balance; if consumed + count would exceed granted,
+ *     throw {@link CreditLimitError} and consume nothing. Otherwise write with a
+ *     condition that `consumed` is unchanged since the read (optimistic
+ *     concurrency), retrying a bounded number of times under contention.
  *   - 'soft_cap' / 'overage': always increments `consumed`; the portion beyond
- *     `granted` is additionally recorded in `overage`. Two steps are used
- *     because the overage delta depends on the pre-increment consumed value.
+ *     `granted` is additionally recorded in `overage`.
  *
  * Returns the post-consumption balance.
  */
@@ -125,60 +162,59 @@ export async function consumeCredit(
   const key = { PK: tenantPK(tenantId), SK: creditsSK(yyyyMM) };
 
   if (policy === 'hard_cap') {
-    try {
-      const res = await client.update({
-        TableName: BILLING_TABLE,
-        Key: key,
-        // Only succeed while there's enough allowance. granted must exist and
-        // consumed + count must not exceed it. We seed consumed via ADD.
-        UpdateExpression: 'ADD consumed :n SET updatedAt = :now',
-        ConditionExpression:
-          'attribute_exists(granted) AND (if_not_exists(consumed, :z) + :n) <= granted',
-        ExpressionAttributeValues: {
-          ':n': count,
-          ':z': 0,
-          ':now': new Date().toISOString(),
-        },
-        ReturnValues: 'ALL_NEW',
-      });
-      return toBalance(res.Attributes);
-    } catch (error) {
-      if (isConditionalCheckFailed(error)) {
+    for (let attempt = 0; attempt < HARD_CAP_MAX_ATTEMPTS; attempt++) {
+      const current = await getBalance(tenantId, yyyyMM);
+      if (current.consumed + count > current.granted) {
         throw new CreditLimitError(tenantId, yyyyMM);
       }
-      throw error;
+      try {
+        const res = await client.update({
+          TableName: BILLING_TABLE,
+          Key: key,
+          UpdateExpression: 'SET #c = :next, #u = :now',
+          // Only succeed if nobody consumed since we read (optimistic lock).
+          ConditionExpression: '#c = :prev',
+          ExpressionAttributeNames: { '#c': NAMES['#c'], '#u': NAMES['#u'] },
+          ExpressionAttributeValues: {
+            ':prev': current.consumed,
+            ':next': current.consumed + count,
+            ':now': new Date().toISOString(),
+          },
+          ReturnValues: 'ALL_NEW',
+        });
+        return toBalance(res.Attributes);
+      } catch (error) {
+        if (isConditionalCheckFailed(error)) continue; // contention — re-read, retry
+        throw error;
+      }
     }
+    // Persistent contention: fail closed rather than risk overspending the cap.
+    throw new CreditLimitError(tenantId, yyyyMM);
   }
 
-  // soft_cap / overage: increment consumed unconditionally, then reconcile overage.
+  // soft_cap / overage: ensure the record exists, then increment unconditionally.
+  await ensureLedgerRecord(tenantId, yyyyMM);
+
   const incRes = await client.update({
     TableName: BILLING_TABLE,
     Key: key,
-    UpdateExpression:
-      'ADD consumed :n SET granted = if_not_exists(granted, :z), overage = if_not_exists(overage, :z), billingMonth = :m, updatedAt = :now',
-    ExpressionAttributeValues: {
-      ':n': count,
-      ':z': 0,
-      ':m': yyyyMM,
-      ':now': new Date().toISOString(),
-    },
+    UpdateExpression: 'ADD #c :n SET #u = :now',
+    ExpressionAttributeNames: { '#c': NAMES['#c'], '#u': NAMES['#u'] },
+    ExpressionAttributeValues: { ':n': count, ':now': new Date().toISOString() },
     ReturnValues: 'ALL_NEW',
   });
 
   const balance = toBalance(incRes.Attributes);
 
-  // Recompute what the overage counter SHOULD be given consumed vs granted and
-  // nudge it to match. overage = max(0, consumed - granted).
+  // overage = max(0, consumed - granted). Reconcile if the stored counter differs.
   const expectedOverage = Math.max(0, balance.consumed - balance.granted);
   if (expectedOverage !== balance.overage) {
     const fixRes = await client.update({
       TableName: BILLING_TABLE,
       Key: key,
-      UpdateExpression: 'SET overage = :o, updatedAt = :now',
-      ExpressionAttributeValues: {
-        ':o': expectedOverage,
-        ':now': new Date().toISOString(),
-      },
+      UpdateExpression: 'SET #o = :o, #u = :now',
+      ExpressionAttributeNames: { '#o': NAMES['#o'], '#u': NAMES['#u'] },
+      ExpressionAttributeValues: { ':o': expectedOverage, ':now': new Date().toISOString() },
       ReturnValues: 'ALL_NEW',
     });
     return toBalance(fixRes.Attributes);
@@ -190,6 +226,30 @@ export async function consumeCredit(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Creates a zeroed ledger record for the month if none exists (idempotent). */
+async function ensureLedgerRecord(tenantId: string, yyyyMM: string): Promise<void> {
+  const client = createTenantDynamoClient(tenantId);
+  const now = new Date().toISOString();
+  try {
+    await client.put({
+      TableName: BILLING_TABLE,
+      Item: {
+        PK: tenantPK(tenantId),
+        SK: creditsSK(yyyyMM),
+        granted: 0,
+        consumed: 0,
+        overage: 0,
+        billingMonth: yyyyMM,
+        createdAt: now,
+        updatedAt: now,
+      },
+      ConditionExpression: 'attribute_not_exists(PK)',
+    });
+  } catch (error) {
+    if (!isConditionalCheckFailed(error)) throw error;
+  }
+}
 
 function toBalance(attrs: Record<string, unknown> | undefined): CreditBalanceResult {
   const granted = typeof attrs?.['granted'] === 'number' ? (attrs['granted'] as number) : 0;

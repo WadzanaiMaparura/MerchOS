@@ -123,6 +123,16 @@ export function paymentSK(mPaymentId: string): string {
   return `PAYMENT#${mPaymentId}`;
 }
 
+/**
+ * Returns the sort key for a pending checkout intent: `CHECKOUT#<mPaymentId>`.
+ * Holds the plan + expected price captured when a checkout was started, so the
+ * payment webhook can verify the amount WITHOUT touching the tenant's live
+ * `SUBSCRIPTION#current` record (an abandoned checkout must not alter it).
+ */
+export function checkoutSK(mPaymentId: string): string {
+  return `CHECKOUT#${mPaymentId}`;
+}
+
 // ---------------------------------------------------------------------------
 // Error types
 // ---------------------------------------------------------------------------

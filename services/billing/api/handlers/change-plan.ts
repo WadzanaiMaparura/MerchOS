@@ -22,9 +22,9 @@ import {
 } from '../../../shared/middleware/tenant-context';
 import { logger } from '../../../shared/middleware/logger';
 import { getPlan } from '../../config/plans';
-import { PayFastProvider } from '../../providers/payfast';
+import { PayFastProvider, loadPayFastConfig } from '../../providers/payfast';
 import type { PaymentProvider } from '../../providers/payment-provider';
-import { upsertSubscription } from '../../services/subscription-store';
+import { createCheckoutIntent } from '../../services/subscription-store';
 import { changePlanSchema } from '../schemas';
 import { mapErrorToResponse, ApiErrors } from '../error-mapper';
 
@@ -35,11 +35,13 @@ export function setPaymentProvider(provider: PaymentProvider): void {
   injectedProvider = provider;
 }
 
-function resolveProvider(): PaymentProvider {
-  return injectedProvider ?? new PayFastProvider();
+async function resolveProvider(notifyUrl?: string): Promise<PaymentProvider> {
+  if (injectedProvider) return injectedProvider;
+  const config = await loadPayFastConfig(notifyUrl ? { notifyUrl } : {});
+  return new PayFastProvider(config);
 }
 
-/** Reads the seller's email from the JWT authorizer claims. */
+/** Reads the seller's email from the JWT authorizer claims, if present. */
 function extractEmail(event: APIGatewayProxyEventV2): string | undefined {
   const authorizer = (event.requestContext as unknown as Record<string, unknown>)?.['authorizer'] as
     | Record<string, unknown>
@@ -82,10 +84,9 @@ async function baseHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayPro
     return ApiErrors.planNotPurchasable(parsed.data.planId) as APIGatewayProxyResultV2;
   }
 
+  // Email is optional (access tokens carry no email claim); if an ID-token-style
+  // claim happens to be present we pass it through, otherwise PayFast collects it.
   const email = extractEmail(event);
-  if (!email) {
-    return ApiErrors.validation('No email claim present on the token') as APIGatewayProxyResultV2;
-  }
 
   // Default return/cancel URLs point at the seller-dashboard billing page.
   const appBase = process.env['APP_BASE_URL'] ?? ''; // PLACEHOLDER — set to the deployed seller-dashboard origin
@@ -93,31 +94,34 @@ async function baseHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayPro
   const cancelUrl = parsed.data.cancelUrl ?? `${appBase}/billing?checkout=cancelled`;
 
   try {
-    const provider = resolveProvider();
+    // The ITN notify URL is derived from the API's own domain at request time
+    // (not an env var) because wiring the API URL into the Lambda's environment
+    // would create a CloudFormation circular dependency (API -> Lambda -> API).
+    const domainName = (event.requestContext as unknown as Record<string, unknown>)?.['domainName'];
+    const notifyUrl =
+      typeof domainName === 'string' ? `https://${domainName}/billing/payfast/itn` : undefined;
+
+    const provider = await resolveProvider(notifyUrl);
     const checkout = await provider.initiateCheckout({
       tenantId,
       planId: parsed.data.planId,
-      email,
+      ...(email ? { email } : {}),
       returnUrl,
       cancelUrl,
     });
 
-    // Persist a PENDING subscription intent. Status 'incomplete' until the ITN
-    // confirms payment. We capture the expected price so the ITN handler can
-    // verify the posted amount server-side (never trust the posted amount).
-    await upsertSubscription(tenantId, {
-      planId: parsed.data.planId,
-      status: 'incomplete',
-      provider: provider.name as 'payfast',
-      providerRef: checkout.mPaymentId,
+    // Record the checkout INTENT (plan + expected price) under CHECKOUT#<id>.
+    // Deliberately NOT written to SUBSCRIPTION#current: starting (or abandoning)
+    // a checkout must never alter a tenant's live subscription. The ITN verifies
+    // the posted amount against this record and only then activates the plan.
+    await createCheckoutIntent(tenantId, {
       mPaymentId: checkout.mPaymentId,
+      planId: parsed.data.planId,
       priceZARCents: plan.priceZARCents,
     });
 
     // NOTE: the payment idempotency record (PAYMENT#<mPaymentId>) is created by
-    // the ITN handler on first confirmation (first-write-wins), NOT here — so a
-    // replayed ITN can't double-activate. The PENDING subscription intent above
-    // (with the captured price) is what the ITN correlates against.
+    // the ITN handler on first confirmation (first-write-wins), NOT here.
 
     return {
       statusCode: 200,

@@ -10,30 +10,38 @@
  *   1. Signature verification (provider.verifyItn) — proves PayFast origin.
  *   2. payment_status must be COMPLETE.
  *   3. Server-side AMOUNT CHECK — the gross amount must match the price we
- *      captured on the subscription intent for this m_payment_id. The posted
- *      amount is NEVER trusted on its own.
- *   4. Idempotency — the payment is recorded with a first-write-wins guard, so
- *      a replayed ITN cannot activate twice.
+ *      captured on the CHECKOUT intent for this m_payment_id. The posted amount
+ *      is NEVER trusted on its own.
+ *   4. Idempotency — the payment is claimed with a first-write-wins guard.
  *
- * Per PayFast's spec we return HTTP 200 for every received ITN (so they stop
- * retrying), regardless of whether we applied it — we simply do not activate on
- * a failed check.
+ * Failure semantics (important for money):
+ *   - A payment is only treated as a duplicate once it is fully APPLIED
+ *     (subscription activated AND credits granted). The claim is written with
+ *     applied=false and flipped to true last. If an earlier attempt failed part
+ *     way, the PayFast retry finds applied=false and RESUMES — every step is
+ *     idempotent (subscription put, credit grant sets the allowance without
+ *     resetting consumption).
+ *   - Verification / business-rule rejections return 200 (so PayFast stops
+ *     retrying; there is nothing to retry). Unexpected errors while applying a
+ *     VERIFIED payment are allowed to propagate as 5xx so PayFast retries.
  *
- * NOTE: tenantId is NOT available from a JWT here. PayFast echoes back our
- * `custom_str1` field, which change-plan sets to the tenantId, so the ITN can
- * locate the right tenant partition. (See change-plan checkout payload.)
+ * tenantId is not available from a JWT here. PayFast echoes our `custom_str1`
+ * (set to the tenantId at checkout) inside the signed payload, so it cannot be
+ * forged without the merchant key.
  */
 
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 
 import { logger } from '../../../shared/middleware/logger';
 import { getPlan } from '../../config/plans';
-import { PayFastProvider } from '../../providers/payfast';
+import { PayFastProvider, loadPayFastConfig } from '../../providers/payfast';
 import type { PaymentProvider } from '../../providers/payment-provider';
 import {
-  getSubscription,
+  getCheckoutIntent,
   upsertSubscription,
   recordPayment,
+  getPayment,
+  markPaymentApplied,
 } from '../../services/subscription-store';
 import { grantCredits } from '../../services/credit-ledger';
 
@@ -44,11 +52,12 @@ export function setPaymentProvider(provider: PaymentProvider): void {
   injectedProvider = provider;
 }
 
-function resolveProvider(): PaymentProvider {
-  return injectedProvider ?? new PayFastProvider();
+async function resolveProvider(): Promise<PaymentProvider> {
+  if (injectedProvider) return injectedProvider;
+  return new PayFastProvider(await loadPayFastConfig());
 }
 
-/** Always-200 helper (PayFast expects 200 to stop retrying). */
+/** 200 acknowledgement (PayFast stops retrying on 200). */
 function ack(note: string): APIGatewayProxyResultV2 {
   return {
     statusCode: 200,
@@ -76,21 +85,21 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     : '';
 
   const headers = (event.headers ?? {}) as Record<string, string | undefined>;
-  const sourceIp = (event.requestContext as unknown as Record<string, unknown>)?.['http'] as
+  const http = (event.requestContext as unknown as Record<string, unknown>)?.['http'] as
     | Record<string, unknown>
     | undefined;
-  const ip = typeof sourceIp?.['sourceIp'] === 'string' ? (sourceIp['sourceIp'] as string) : undefined;
+  const ip = typeof http?.['sourceIp'] === 'string' ? (http['sourceIp'] as string) : undefined;
 
-  const provider = resolveProvider();
-
+  // (1) Authenticity. Anything that fails here is a final answer, not a retry.
   let verification;
   try {
+    const provider = await resolveProvider();
     verification = await provider.verifyItn(rawBody, headers, ip);
   } catch (error) {
     logger.error('ITN verification threw', {
       error: error instanceof Error ? error.message : String(error),
     });
-    return ack('error-verifying'); // 200 so PayFast stops retrying; nothing applied
+    return ack('error-verifying');
   }
 
   if (!verification.valid) {
@@ -100,53 +109,60 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
 
   const { mPaymentId, amountGrossCents, paymentStatus, raw } = verification;
 
-  // tenantId is echoed back by PayFast as custom_str1 (set by change-plan).
+  // tenantId round-trips in custom_str1 (inside the signed payload).
   const tenantId = raw?.['custom_str1'];
   if (!tenantId || !mPaymentId) {
     logger.warn('ITN missing tenant or payment id', { hasTenant: !!tenantId, hasMpid: !!mPaymentId });
     return ack('missing-correlation');
   }
 
+  // (2) Only completed payments activate anything.
   if (paymentStatus !== 'COMPLETE') {
     logger.info('ITN non-complete status; ignoring', { paymentStatus, mPaymentId });
     return ack('ignored-status');
   }
 
-  // Correlate against the PENDING subscription intent created at checkout.
-  const subscription = await getSubscription(tenantId);
-  if (!subscription || subscription.mPaymentId !== mPaymentId) {
-    logger.warn('ITN has no matching subscription intent', { tenantId, mPaymentId });
+  // Correlate against the checkout intent captured when the seller started paying.
+  const intent = await getCheckoutIntent(tenantId, mPaymentId);
+  if (!intent) {
+    logger.warn('ITN has no matching checkout intent', { tenantId, mPaymentId });
     return ack('no-intent');
   }
 
-  const plan = getPlan(subscription.planId);
-  const expectedCents = subscription.priceZARCents ?? plan.priceZARCents;
+  const plan = getPlan(intent.planId);
+  const expectedCents = intent.priceZARCents;
 
   // (3) Server-side amount check — reject tampering. Never trust posted amount.
-  if (expectedCents == null || amountGrossCents == null || amountGrossCents !== expectedCents) {
+  if (amountGrossCents == null || amountGrossCents !== expectedCents) {
     logger.warn('ITN amount mismatch', { tenantId, mPaymentId, expectedCents, amountGrossCents });
     return ack('amount-mismatch');
   }
 
-  // (4) Idempotency — first ITN wins. A replay returns false and we skip.
-  const firstTime = await recordPayment(tenantId, {
+  // (4) Idempotency. First ITN claims the payment. A later one is a duplicate
+  // ONLY if the earlier attempt finished applying it; otherwise we resume.
+  const claimed = await recordPayment(tenantId, {
     mPaymentId,
-    planId: subscription.planId,
-    ...(amountGrossCents !== undefined ? { amountGrossCents } : {}),
+    planId: intent.planId,
+    amountGrossCents,
     paymentStatus,
   });
-  if (!firstTime) {
-    logger.info('Duplicate ITN ignored', { tenantId, mPaymentId });
-    return ack('duplicate');
+  if (!claimed) {
+    const existing = await getPayment(tenantId, mPaymentId);
+    if (existing?.applied === true) {
+      logger.info('Duplicate ITN ignored (already applied)', { tenantId, mPaymentId });
+      return ack('duplicate');
+    }
+    logger.warn('Resuming partially-applied payment', { tenantId, mPaymentId });
   }
 
-  // Activate the subscription for a 1-month period and grant the plan credits.
+  // Apply. Each step is idempotent so a resume is safe. Errors propagate (5xx)
+  // so PayFast retries and the resume path completes the job.
   const now = new Date();
   const periodEnd = new Date(now);
   periodEnd.setUTCMonth(periodEnd.getUTCMonth() + 1);
 
   await upsertSubscription(tenantId, {
-    planId: subscription.planId,
+    planId: intent.planId,
     status: 'active',
     provider: 'payfast',
     providerRef: mPaymentId,
@@ -160,10 +176,13 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     await grantCredits(tenantId, currentBillingMonth(now), plan.monthlyCredits);
   }
 
+  // Last step: only now is the payment considered fully applied.
+  await markPaymentApplied(tenantId, mPaymentId);
+
   logger.info('Subscription activated via ITN', {
     tenantId,
     mPaymentId,
-    planId: subscription.planId,
+    planId: intent.planId,
   });
   return ack('ok');
 }

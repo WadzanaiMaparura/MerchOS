@@ -14,6 +14,7 @@ import { SupplierIntelligenceStack } from '../lib/supplier-intelligence-stack';
 import { ImageIntelligenceStack } from '../lib/image-intelligence-stack';
 import { ProductIntelligenceStack } from '../lib/product-intelligence-stack';
 import { ExportApiStack } from '../lib/export-api-stack';
+import { BillingApiStack } from '../lib/billing-api-stack';
 
 const app = new cdk.App();
 
@@ -126,5 +127,18 @@ const exportApiStack = new ExportApiStack(app, `MerchOS-ExportApi-${env}`, {
 });
 exportApiStack.addDependency(foundationStack);
 exportApiStack.addDependency(authStack);
+
+// Billing API (subscriptions, credit ledger, PayFast payments). Creates its own
+// billing table + PayFast secret; auth/KMS come from Auth/Foundation. Exports
+// its API URL at /merch-os/{env}/billing-api/url.
+const billingApiStack = new BillingApiStack(app, `MerchOS-BillingApi-${env}`, {
+  env: cdkEnv,
+  environment: env,
+  userPool: authStack.userPool,
+  sellerDashboardClient: authStack.sellerDashboardClient,
+  platformKey: foundationStack.platformKey,
+});
+billingApiStack.addDependency(foundationStack);
+billingApiStack.addDependency(authStack);
 
 app.synth();
