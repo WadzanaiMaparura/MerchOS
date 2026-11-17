@@ -20,6 +20,11 @@
  */
 
 import * as cdk from 'aws-cdk-lib';
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
+import * as cwActions from 'aws-cdk-lib/aws-cloudwatch-actions';
+import * as logs from 'aws-cdk-lib/aws-logs';
+import * as sns from 'aws-cdk-lib/aws-sns';
+import * as snsSubs from 'aws-cdk-lib/aws-sns-subscriptions';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as iam from 'aws-cdk-lib/aws-iam';
@@ -45,6 +50,7 @@ export class BillingApiStack extends cdk.Stack {
   public readonly httpApi: HttpApi;
   public readonly billingTable: dynamodb.Table;
   public readonly payfastSecret: secretsmanager.Secret;
+  public readonly alarmTopic: sns.Topic;
 
   constructor(scope: Construct, id: string, props: BillingApiStackProps) {
     super(scope, id, props);
@@ -306,6 +312,120 @@ export class BillingApiStack extends cdk.Stack {
     });
 
     // -----------------------------------------------------------------------
+    // Payment monitoring
+    //
+    // Every alarm notifies one SNS topic. Pass `--context billingAlarmEmail=you@x`
+    // to subscribe an address (AWS emails a confirmation link first).
+    //
+    // Signals come from the handlers' structured (Powertools JSON) log lines, so
+    // each alarm maps to a specific, actionable failure:
+    //   - ItnErrors:        unhandled ITN error -> 5xx; PayFast retries, but a
+    //                       paid seller may not be activated yet.
+    //   - ItnRetrying:      we could not complete verification (PayFast/DNS
+    //                       unreachable) and asked PayFast to retry.
+    //   - ItnRejected:      a notification failed signature/IP/postback checks.
+    //                       At our volume any rejection is worth a look: a real
+    //                       PayFast ITN failing here is a lost activation.
+    //   - ItnAnomaly:       amount mismatch, unknown checkout, missing tenant or
+    //                       payment id - tampering or a bug.
+    //   - CheckoutErrors:   sellers cannot start a checkout.
+    // -----------------------------------------------------------------------
+
+    this.alarmTopic = new sns.Topic(this, 'BillingAlarmTopic', {
+      topicName: `merch-os-billing-alarms-${env}`,
+      displayName: `MerchOS billing alarms (${env})`,
+    });
+    const alarmEmail = this.node.tryGetContext('billingAlarmEmail') as string | undefined;
+    if (alarmEmail) {
+      this.alarmTopic.addSubscription(new snsSubs.EmailSubscription(alarmEmail));
+    }
+    const notify = new cwActions.SnsAction(this.alarmTopic);
+
+    const metricNamespace = `MerchOS/Billing/${env}`;
+    const itnLogGroup = logs.LogGroup.fromLogGroupName(
+      this,
+      'PayfastItnLogGroup',
+      `/aws/lambda/${payfastItnFn.functionName}`
+    );
+
+    /** Counts log lines whose JSON `message` is one of `messages`. */
+    const logCountMetric = (id: string, metricName: string, messages: string[]): cloudwatch.Metric => {
+      new logs.MetricFilter(this, id, {
+        logGroup: itnLogGroup,
+        metricNamespace,
+        metricName,
+        filterPattern: logs.FilterPattern.any(
+          ...messages.map((m) => logs.FilterPattern.stringValue('$.message', '=', m))
+        ),
+        metricValue: '1',
+        defaultValue: 0,
+      });
+      return new cloudwatch.Metric({
+        namespace: metricNamespace,
+        metricName,
+        statistic: cloudwatch.Stats.SUM,
+        period: cdk.Duration.minutes(5),
+      });
+    };
+
+    const alarm = (
+      id: string,
+      metric: cloudwatch.IMetric,
+      threshold: number,
+      description: string
+    ): void => {
+      const a = new cloudwatch.Alarm(this, id, {
+        alarmName: `merch-os-billing-${id}-${env}`,
+        alarmDescription: description,
+        metric,
+        threshold,
+        evaluationPeriods: 1,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      });
+      a.addAlarmAction(notify);
+      a.addOkAction(notify);
+    };
+
+    alarm(
+      'ItnErrors',
+      payfastItnFn.metricErrors({ period: cdk.Duration.minutes(5), statistic: cloudwatch.Stats.SUM }),
+      1,
+      'PayFast ITN Lambda threw. PayFast will retry, but a paid seller may not be activated. Check the merch-os-billing-payfastitn logs.'
+    );
+    alarm(
+      'ItnRetrying',
+      logCountMetric('ItnRetryingFilter', 'ItnVerificationUnavailable', [
+        'ITN verification unavailable; requesting retry',
+        'ITN verification threw',
+      ]),
+      1,
+      'Could not verify a PayFast ITN (PayFast/DNS unreachable or verifier error); PayFast was asked to retry.'
+    );
+    alarm(
+      'ItnRejected',
+      logCountMetric('ItnRejectedFilter', 'ItnRejected', ['ITN rejected']),
+      1,
+      'A PayFast ITN failed signature / source-IP / postback checks. If it came from PayFast, a real payment was NOT applied. The log line lists the reason and field names.'
+    );
+    alarm(
+      'ItnAnomaly',
+      logCountMetric('ItnAnomalyFilter', 'ItnAnomaly', [
+        'ITN amount mismatch',
+        'ITN has no matching checkout intent',
+        'ITN missing tenant or payment id',
+      ]),
+      1,
+      'A verified ITN did not match our records (amount, checkout or tenant). Possible tampering or a bug; the payment was not applied.'
+    );
+    alarm(
+      'CheckoutErrors',
+      changePlanFn.metricErrors({ period: cdk.Duration.minutes(5), statistic: cloudwatch.Stats.SUM }),
+      1,
+      'The change-plan Lambda threw: sellers may be unable to start a PayFast checkout.'
+    );
+
+    // -----------------------------------------------------------------------
     // SSM exports + stack outputs
     // -----------------------------------------------------------------------
 
@@ -322,6 +442,11 @@ export class BillingApiStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'BillingApiEndpoint', {
       value: this.httpApi.apiEndpoint,
       exportName: `${id}-BillingApiEndpoint`,
+    });
+
+    new cdk.CfnOutput(this, 'BillingAlarmTopicArn', {
+      value: this.alarmTopic.topicArn,
+      exportName: `${id}-BillingAlarmTopicArn`,
     });
 
     new cdk.CfnOutput(this, 'PayFastSecretArn', {
