@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import crypto from 'node:crypto';
 import {
+  computeItnSignature,
   payfastUrlEncode,
   buildSignatureString,
   computeSignature,
@@ -268,6 +269,26 @@ describe('PayFastProvider.verifyItn', () => {
     const p = new PayFastProvider(TEST_CONFIG);
     const r = await p.verifyItn(signedItnBody(fields, 'some-other-passphrase'), {});
     expect(r.valid).toBe(false);
+  });
+
+  it('accepts a real-world ITN that contains blank fields (signed over ALL posted fields)', async () => {
+    const withBlanks: Array<[string, string]> = [
+      ['m_payment_id', 'pay-9'],
+      ['pf_payment_id', '2000001'],
+      ['payment_status', 'COMPLETE'],
+      ['item_name', 'Starter'],
+      ['item_description', ''],
+      ['amount_gross', '499.00'],
+      ['custom_str1', 'tenant-xyz'],
+      ['custom_str2', ''],
+      ['name_first', ''],
+      ['email_address', ''],
+    ];
+    const sig = computeItnSignature(withBlanks, TEST_CONFIG.passphrase);
+    const body = withBlanks.map(([k, v]) => `${k}=${payfastUrlEncode(v)}`).join('&') + `&signature=${sig}`;
+    const r = await new PayFastProvider(TEST_CONFIG).verifyItn(body, {});
+    expect(r.valid).toBe(true);
+    expect(r.amountGrossCents).toBe(49900);
   });
 
   it('rejects an ITN with no signature', async () => {

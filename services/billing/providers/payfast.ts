@@ -213,6 +213,23 @@ export function computeSignature(
 }
 
 /**
+ * Computes the signature PayFast puts on an ITN. Unlike the checkout signature
+ * (which omits blank fields), PayFast signs EVERY posted field - including ones
+ * with empty values - in posted order, excluding `signature` itself. Applying
+ * the checkout rule here made real notifications fail verification.
+ */
+export function computeItnSignature(
+  orderedPairs: Array<[string, string]>,
+  passphrase?: string
+): string {
+  let str = orderedPairs.map(([k, v]) => `${k}=${payfastUrlEncode(v)}`).join('&');
+  if (passphrase !== undefined && passphrase !== '') {
+    str += `&passphrase=${payfastUrlEncode(passphrase)}`;
+  }
+  return crypto.createHash('md5').update(str).digest('hex');
+}
+
+/**
  * Parses a urlencoded body into ordered [key, value] pairs, preserving the
  * original POST order. PayFast ITN signature must be verified in POST order, so
  * we cannot use URLSearchParams iteration guarantees loosely — we split the raw
@@ -321,8 +338,11 @@ export class PayFastProvider implements PaymentProvider {
     }
 
     // (a) Recompute the signature over the posted fields in POST order.
-    const expected = computeSignature(pairsForSig, this.config.passphrase);
-    const signatureValid = timingSafeEqualHex(expected, postedSignature);
+    // Primary: PayFast's ITN rule (blank fields included). Fallback: the
+    // blank-fields-omitted form, which is identical when no field is blank.
+    const signatureValid =
+      timingSafeEqualHex(computeItnSignature(pairsForSig, this.config.passphrase), postedSignature) ||
+      timingSafeEqualHex(computeSignature(pairsForSig, this.config.passphrase), postedSignature);
 
     if (!signatureValid) {
       return { valid: false, raw, reason: 'signature_mismatch' };

@@ -112,7 +112,13 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
       logger.warn('ITN verification unavailable; requesting retry', { reason: verification.reason });
       return { statusCode: 503, headers: { 'Content-Type': 'text/plain' }, body: 'retry' };
     }
-    logger.warn('ITN rejected', { reason: verification.reason });
+    // Field NAMES only (never values) to diagnose signature/format mismatches.
+    const posted = verification.raw ?? {};
+    logger.warn('ITN rejected', {
+      reason: verification.reason,
+      fields: Object.keys(posted),
+      emptyFields: Object.entries(posted).filter(([, v]) => v === '').map(([k]) => k),
+    });
     return ack('invalid');
   }
 
