@@ -11,6 +11,8 @@ import { z } from 'zod';
 export const changePlanSchema = z
   .object({
     planId: z.enum(['starter', 'growth', 'professional', 'enterprise']),
+    /** Optional discount voucher. The server prices it; clients never send an amount. */
+    voucherCode: z.string().trim().min(1).max(40).optional(),
     returnUrl: z.string().url().optional(),
     cancelUrl: z.string().url().optional(),
   })

@@ -171,13 +171,25 @@ export interface CheckoutIntent {
   tenantId: string;
   mPaymentId: string;
   planId: PlanId;
+  /** Amount actually charged, integer ZAR cents (after any voucher). */
   priceZARCents: number;
+  /** Voucher applied at checkout, if any, with the list price it discounted. */
+  voucherCode?: string;
+  listPriceCents?: number;
+  discountCents?: number;
   createdAt: string;
 }
 
 export async function createCheckoutIntent(
   tenantId: string,
-  input: { mPaymentId: string; planId: PlanId; priceZARCents: number }
+  input: {
+    mPaymentId: string;
+    planId: PlanId;
+    priceZARCents: number;
+    voucherCode?: string;
+    listPriceCents?: number;
+    discountCents?: number;
+  }
 ): Promise<CheckoutIntent> {
   const now = new Date();
   const intent: CheckoutIntent = {
@@ -185,6 +197,9 @@ export async function createCheckoutIntent(
     mPaymentId: input.mPaymentId,
     planId: input.planId,
     priceZARCents: input.priceZARCents,
+    ...(input.voucherCode ? { voucherCode: input.voucherCode } : {}),
+    ...(input.listPriceCents !== undefined ? { listPriceCents: input.listPriceCents } : {}),
+    ...(input.discountCents !== undefined ? { discountCents: input.discountCents } : {}),
     createdAt: now.toISOString(),
   };
   const client = createTenantDynamoClient(tenantId);

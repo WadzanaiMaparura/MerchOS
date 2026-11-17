@@ -202,6 +202,7 @@ function BillingContent() {
   const [showPlanChange, setShowPlanChange] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<PlanId | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [voucherCode, setVoucherCode] = useState('');
   const [pdfError, setPdfError] = useState<Record<string, boolean>>({});
 
   const planChangeMutation = usePlanChange();
@@ -233,6 +234,7 @@ function BillingContent() {
     planChangeMutation.mutate(
       {
         planId: chosen,
+        ...(voucherCode.trim() ? { voucherCode: voucherCode.trim() } : {}),
         // Return to whichever origin the seller is on (not a server-side default),
         // so dev/staging/prod and custom domains all land back on their own app.
         returnUrl: `${window.location.origin}/billing?checkout=success`,
@@ -434,6 +436,24 @@ function BillingContent() {
             Choose a plan. You&apos;ll be taken to PayFast to pay securely, and your plan changes as
             soon as the payment is confirmed. Prices are in South African Rand.
           </p>
+          <div className="mb-4 max-w-sm">
+            <label htmlFor="voucher-code" className="mb-1 block text-sm font-medium text-gray-700">
+              Voucher code (optional)
+            </label>
+            <input
+              id="voucher-code"
+              type="text"
+              value={voucherCode}
+              onChange={(e) => setVoucherCode(e.target.value)}
+              autoComplete="off"
+              maxLength={40}
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm uppercase focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+              aria-describedby="voucher-help"
+            />
+            <p id="voucher-help" className="mt-1 text-xs text-gray-500">
+              Applied when you continue to PayFast. The final amount is shown on the PayFast page.
+            </p>
+          </div>
           {plans.length === 0 ? (
             <p className="text-sm text-gray-500">Loading plans…</p>
           ) : (

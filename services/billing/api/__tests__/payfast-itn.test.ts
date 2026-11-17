@@ -8,6 +8,9 @@ vi.mock('../../services/subscription-store', () => ({
   markPaymentApplied: vi.fn(),
   upsertInvoice: vi.fn(),
 }));
+vi.mock('../../services/vouchers', () => ({
+  recordVoucherRedemption: vi.fn(),
+}));
 vi.mock('../../services/credit-ledger', () => ({
   grantCredits: vi.fn(),
 }));
@@ -18,6 +21,7 @@ vi.mock('../../../shared/middleware/logger', () => ({
 import { handler, setPaymentProvider } from '../handlers/payfast-itn';
 import * as store from '../../services/subscription-store';
 import * as ledger from '../../services/credit-ledger';
+import * as vouchers from '../../services/vouchers';
 
 const verifyItn = vi.fn();
 const provider = {
@@ -62,6 +66,48 @@ beforeEach(() => {
   vi.mocked(store.getCheckoutIntent).mockResolvedValue(growthIntent as never);
   vi.mocked(store.recordPayment).mockResolvedValue(true);
   vi.mocked(store.getPayment).mockResolvedValue({ mPaymentId: 'pay-1', applied: false });
+});
+
+describe('PayFast ITN ? voucher checkout', () => {
+  const voucherIntent = {
+    ...growthIntent,
+    planId: 'starter',
+    priceZARCents: 500,
+    voucherCode: 'LIVE-TEST',
+    listPriceCents: 49900,
+    discountCents: 49400,
+  };
+
+  it('accepts the discounted amount, records the redemption BEFORE marking applied, and keeps the list price on the subscription', async () => {
+    verifyItn.mockResolvedValue({ ...GOOD, amountGrossCents: 500 });
+    vi.mocked(store.getCheckoutIntent).mockResolvedValue(voucherIntent as never);
+    expect(await body()).toBe('ok');
+    expect(vouchers.recordVoucherRedemption).toHaveBeenCalledWith('LIVE-TEST', 'tenant-1', 'pay-1');
+    expect(store.upsertSubscription).toHaveBeenCalledWith(
+      'tenant-1',
+      expect.objectContaining({ planId: 'starter', priceZARCents: 49900 }),
+    );
+    expect(store.upsertInvoice).toHaveBeenCalledWith(
+      'tenant-1',
+      expect.objectContaining({ amountCents: 500 }),
+    );
+    expect(vi.mocked(vouchers.recordVoucherRedemption).mock.invocationCallOrder[0]!).toBeLessThan(
+      vi.mocked(store.markPaymentApplied).mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('rejects a payment of the LIST price against a discounted intent (amount tampering)', async () => {
+    verifyItn.mockResolvedValue({ ...GOOD, amountGrossCents: 49900 });
+    vi.mocked(store.getCheckoutIntent).mockResolvedValue(voucherIntent as never);
+    expect(await body()).toBe('amount-mismatch');
+    expect(vouchers.recordVoucherRedemption).not.toHaveBeenCalled();
+    expect(store.upsertSubscription).not.toHaveBeenCalled();
+  });
+
+  it('does not touch vouchers when the intent has none', async () => {
+    expect(await body()).toBe('ok');
+    expect(vouchers.recordVoucherRedemption).not.toHaveBeenCalled();
+  });
 });
 
 describe('PayFast ITN ? transient verification failure', () => {

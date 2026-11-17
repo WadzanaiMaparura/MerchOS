@@ -278,7 +278,7 @@ export class PayFastProvider implements PaymentProvider {
     }
 
     const mPaymentId = crypto.randomUUID();
-    const amount = centsToDecimalString(plan.priceZARCents);
+    const amount = centsToDecimalString(req.amountCents ?? plan.priceZARCents);
 
     // Build the field map in the EXACT required order (see CHECKOUT_FIELD_ORDER).
     const values: Record<(typeof CHECKOUT_FIELD_ORDER)[number], string> = {

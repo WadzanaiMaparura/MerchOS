@@ -25,6 +25,8 @@ export interface InvoiceListParams {
 
 export interface PlanChangePayload {
   planId: PlanId;
+  /** Optional discount voucher. The server prices it; the client never sends an amount. */
+  voucherCode?: string;
   /** Where PayFast sends the buyer after paying. Defaults server-side if omitted. */
   returnUrl?: string;
   /** Where PayFast sends the buyer if they cancel. */

@@ -20,6 +20,11 @@ export interface CheckoutRequest {
   email?: string;
   returnUrl: string;
   cancelUrl: string;
+  /**
+   * Server-computed amount to charge, in cents (e.g. after a voucher). When
+   * omitted the plan's list price is used.
+   */
+  amountCents?: number;
 }
 
 /** Result of initiating checkout — where to redirect the buyer and our ref. */

@@ -25,6 +25,7 @@ import { getPlan } from '../../config/plans';
 import { PayFastProvider, loadPayFastConfig } from '../../providers/payfast';
 import type { PaymentProvider } from '../../providers/payment-provider';
 import { createCheckoutIntent } from '../../services/subscription-store';
+import { resolveVoucher } from '../../services/vouchers';
 import { changePlanSchema } from '../schemas';
 import { mapErrorToResponse, ApiErrors } from '../error-mapper';
 
@@ -94,6 +95,14 @@ async function baseHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayPro
   const cancelUrl = parsed.data.cancelUrl ?? `${appBase}/billing?checkout=cancelled`;
 
   try {
+    // Price the checkout on the server. A voucher (if any) is validated and
+    // applied here; the resulting amount is what PayFast is asked to charge AND
+    // what the ITN is later verified against.
+    const pricing = parsed.data.voucherCode
+      ? await resolveVoucher(parsed.data.voucherCode, parsed.data.planId, plan.priceZARCents)
+      : undefined;
+    const chargeCents = pricing?.finalCents ?? plan.priceZARCents;
+
     // The ITN notify URL is derived from the API's own domain at request time
     // (not an env var) because wiring the API URL into the Lambda's environment
     // would create a CloudFormation circular dependency (API -> Lambda -> API).
@@ -108,6 +117,7 @@ async function baseHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayPro
       ...(email ? { email } : {}),
       returnUrl,
       cancelUrl,
+      amountCents: chargeCents,
     });
 
     // Record the checkout INTENT (plan + expected price) under CHECKOUT#<id>.
@@ -117,7 +127,14 @@ async function baseHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayPro
     await createCheckoutIntent(tenantId, {
       mPaymentId: checkout.mPaymentId,
       planId: parsed.data.planId,
-      priceZARCents: plan.priceZARCents,
+      priceZARCents: chargeCents,
+      ...(pricing
+        ? {
+            voucherCode: pricing.voucherCode,
+            listPriceCents: pricing.listPriceCents,
+            discountCents: pricing.discountCents,
+          }
+        : {}),
     });
 
     // NOTE: the payment idempotency record (PAYMENT#<mPaymentId>) is created by

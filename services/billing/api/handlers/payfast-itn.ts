@@ -46,6 +46,7 @@ import {
   upsertInvoice,
 } from '../../services/subscription-store';
 import { grantCredits } from '../../services/credit-ledger';
+import { recordVoucherRedemption } from '../../services/vouchers';
 
 let injectedProvider: PaymentProvider | undefined;
 
@@ -182,7 +183,9 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     provider: 'payfast',
     providerRef: mPaymentId,
     mPaymentId,
-    priceZARCents: expectedCents,
+    // List price of the plan; what was actually paid (after any voucher) is on
+    // the invoice and the payment record.
+    priceZARCents: plan.priceZARCents,
     currentPeriodStart: now.toISOString(),
     currentPeriodEnd: periodEnd.toISOString(),
   });
@@ -201,6 +204,18 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     provider: 'payfast',
     providerRef: mPaymentId,
   });
+
+  // Count the voucher only now that the money has landed (idempotent per payment).
+  if (intent.voucherCode) {
+    const recorded = await recordVoucherRedemption(intent.voucherCode, tenantId, mPaymentId);
+    if (!recorded) {
+      logger.warn('Voucher redemption not recorded (already counted)', {
+        tenantId,
+        mPaymentId,
+        voucherCode: intent.voucherCode,
+      });
+    }
+  }
 
   // Last step: only now is the payment considered fully applied.
   await markPaymentApplied(tenantId, mPaymentId);
