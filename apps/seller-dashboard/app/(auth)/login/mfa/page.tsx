@@ -22,7 +22,7 @@ import { useRouter } from 'next/navigation';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useAuth } from '@merch-os/auth';
+import { useAuth, readNextFromSearch } from '@merch-os/auth';
 import { Input, Form, FormField } from '@merch-os/ui';
 
 // ─── Validation ──────────────────────────────────────────────────────────────
@@ -58,7 +58,7 @@ export default function SellerMfaPage() {
       try {
         await completeMfa(data.code);
         // MFA complete — session is now established. Redirect to dashboard.
-        router.replace('/dashboard');
+        router.replace(readNextFromSearch(window.location.search) ?? '/dashboard');
       } catch {
         // Generic, non-enumerating message. Covers both a wrong code and a
         // missing/expired challenge (e.g. direct navigation or reload).

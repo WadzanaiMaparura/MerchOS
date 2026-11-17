@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useAuth } from '@merch-os/auth';
+import { useAuth, readNextFromSearch } from '@merch-os/auth';
 import { Input, Form, FormField } from '@merch-os/ui';
 
 /**
@@ -85,11 +85,13 @@ export default function LoginPage() {
       try {
         const result = await login(data.email, data.password);
 
+        // Where RouteGuard sent them from (validated same-site path), if anywhere.
+        const next = readNextFromSearch(window.location.search);
         // If an MFA challenge is returned (email OTP for sellers), continue to
-        // the code-entry page. The pending challenge is held in the shared
-        // AuthProvider, so the MFA page resolves it via completeMfa().
+        // the code-entry page, carrying the destination. The pending challenge is
+        // held in the shared AuthProvider, so the MFA page resolves it via completeMfa().
         if (result && 'challengeType' in result) {
-          router.push('/login/mfa');
+          router.push(next ? `/login/mfa?next=${encodeURIComponent(next)}` : '/login/mfa');
           return;
         }
 
@@ -107,8 +109,8 @@ export default function LoginPage() {
           // does not yet have email MFA enabled in a given environment.)
         }
 
-        // Successful authentication — redirect to dashboard
-        router.push('/dashboard');
+        // Successful authentication: back to where they were (validated), else the dashboard.
+        router.push(next ?? '/dashboard');
       } catch {
         // Record failed attempt timestamp
         const now = Date.now();

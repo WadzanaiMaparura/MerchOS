@@ -15,6 +15,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from './hooks';
+import { buildLoginUrl } from './return-to';
 import type { SellerRole } from '@merch-os/types';
 
 export interface RouteGuardProps {
@@ -63,6 +64,12 @@ function dispatchAccessDeniedNotification(): void {
   window.dispatchEvent(event);
 }
 
+/** Where the visitor is now (path + query), so login can send them back. */
+function currentLocation(): string {
+  if (typeof window === 'undefined') return '/';
+  return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+}
+
 export function RouteGuard({
   children,
   requiredRole,
@@ -89,7 +96,7 @@ export function RouteGuard({
       if (!redirectingRef.current) {
         redirectingRef.current = true;
         const timeout = setTimeout(() => {
-          router.replace(loginPath);
+          router.replace(buildLoginUrl(loginPath, currentLocation()));
         }, 0); // Redirect immediately (well within 2 second requirement)
         // Clean up is handled by the effect cleanup
         return false;
@@ -102,7 +109,7 @@ export function RouteGuard({
     if (!userRole) {
       if (!redirectingRef.current) {
         redirectingRef.current = true;
-        router.replace(loginPath);
+        router.replace(buildLoginUrl(loginPath, currentLocation()));
       }
       return false;
     }
