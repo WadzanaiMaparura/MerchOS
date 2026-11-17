@@ -193,9 +193,10 @@ describe('PayFast ITN — rejections apply nothing', () => {
     expectNothingApplied();
   });
 
-  it('verification throwing is acknowledged, not retried forever', async () => {
-    verifyItn.mockRejectedValue(new Error('boom'));
-    expect(await body()).toBe('error-verifying');
+  it('verification throwing (our side failed) answers 503 so PayFast retries, and applies nothing', async () => {
+    verifyItn.mockRejectedValue(new Error('secrets manager unavailable'));
+    const res = (await handler(event)) as { statusCode: number; body: string };
+    expect(res.statusCode).toBe(503);
     expectNothingApplied();
   });
 });

@@ -94,7 +94,11 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     | undefined;
   const ip = typeof http?.['sourceIp'] === 'string' ? (http['sourceIp'] as string) : undefined;
 
-  // (1) Authenticity. Anything that fails here is a final answer, not a retry.
+  // (1) Authenticity. A notification that is checked and found invalid is a
+  // final answer (ack 200). But a THROW here means our own side failed (e.g.
+  // Secrets Manager unavailable while loading credentials), not that the ITN is
+  // bad - so answer 503 and let PayFast retry rather than drop a real payment.
+  // PayFast's retries are bounded, so this cannot loop forever.
   let verification;
   try {
     const provider = await resolveProvider();
@@ -103,7 +107,7 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     logger.error('ITN verification threw', {
       error: error instanceof Error ? error.message : String(error),
     });
-    return ack('error-verifying');
+    return { statusCode: 503, headers: { 'Content-Type': 'text/plain' }, body: 'retry' };
   }
 
   if (!verification.valid) {
