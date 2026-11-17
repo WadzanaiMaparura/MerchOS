@@ -35,6 +35,7 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda
 import { logger } from '../../../shared/middleware/logger';
 import { getPlan } from '../../config/plans';
 import { PayFastProvider, loadPayFastConfig } from '../../providers/payfast';
+import { createLiveItnChecks } from '../../providers/payfast-itn-checks';
 import type { PaymentProvider } from '../../providers/payment-provider';
 import {
   getCheckoutIntent,
@@ -55,7 +56,8 @@ export function setPaymentProvider(provider: PaymentProvider): void {
 
 async function resolveProvider(): Promise<PaymentProvider> {
   if (injectedProvider) return injectedProvider;
-  return new PayFastProvider(await loadPayFastConfig());
+  const config = await loadPayFastConfig();
+  return new PayFastProvider(config, createLiveItnChecks({ mode: config.mode }));
 }
 
 /** 200 acknowledgement (PayFast stops retrying on 200). */
@@ -104,6 +106,12 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
   }
 
   if (!verification.valid) {
+    if (verification.retryable) {
+      // Could not complete verification (PayFast/DNS unreachable). The payment may
+      // be genuine, so do NOT ack: a 5xx makes PayFast retry the notification.
+      logger.warn('ITN verification unavailable; requesting retry', { reason: verification.reason });
+      return { statusCode: 503, headers: { 'Content-Type': 'text/plain' }, body: 'retry' };
+    }
     logger.warn('ITN rejected', { reason: verification.reason });
     return ack('invalid');
   }

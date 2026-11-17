@@ -64,6 +64,21 @@ beforeEach(() => {
   vi.mocked(store.getPayment).mockResolvedValue({ mPaymentId: 'pay-1', applied: false });
 });
 
+describe('PayFast ITN ? transient verification failure', () => {
+  it('answers 503 (so PayFast retries) and applies nothing when verification is unavailable', async () => {
+    verifyItn.mockResolvedValue({ valid: false, retryable: true, reason: 'postback_unreachable' });
+    const res = (await handler(event)) as { statusCode: number };
+    expect(res.statusCode).toBe(503);
+    expect(store.upsertSubscription).not.toHaveBeenCalled();
+    expect(ledger.grantCredits).not.toHaveBeenCalled();
+  });
+
+  it('answers 200 (final) when verification definitively rejects', async () => {
+    verifyItn.mockResolvedValue({ valid: false, reason: 'source_ip_not_allowed' });
+    expect(await body()).toBe('invalid');
+  });
+});
+
 describe('PayFast ITN — happy path', () => {
   it('activates the plan, grants 400 credits, then marks the payment applied (in that order)', async () => {
     expect(await body()).toBe('ok');

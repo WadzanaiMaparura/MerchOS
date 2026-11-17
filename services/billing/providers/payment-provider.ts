@@ -42,6 +42,11 @@ export interface ItnVerificationResult {
   paymentStatus?: string;
   raw?: Record<string, string>;
   reason?: string;
+  /**
+   * True when verification could not be completed for a transient reason
+   * (e.g. PayFast unreachable). The handler answers 5xx so PayFast retries.
+   */
+  retryable?: boolean;
 }
 
 /** A pluggable payment provider. */

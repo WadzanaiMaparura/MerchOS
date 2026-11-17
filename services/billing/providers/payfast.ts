@@ -46,6 +46,7 @@ import type {
   PaymentProvider,
 } from './payment-provider';
 import { getPlan, centsToDecimalString } from '../config/plans';
+import type { ItnChecks } from './payfast-itn-checks';
 
 // ---------------------------------------------------------------------------
 // Config
@@ -240,7 +241,15 @@ export class PayFastProvider implements PaymentProvider {
   readonly name = 'payfast';
   private readonly config: PayFastConfig;
 
-  constructor(config?: PayFastConfig) {
+  /**
+   * @param itnChecks Optional source-IP + server postback checks. Production
+   *   wiring passes `createLiveItnChecks`; omitted in unit tests, where the
+   *   signature check alone is exercised.
+   */
+  constructor(
+    config?: PayFastConfig,
+    private readonly itnChecks?: ItnChecks,
+  ) {
     this.config = config ?? loadPayFastConfigFromEnv();
   }
 
@@ -290,7 +299,7 @@ export class PayFastProvider implements PaymentProvider {
   async verifyItn(
     rawBody: string,
     _headers: Record<string, string | undefined>,
-    _sourceIp?: string
+    sourceIp?: string
   ): Promise<ItnVerificationResult> {
     const ordered = parseUrlEncodedOrdered(rawBody);
 
@@ -319,18 +328,29 @@ export class PayFastProvider implements PaymentProvider {
       return { valid: false, raw, reason: 'signature_mismatch' };
     }
 
-    // ----------------------------------------------------------------------
-    // TODO: postback validation to PayFast /eng/query/validate
-    //   PayFast recommends a server-to-server confirmation POST of the received
-    //   payload to https://{sandbox|www}.payfast.co.za/eng/query/validate and
-    //   expecting the body "VALID". This requires an outbound network call and
-    //   is intentionally STUBBED here (CODE ONLY — no network calls).
-    // TODO: source-IP allowlist — verify sourceIp is within PayFast's published
-    //   ranges (resolve www.payfast.co.za / sandbox host). Also STUBBED.
-    // These two checks are defence-in-depth; the signature + server-side amount
-    // re-derivation in the handler remain the primary controls.
-    // ----------------------------------------------------------------------
-
+    // (a2) Defence in depth: source-IP allowlist, then server-to-server postback.
+    // Both run only after the signature passed, so unauthenticated callers cannot
+    // make us issue DNS lookups or outbound requests.
+    if (this.itnChecks) {
+      const ipCheck = await this.itnChecks.checkSourceIp(sourceIp);
+      if (!ipCheck.ok) {
+        return {
+          valid: false,
+          raw,
+          reason: ipCheck.reason,
+          ...(ipCheck.kind === 'unavailable' ? { retryable: true } : {}),
+        };
+      }
+      const postback = await this.itnChecks.postbackValidate(rawBody);
+      if (!postback.ok) {
+        return {
+          valid: false,
+          raw,
+          reason: postback.reason,
+          ...(postback.kind === 'unavailable' ? { retryable: true } : {}),
+        };
+      }
+    }
     // (b) Surface gross amount (in cents) and payment status for the handler.
     const amountGross = raw['amount_gross'];
     const amountGrossCents =
