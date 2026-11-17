@@ -57,6 +57,7 @@ const call = async (body: unknown) => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  process.env['CHECKOUT_ENABLED'] = 'true';
   setPaymentProvider(provider as never);
   initiateCheckout.mockResolvedValue({ redirectUrl: 'https://pay.example/x', mPaymentId: 'pay-1' });
 });
@@ -109,5 +110,18 @@ describe('POST /billing/plan with a voucher', () => {
     const { status } = await call({ planId: 'starter', amountCents: 1 });
     expect(status).toBe(400);
     expect(initiateCheckout).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /billing/plan launch gate', () => {
+  it.each([undefined, 'false', ''])('refuses to start a checkout when CHECKOUT_ENABLED is %j', async (v) => {
+    if (v === undefined) delete process.env['CHECKOUT_ENABLED'];
+    else process.env['CHECKOUT_ENABLED'] = v;
+    const { status, json } = await call({ planId: 'starter' });
+    expect(status).toBe(503);
+    expect(json.error.code).toBe('CHECKOUT_DISABLED');
+    expect(initiateCheckout).not.toHaveBeenCalled();
+    expect(store.createCheckoutIntent).not.toHaveBeenCalled();
+    expect(vouchers.resolveVoucher).not.toHaveBeenCalled();
   });
 });

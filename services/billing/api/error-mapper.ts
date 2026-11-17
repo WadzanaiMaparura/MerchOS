@@ -65,6 +65,8 @@ export const ApiErrors = {
     respond(404, 'PLAN_NOT_FOUND', `Unknown plan: ${planId}`),
   planNotPurchasable: (planId: string): MappedResponse =>
     respond(400, 'PLAN_NOT_PURCHASABLE', `Plan ${planId} is custom/quote-based and cannot be self-checked-out`),
+  checkoutDisabled: (): MappedResponse =>
+    respond(503, 'CHECKOUT_DISABLED', 'Online payments are not open yet. Please check back soon.'),
   subscriptionNotFound: (): MappedResponse =>
     respond(404, 'SUBSCRIPTION_NOT_FOUND', 'No subscription found for this tenant'),
 };

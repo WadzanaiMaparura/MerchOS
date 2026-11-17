@@ -66,6 +66,10 @@ export class BillingApiStack extends cdk.Stack {
     // 'sandbox' until live PayFast credentials are deliberately switched on.
     const payfastMode =
       (this.node.tryGetContext('payfastMode') as string | undefined) ?? 'sandbox';
+    // Launch gate for starting checkouts. Closed unless explicitly opened with
+    // `--context checkoutEnabled=true` (prices are placeholders until finalised).
+    const checkoutEnabled =
+      String(this.node.tryGetContext('checkoutEnabled') ?? 'false') === 'true' ? 'true' : 'false';
     // Where PayFast sends the buyer back to (the seller-dashboard origin).
     const appBaseUrl =
       (this.node.tryGetContext('appBaseUrl') as string | undefined) ??
@@ -162,6 +166,7 @@ export class BillingApiStack extends cdk.Stack {
       COGNITO_ISSUER: `https://cognito-idp.${region}.amazonaws.com/${props.userPool.userPoolId}`,
       PAYFAST_SECRET_ARN: this.payfastSecret.secretArn,
       PAYFAST_MODE: payfastMode,
+      CHECKOUT_ENABLED: checkoutEnabled,
       APP_BASE_URL: appBaseUrl,
       POWERTOOLS_SERVICE_NAME: 'billing',
       LOG_LEVEL: env === 'production' ? 'WARN' : 'DEBUG',
