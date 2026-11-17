@@ -25,6 +25,10 @@ export interface InvoiceListParams {
 
 export interface PlanChangePayload {
   planId: PlanId;
+  /** Where PayFast sends the buyer after paying. Defaults server-side if omitted. */
+  returnUrl?: string;
+  /** Where PayFast sends the buyer if they cancel. */
+  cancelUrl?: string;
 }
 
 /** Result of starting a plan change: where to send the buyer to pay. */

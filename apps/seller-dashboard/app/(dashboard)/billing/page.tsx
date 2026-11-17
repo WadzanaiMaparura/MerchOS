@@ -231,7 +231,13 @@ function BillingContent() {
     if (!selectedPlan) return;
     const chosen = selectedPlan;
     planChangeMutation.mutate(
-      { planId: chosen },
+      {
+        planId: chosen,
+        // Return to whichever origin the seller is on (not a server-side default),
+        // so dev/staging/prod and custom domains all land back on their own app.
+        returnUrl: `${window.location.origin}/billing?checkout=success`,
+        cancelUrl: `${window.location.origin}/billing?checkout=cancelled`,
+      },
       {
         onSuccess: (result) => {
           // Remember what they are buying so the return trip can confirm THAT plan,
