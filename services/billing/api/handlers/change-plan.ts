@@ -60,6 +60,14 @@ async function baseHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayPro
   }
   const { tenantId } = tenantContext;
 
+  // Launch gate: checkout stays closed until prices are final. Deliberately
+  // checked here (not only in the UI) so the API cannot be used to start a real
+  // payment directly. The ITN webhook is NOT gated, so payments already in
+  // flight still complete.
+  if (process.env['CHECKOUT_ENABLED'] !== 'true') {
+    return ApiErrors.checkoutDisabled() as APIGatewayProxyResultV2;
+  }
+
   let body: unknown;
   try {
     body = JSON.parse(event.body ?? '{}');
