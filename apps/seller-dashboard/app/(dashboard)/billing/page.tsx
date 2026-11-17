@@ -39,6 +39,13 @@ const CONFIRM_TIMEOUT_MS = 120_000;
 /** sessionStorage key remembering which plan the buyer was paying for. */
 const PENDING_PLAN_KEY = 'merchos.billing.pendingPlan';
 
+/**
+ * Launch gate. Purchase actions stay hidden until prices are final. Off unless
+ * NEXT_PUBLIC_BILLING_CHECKOUT_ENABLED is exactly 'true' (build-time). The API
+ * enforces the same gate server-side (CHECKOUT_ENABLED), so this is UX only.
+ */
+const CHECKOUT_ENABLED = process.env.NEXT_PUBLIC_BILLING_CHECKOUT_ENABLED === 'true';
+
 // --- Formatting helpers -----------------------------------------------------
 
 /** Integer ZAR cents -> "R999" / "R1,999.50". */
@@ -436,6 +443,13 @@ function BillingContent() {
             Choose a plan. You&apos;ll be taken to PayFast to pay securely, and your plan changes as
             soon as the payment is confirmed. Prices are in South African Rand.
           </p>
+          {!CHECKOUT_ENABLED && (
+            <Alert variant="info" title="Online payments are opening soon">
+              Plan pricing is being finalised, so subscribing isn&apos;t available yet. You can
+              compare plans below.
+            </Alert>
+          )}
+          {CHECKOUT_ENABLED && (
           <div className="mb-4 max-w-sm">
             <label htmlFor="voucher-code" className="mb-1 block text-sm font-medium text-gray-700">
               Voucher code (optional)
@@ -454,6 +468,7 @@ function BillingContent() {
               Applied when you continue to PayFast. The final amount is shown on the PayFast page.
             </p>
           </div>
+          )}
           {plans.length === 0 ? (
             <p className="text-sm text-gray-500">Loading plans…</p>
           ) : (
@@ -494,7 +509,10 @@ function BillingContent() {
                     {isCurrent && (
                       <p className="mt-4 text-center text-sm font-medium text-blue-700">Current Plan</p>
                     )}
-                    {!isCurrent && selfService && (
+                    {!isCurrent && selfService && !CHECKOUT_ENABLED && (
+                      <p className="mt-4 text-center text-sm text-gray-500">Available soon</p>
+                    )}
+                    {!isCurrent && selfService && CHECKOUT_ENABLED && (
                       <button
                         onClick={() => {
                           setSelectedPlan(plan.planId);
