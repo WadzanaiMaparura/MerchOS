@@ -26,11 +26,11 @@ import type { ParsedRecord } from './file-parser';
 /** Extended product data extracted from HTML, beyond the base ParsedRecord fields. */
 export interface HtmlExtractedProduct extends ParsedRecord {
   /** Stock availability text (e.g. "In Stock", "Out of Stock") */
-  stockAvailability?: string;
+  stockAvailability?: string | undefined;
   /** Product variations (e.g. sizes, colours) */
-  variations?: ProductVariation[];
+  variations?: ProductVariation[] | undefined;
   /** Product specifications as key-value pairs */
-  specifications?: Record<string, string>;
+  specifications?: Record<string, string> | undefined;
   /** Source URL the product was extracted from */
   sourceUrl: string;
 }
@@ -39,9 +39,9 @@ export interface HtmlExtractedProduct extends ParsedRecord {
 export interface ProductVariation {
   name: string;
   value: string;
-  price?: string;
-  sku?: string;
-  available?: boolean;
+  price?: string | undefined;
+  sku?: string | undefined;
+  available?: boolean | undefined;
 }
 
 /** Configuration for the HTML extraction process. */

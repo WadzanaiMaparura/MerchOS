@@ -9,6 +9,9 @@ export default defineConfig({
   },
   test: {
     globals: true,
+    // Handlers bundle heavy deps; give headroom when suites run in parallel under turbo/CI.
+    testTimeout: 30000,
+    hookTimeout: 30000,
     environment: 'node',
     include: ['__tests__/unit/**/*.test.ts', '__tests__/integration/**/*.test.ts'],
     coverage: {

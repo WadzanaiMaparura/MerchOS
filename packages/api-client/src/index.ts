@@ -8,6 +8,10 @@ export {
   useApiClient,
   IntelligenceClientContext,
   useIntelligenceClient,
+  ExportClientContext,
+  useExportClient,
+  BillingClientContext,
+  useBillingClient,
 } from './context';
 
 // Inventory hooks
@@ -30,7 +34,12 @@ export {
   usePlanChange,
   billingKeys,
 } from './hooks/useBilling';
-export type { InvoiceListParams, PlanChangePayload } from './hooks/useBilling';
+export type {
+  InvoiceListParams,
+  PlanChangePayload,
+  PlanChangeResult,
+  UseBillingOptions,
+} from './hooks/useBilling';
 
 // Channels hooks
 export {
@@ -88,6 +97,7 @@ export {
   useProductSearch,
   useProductExport,
   useProductUpload,
+  useCanonicalProduct,
 } from './hooks/useProducts';
 
 // Product Intelligence (AI synthesis) hooks
@@ -237,6 +247,22 @@ export type {
   CreateSupplierPayload,
   UpdateSupplierPayload,
 } from './hooks/useSuppliers';
+
+// Export / Validation (marketplace export pipeline) hooks
+export {
+  useValidateProduct,
+  useGenerateExport,
+  exportResultToBlob,
+} from './hooks/useExport';
+export type {
+  ValidateProductPayload,
+  GenerateExportPayload,
+  GenerateExportResult,
+  ExportFileResult,
+  ExportArtifact,
+  ExportProductItem,
+  ExportOfferFields,
+} from './hooks/useExport';
 
 // Notifications
 export { WebSocketManager } from './notifications/websocket-manager';

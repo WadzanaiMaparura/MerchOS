@@ -78,7 +78,7 @@ interface ExtractedImage {
   mediaId: string;
   mimeType: string;
   sha256: string;
-  caption?: string;
+  caption?: string | undefined;
   senderPhoneNumber: string;
 }
 

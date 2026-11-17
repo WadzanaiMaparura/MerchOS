@@ -1,0 +1,23 @@
+{
+  // Used ONLY by `npm run typecheck` (tsc --noEmit). It does not affect `build`
+  // or how Lambdas are bundled: those keep using ./tsconfig.json unchanged.
+  //
+  // Why this exists: services are bundled by esbuild (bundler-style resolution),
+  // but tsconfig.json type-checks them as Node16 CommonJS. @middy/core ships
+  // ESM-only types, so under Node16 the import fails to resolve (TS2307) and
+  // every middleware callback cascades into "implicit any". Checking with
+  // Bundler resolution matches how the code is actually built.
+  //
+  // rootDir is widened to the repo root because services import ../shared and
+  // ../../packages/* (TS6059 otherwise). jsx is set because packages/rbac
+  // contains a .tsx file that services pull in transitively (TS6142 otherwise).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "rootDir": "../..",
+    "jsx": "react-jsx",
+    "composite": false,
+    "noEmit": true
+  }
+}

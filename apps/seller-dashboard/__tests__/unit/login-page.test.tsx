@@ -22,7 +22,11 @@ vi.mock('next/navigation', () => ({
 
 const loginMock = vi.fn();
 const completeMfaMock = vi.fn();
-vi.mock('@merch-os/auth', () => ({
+vi.mock('@merch-os/auth', async () => ({
+  // Real, pure return-to helpers (no Amplify); only the hook is faked.
+  ...(await vi.importActual<typeof import('../../../../packages/auth/src/return-to')>(
+    '../../../../packages/auth/src/return-to',
+  )),
   useAuth: () => ({ login: loginMock, completeMfa: completeMfaMock }),
 }));
 
@@ -31,7 +35,13 @@ import SellerMfaPage from '../../app/(auth)/login/mfa/page';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.history.replaceState({}, '', '/login');
 });
+
+/** Simulates RouteGuard having sent the visitor here from `dest`. */
+function arriveFrom(dest: string) {
+  window.history.replaceState({}, '', `/login?next=${encodeURIComponent(dest)}`);
+}
 
 async function submitLogin(email = 'seller@example.com', password = 'Sup3rSecret!') {
   fireEvent.change(screen.getByLabelText(/email address/i), { target: { value: email } });
@@ -58,6 +68,38 @@ describe('Seller LoginPage', () => {
 
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/dashboard'));
   });
+
+  it('returns to the page the visitor came from after a plain success', async () => {
+    arriveFrom('/billing?checkout=success');
+    loginMock.mockResolvedValue(undefined);
+    render(<LoginPage />);
+    await submitLogin();
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/billing?checkout=success'));
+    expect(pushMock).not.toHaveBeenCalledWith('/dashboard');
+  });
+
+  it('carries the destination through the MFA step', async () => {
+    arriveFrom('/billing?checkout=success');
+    loginMock.mockResolvedValue({ challengeType: 'EMAIL_OTP', session: 's' });
+    render(<LoginPage />);
+    await submitLogin();
+    await waitFor(() =>
+      expect(pushMock).toHaveBeenCalledWith(
+        `/login/mfa?next=${encodeURIComponent('/billing?checkout=success')}`,
+      ),
+    );
+  });
+
+  it.each(['https://evil.example/x', '//evil.example', '/login', '/\\evil.example'])(
+    'ignores an unsafe next (%s) and goes to /dashboard',
+    async (bad) => {
+      arriveFrom(bad);
+      loginMock.mockResolvedValue(undefined);
+      render(<LoginPage />);
+      await submitLogin();
+      await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/dashboard'));
+    },
+  );
 
   it('shows a generic error and does not navigate when login fails', async () => {
     loginMock.mockRejectedValue(new Error('Auth UserPool not configured'));
@@ -95,6 +137,15 @@ describe('Seller MFA page', () => {
 
     await waitFor(() => expect(completeMfaMock).toHaveBeenCalledWith('123456'));
     await waitFor(() => expect(replaceMock).toHaveBeenCalledWith('/dashboard'));
+  });
+
+  it('completes MFA and returns to the saved destination', async () => {
+    arriveFrom('/billing?checkout=success');
+    completeMfaMock.mockResolvedValue(undefined);
+    render(<SellerMfaPage />);
+    fireEvent.change(screen.getByLabelText(/verification code/i), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: /verify/i }));
+    await waitFor(() => expect(replaceMock).toHaveBeenCalledWith('/billing?checkout=success'));
   });
 
   it('shows an error and stays on the page when the code is rejected', async () => {

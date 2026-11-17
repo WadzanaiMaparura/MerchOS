@@ -49,7 +49,7 @@ function Harness({ onLoginResult }: { onLoginResult?: (r: MfaChallengeResult | v
       <button onClick={async () => onLoginResult?.(await login('seller@example.com', 'pw'))}>
         login
       </button>
-      <button onClick={() => completeMfa('123456')}>completeMfa</button>
+      <button onClick={() => { void completeMfa('123456').catch(() => undefined); }}>completeMfa</button>
       <span data-testid="authed">{String(isAuthenticated)}</span>
       <span data-testid="email">{user?.email ?? ''}</span>
       <span data-testid="token">{accessToken ?? ''}</span>
@@ -274,7 +274,7 @@ describe('AuthProvider TOTP enrollment', () => {
     expect(updateMFAPreferenceMock).toHaveBeenCalledWith({ totp: 'PREFERRED' });
     // Order matters: verify must succeed before we flip the preference.
     expect(verifyTOTPSetupMock.mock.invocationCallOrder[0]).toBeLessThan(
-      updateMFAPreferenceMock.mock.invocationCallOrder[0]
+      updateMFAPreferenceMock.mock.invocationCallOrder[0]!
     );
   });
 

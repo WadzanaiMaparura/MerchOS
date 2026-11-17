@@ -99,6 +99,7 @@ export function StockAdjustmentForm({ record, onSuccess }: StockAdjustmentFormPr
       submitAdjustment(
         {
           sku: record.sku,
+          warehouseId: record.warehouseId,
           newQuantity: newOnHand,
           reason: data.reason,
           source: 'manual',

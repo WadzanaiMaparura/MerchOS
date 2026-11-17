@@ -47,13 +47,13 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
   const parseResult = createProductSchema.safeParse(body);
   if (!parseResult.success) {
     const firstError = parseResult.error.errors[0];
-    const field = firstError.path.length > 0 ? firstError.path.join('.') : undefined;
+    const field = firstError && firstError.path.length > 0 ? firstError.path.join('.') : undefined;
     return {
       statusCode: 400,
       body: JSON.stringify({
         error: {
           code: 'VALIDATION_ERROR',
-          message: firstError.message,
+          message: firstError?.message ?? 'Validation failed',
           ...(field && { field }),
         },
       }),
@@ -65,7 +65,11 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
 
   // 5. Delegate to service
   try {
-    const product = await resolveProductService().createProduct(tenantContext.tenantId, permitted);
+    const product = await resolveProductService().createProduct(
+      tenantContext.tenantId,
+      // Shape already enforced by createProductSchema above.
+      permitted as unknown as Parameters<ProductService['createProduct']>[1],
+    );
     return {
       statusCode: 201,
       body: JSON.stringify({ product }),

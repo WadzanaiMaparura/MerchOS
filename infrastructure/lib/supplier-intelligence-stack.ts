@@ -235,6 +235,14 @@ export class SupplierIntelligenceStack extends cdk.Stack {
     const handlersPath = path.join(__dirname, '../../services/supplier-intelligence/handlers');
     const processorsPath = path.join(__dirname, '../../services/supplier-intelligence/processors');
 
+    // Cognito user pool id (set by the Auth platform stack). Read here so it
+    // can seed COGNITO_ISSUER for the handlers' in-code JWT issuer validation
+    // (rbacMiddleware), and reused by the JWT authorizer below.
+    const cognitoUserPoolId = ssm.StringParameter.valueForStringParameter(
+      this,
+      `${ssmPrefix}/cognito/tenant-pool-id`,
+    );
+
     const commonEnv: Record<string, string> = {
       ENVIRONMENT: env,
       SUPPLIERS_TABLE: this.suppliersTable.tableName,
@@ -244,6 +252,9 @@ export class SupplierIntelligenceStack extends cdk.Stack {
       RAW_UPLOADS_BUCKET: rawUploadsBucketName,
       ASSETS_BUCKET: assetsBucketName,
       EVENT_BUS_ARN: eventBusArn,
+      // rbacMiddleware validates the token issuer against this value; without
+      // it the handler rejects every token with INVALID_ISSUER (401).
+      COGNITO_ISSUER: `https://cognito-idp.${this.region}.amazonaws.com/${cognitoUserPoolId}`,
       POWERTOOLS_SERVICE_NAME: 'supplier-intelligence',
       LOG_LEVEL: env === 'production' ? 'WARN' : 'DEBUG',
     };
@@ -262,12 +273,31 @@ export class SupplierIntelligenceStack extends cdk.Stack {
         format: lambdaNodejs.OutputFormat.ESM,
         mainFields: ['module', 'main'],
         // Powertools packages are bundled (not externalized) — see note above.
+        // With ESM output, a CJS dependency doing require('util') makes esbuild
+        // emit a "Dynamic require not supported" shim that throws at INIT —
+        // crashing the Lambda before the handler runs (observed as a 500 on
+        // GET /suppliers). Inject a real require via createRequire, same as the
+        // Product Intelligence stack.
+        banner: "import{createRequire as __cr}from'module';const require=__cr(import.meta.url);",
       },
     };
 
     // -----------------------------------------------------------------------
     // Helper: create a Lambda with a dedicated least-privilege IAM role
     // -----------------------------------------------------------------------
+
+    // KMS: the Foundation platformKey encrypts the suppliers/import-jobs tables
+    // and the import queues. Decrypt is needed for reads; Encrypt +
+    // GenerateDataKey for writes. Every handler here touches at least one of
+    // those KMS-encrypted resources, so this is attached to all of them via
+    // createFn below. Without it, DynamoDB reads fail with
+    // "kms:Decrypt ... AccessDeniedException" (observed as a 500 on
+    // GET /suppliers).
+    const kmsPolicy = new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['kms:Decrypt', 'kms:Encrypt', 'kms:GenerateDataKey'],
+      resources: [platformKey.keyArn],
+    });
 
     const createFn = (
       logicalId: string,
@@ -287,7 +317,9 @@ export class SupplierIntelligenceStack extends cdk.Stack {
         ],
       });
 
-      for (const stmt of policyStatements) {
+      // Platform KMS access is required by every handler (all touch
+      // KMS-encrypted tables/queues); attach it once here.
+      for (const stmt of [...policyStatements, kmsPolicy]) {
         role.addToPolicy(stmt);
       }
 
@@ -871,12 +903,8 @@ export class SupplierIntelligenceStack extends cdk.Stack {
     // enforce platform-wide rate limits before requests even reach Lambda.
     // -----------------------------------------------------------------------
 
-    // Read Cognito user pool ID from SSM (set by the Auth platform stack)
-    const cognitoUserPoolId = ssm.StringParameter.valueForStringParameter(
-      this,
-      `${ssmPrefix}/cognito/tenant-pool-id`,
-    );
-
+    // cognitoUserPoolId is read above (near commonEnv) so it can also seed
+    // COGNITO_ISSUER for the handlers; reuse it here for the JWT authorizer.
     const cognitoUserPoolClientId = ssm.StringParameter.valueForStringParameter(
       this,
       `${ssmPrefix}/cognito/seller-client-id`,

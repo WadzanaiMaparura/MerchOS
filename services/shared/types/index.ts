@@ -58,6 +58,7 @@ export type {
 export type {
   SubscriptionStatus,
   BillingCycle,
+  PaymentProviderId,
   Subscription,
   UsageRecord,
   PlanLimits,

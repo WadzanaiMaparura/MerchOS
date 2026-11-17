@@ -218,6 +218,42 @@ describe('rbacMiddleware', () => {
       const rbacCtx = (request.event as any).requestContext.authorizer.rbac;
       expect(rbacCtx.role).toBe('Seller');
     });
+
+    // The API Gateway HTTP API JWT authorizer serialises cognito:groups as a
+    // bracketed, space-delimited string (NOT JSON). This was the unhandled form
+    // that produced spurious MISSING_GROUP errors in deployed services.
+    it('handles the API Gateway bracketed single-group form "[Seller]"', async () => {
+      const middleware = rbacMiddleware({ resource: 'products', action: 'read' });
+      const request = buildRequest({
+        sub: 'user-seller-3',
+        iss: ISSUER,
+        exp: futureExp(),
+        'cognito:groups': '[Seller]',
+        'custom:tenantId': 'tenant-abc',
+      });
+
+      const result = await middleware.before!(request as any, {} as any);
+
+      expect(result).toBeUndefined();
+      const rbacCtx = (request.event as any).requestContext.authorizer.rbac;
+      expect(rbacCtx.role).toBe('Seller');
+    });
+
+    it('handles the API Gateway bracketed multi-group form "[Seller Admin]" (highest priority)', async () => {
+      const middleware = rbacMiddleware({ resource: 'users.search', action: 'read' });
+      const request = buildRequest({
+        sub: 'user-multi-2',
+        iss: ISSUER,
+        exp: futureExp(),
+        'cognito:groups': '[Seller Admin]',
+      });
+
+      const result = await middleware.before!(request as any, {} as any);
+
+      expect(result).toBeUndefined();
+      const rbacCtx = (request.event as any).requestContext.authorizer.rbac;
+      expect(rbacCtx.role).toBe('Admin');
+    });
   });
 
   describe('error response format (AuthErrorResponse)', () => {

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import type { CanonicalProduct } from '@merch-os/types';
 import { ProductService } from '../product-service';
 import { ProductRepository } from '../../repository/product-repository';
@@ -48,14 +48,23 @@ function makeEnrichment(overrides?: Partial<ProductEnrichmentRecord>): ProductEn
   };
 }
 
-function createMockRepo() {
+/** Repository double: the methods the service uses are exposed as vitest mocks. */
+type MockRepo = ProductRepository & {
+  get: Mock;
+  getEnrichment: Mock;
+  putEnrichment: Mock;
+  appendLifecycleTransition: Mock;
+  update: Mock;
+};
+
+function createMockRepo(): MockRepo {
   return {
     get: vi.fn(),
     getEnrichment: vi.fn(),
     putEnrichment: vi.fn().mockImplementation((_t, _p, rec) => Promise.resolve({ ...rec, updatedAt: 'now' })),
     appendLifecycleTransition: vi.fn().mockImplementation((_t, _p, _tr, ui) => Promise.resolve({ uiLifecycleState: ui })),
     update: vi.fn().mockImplementation((_t, _p, prod) => Promise.resolve(prod)),
-  } as unknown as ProductRepository & Record<string, ReturnType<typeof vi.fn>>;
+  } as unknown as MockRepo;
 }
 
 let repo: ReturnType<typeof createMockRepo>;
@@ -74,8 +83,8 @@ describe('approveAttribute', () => {
     await service.approveAttribute(TENANT, PRODUCT, 'title', 'user-1');
 
     const written = repo.putEnrichment.mock.calls[0][2] as ProductEnrichmentRecord;
-    expect(written.enrichment.attributes.title.flaggedForReview).toBe(false);
-    expect(written.enrichment.attributes.title.approvedBy).toBe('user-1');
+    expect(written.enrichment.attributes.title?.flaggedForReview).toBe(false);
+    expect(written.enrichment.attributes.title?.approvedBy).toBe('user-1');
   });
 
   it('throws ProductValidationError for an unknown attribute', async () => {
@@ -105,9 +114,9 @@ describe('overrideAttribute', () => {
     expect(updatedProduct.content.title).toBe('Seller Title');
 
     const written = repo.putEnrichment.mock.calls[0][2] as ProductEnrichmentRecord;
-    expect(written.enrichment.attributes.title.value).toBe('Seller Title');
-    expect(written.enrichment.attributes.title.source).toBe('manual');
-    expect(written.enrichment.attributes.title.flaggedForReview).toBe(false);
+    expect(written.enrichment.attributes.title?.value).toBe('Seller Title');
+    expect(written.enrichment.attributes.title?.source).toBe('manual');
+    expect(written.enrichment.attributes.title?.flaggedForReview).toBe(false);
   });
 
   it('writes a non-top-level field into content.attributes', async () => {
@@ -129,9 +138,9 @@ describe('confirmCategory', () => {
     await service.confirmCategory(TENANT, PRODUCT, 'node-confirmed', 'user-1');
 
     const written = repo.putEnrichment.mock.calls[0][2] as ProductEnrichmentRecord;
-    expect(written.enrichment.attributes.category.value).toBe('node-confirmed');
-    expect(written.enrichment.attributes.category.flaggedForReview).toBe(false);
-    expect(written.enrichment.attributes.category.source).toBe('manual');
+    expect(written.enrichment.attributes.category?.value).toBe('node-confirmed');
+    expect(written.enrichment.attributes.category?.flaggedForReview).toBe(false);
+    expect(written.enrichment.attributes.category?.source).toBe('manual');
   });
 });
 

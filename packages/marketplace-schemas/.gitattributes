@@ -1,0 +1,8 @@
+# Takealot source loadsheets and submission-results are large binary workbooks.
+*.xlsm filter=lfs diff=lfs merge=lfs -text
+*.xlsx filter=lfs diff=lfs merge=lfs -text
+
+# Generated schema JSON is large (some files >2MB); keep it in the repo so the
+# package is import-ready without a build step, but store via LFS to avoid
+# bloating git history with multi-megabyte text diffs on every regeneration.
+generated/takealot-za/*.json filter=lfs diff=lfs merge=lfs -text

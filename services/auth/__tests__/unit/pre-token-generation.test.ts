@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { PreTokenGenerationTriggerEvent } from 'aws-lambda';
+import type { PreTokenGenerationV2TriggerEvent } from 'aws-lambda';
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -20,11 +20,16 @@ import { handler } from '../../triggers/pre-token-generation';
 // Setup
 // ---------------------------------------------------------------------------
 
+/**
+ * Builds a V2_0 PreTokenGeneration event. The V2 trigger carries custom-claim
+ * overrides under `response.claimsAndScopeOverrideDetails.accessTokenGeneration`
+ * (the shape that actually writes claims into the ACCESS token).
+ */
 function buildPreTokenEvent(
   userAttributes: Record<string, string> = {},
-): PreTokenGenerationTriggerEvent {
+): PreTokenGenerationV2TriggerEvent {
   return {
-    version: '1',
+    version: '2',
     region: 'eu-west-1',
     userPoolId: 'eu-west-1_testPool',
     userName: 'test-user-id',
@@ -40,23 +45,26 @@ function buildPreTokenEvent(
         ...userAttributes,
       },
       groupConfiguration: {
-        groupsToOverride: undefined,
-        iamRolesToOverride: undefined,
+        groupsToOverride: [],
+        iamRolesToOverride: [],
         preferredRole: undefined,
       },
+      scopes: [],
     },
     response: {
-      claimsOverrideDetails: {
-        claimsToAddOrOverride: undefined,
-        claimsToSuppress: undefined,
-        groupOverrideDetails: undefined,
-      },
+      claimsAndScopeOverrideDetails: {},
     },
-  } as unknown as PreTokenGenerationTriggerEvent;
+  } as unknown as PreTokenGenerationV2TriggerEvent;
 }
 
-describe('pre-token-generation trigger', () => {
-  it('should inject tenantId and role into access token claims', async () => {
+/** Shorthand accessor for the access-token claim overrides the handler writes. */
+function accessClaims(result: PreTokenGenerationV2TriggerEvent) {
+  return result.response.claimsAndScopeOverrideDetails?.accessTokenGeneration
+    ?.claimsToAddOrOverride;
+}
+
+describe('pre-token-generation trigger (V2_0)', () => {
+  it('should inject tenantId and role into ACCESS token claims', async () => {
     const event = buildPreTokenEvent({
       'custom:tenantId': 'tenant-abc',
       'custom:role': 'admin',
@@ -64,7 +72,7 @@ describe('pre-token-generation trigger', () => {
 
     const result = await handler(event);
 
-    expect(result.response.claimsOverrideDetails?.claimsToAddOrOverride).toEqual({
+    expect(accessClaims(result)).toEqual({
       'custom:tenantId': 'tenant-abc',
       'custom:role': 'admin',
     });
@@ -78,7 +86,7 @@ describe('pre-token-generation trigger', () => {
 
     const result = await handler(event);
 
-    expect(result.response.claimsOverrideDetails?.claimsToAddOrOverride).toEqual({
+    expect(accessClaims(result)).toEqual({
       'custom:tenantId': 'assigned-tenant-1',
       'custom:role': 'owner',
     });
@@ -93,32 +101,26 @@ describe('pre-token-generation trigger', () => {
 
     const result = await handler(event);
 
-    expect(
-      result.response.claimsOverrideDetails?.claimsToAddOrOverride?.['custom:tenantId'],
-    ).toBe('invited-tenant');
+    expect(accessClaims(result)?.['custom:tenantId']).toBe('invited-tenant');
   });
 
   it('should handle missing tenantId gracefully', async () => {
-    const event = buildPreTokenEvent({
-      'custom:role': 'viewer',
-    });
+    const event = buildPreTokenEvent({ 'custom:role': 'viewer' });
 
     const result = await handler(event);
 
-    expect(result.response.claimsOverrideDetails?.claimsToAddOrOverride).toEqual({
+    expect(accessClaims(result)).toEqual({
       'custom:tenantId': '',
       'custom:role': 'viewer',
     });
   });
 
   it('should handle missing role gracefully', async () => {
-    const event = buildPreTokenEvent({
-      'custom:tenantId': 'tenant-xyz',
-    });
+    const event = buildPreTokenEvent({ 'custom:tenantId': 'tenant-xyz' });
 
     const result = await handler(event);
 
-    expect(result.response.claimsOverrideDetails?.claimsToAddOrOverride).toEqual({
+    expect(accessClaims(result)).toEqual({
       'custom:tenantId': 'tenant-xyz',
       'custom:role': '',
     });
@@ -129,43 +131,38 @@ describe('pre-token-generation trigger', () => {
 
     const result = await handler(event);
 
-    expect(result.response.claimsOverrideDetails?.claimsToAddOrOverride).toEqual({
+    expect(accessClaims(result)).toEqual({
       'custom:tenantId': '',
       'custom:role': '',
     });
   });
 
-  it('should preserve existing claimsOverrideDetails', async () => {
+  it('should preserve existing accessTokenGeneration claim overrides', async () => {
     const event = buildPreTokenEvent({
       'custom:tenantId': 'tenant-123',
       'custom:role': 'owner',
     });
-    // Set existing claims
-    event.response.claimsOverrideDetails = {
-      claimsToAddOrOverride: {
-        existingClaim: 'existingValue',
+    event.response.claimsAndScopeOverrideDetails = {
+      accessTokenGeneration: {
+        claimsToAddOrOverride: { existingClaim: 'existingValue' },
       },
-      claimsToSuppress: undefined,
-      groupOverrideDetails: undefined,
     };
 
     const result = await handler(event);
 
-    expect(result.response.claimsOverrideDetails?.claimsToAddOrOverride).toEqual({
+    expect(accessClaims(result)).toEqual({
       existingClaim: 'existingValue',
       'custom:tenantId': 'tenant-123',
       'custom:role': 'owner',
     });
   });
 
-  it('should return the event unchanged on error', async () => {
-    // Force an error by making userAttributes throw
+  it('should return the event with userName intact', async () => {
     const event = buildPreTokenEvent({
       'custom:tenantId': 'tenant-123',
       'custom:role': 'owner',
     });
 
-    // Even with a normal event, handler should succeed
     const result = await handler(event);
     expect(result).toBeDefined();
     expect(result.userName).toBe('test-user-id');

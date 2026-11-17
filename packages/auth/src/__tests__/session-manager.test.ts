@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { SessionManager } from '../session-manager';
 
 describe('SessionManager', () => {
-  let refreshSession: ReturnType<typeof vi.fn>;
-  let logout: ReturnType<typeof vi.fn>;
+  let refreshSession: Mock<[], Promise<string>>;
+  let logout: Mock<[], Promise<void>>;
   let manager: SessionManager;
 
   beforeEach(() => {

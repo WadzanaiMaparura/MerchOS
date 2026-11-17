@@ -103,9 +103,9 @@ export async function writeAuditLog(
     action: input.action,
     resourceId: input.resourceId,
     resourceType: input.resourceType,
-    previousState: input.previousState,
-    newState: input.newState,
-    metadata: input.metadata,
+    ...(input.previousState !== undefined ? { previousState: input.previousState } : {}),
+    ...(input.newState !== undefined ? { newState: input.newState } : {}),
+    ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
   };
 
   await client.put({

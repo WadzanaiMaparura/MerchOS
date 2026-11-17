@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { createAuthenticatedFetch } from '../api-client';
 
 // Mock global fetch
@@ -6,7 +6,7 @@ const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
 describe('createAuthenticatedFetch', () => {
-  let getAccessToken: ReturnType<typeof vi.fn>;
+  let getAccessToken: Mock<[], Promise<string | null>>;
   let onUnauthorized: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {

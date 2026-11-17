@@ -191,6 +191,11 @@ export class ProductApiStack extends cdk.Stack {
       kmsPolicy,
     ]);
 
+    const getCanonicalProductFn = createLambda('GetCanonicalProduct', path.join(handlersPath, 'get-canonical-product.ts'), [
+      dynamoDbReadWritePolicy,
+      kmsPolicy,
+    ]);
+
     const listProductsFn = createLambda('ListProducts', path.join(handlersPath, 'list-products.ts'), [
       dynamoDbReadWritePolicy,
       kmsPolicy,
@@ -250,6 +255,13 @@ export class ProductApiStack extends cdk.Stack {
       path: '/products/{productId}',
       methods: [HttpMethod.GET],
       integration: new HttpLambdaIntegration('GetProductIntegration', getProductFn),
+      authorizer: jwtAuthorizer,
+    });
+
+    this.httpApi.addRoutes({
+      path: '/products/{productId}/canonical',
+      methods: [HttpMethod.GET],
+      integration: new HttpLambdaIntegration('GetCanonicalProductIntegration', getCanonicalProductFn),
       authorizer: jwtAuthorizer,
     });
 

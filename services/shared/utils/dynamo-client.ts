@@ -109,6 +109,30 @@ export function invoiceSK(invoiceId: string): string {
   return `INVOICE#${invoiceId}`;
 }
 
+/** Returns the sort key for a monthly credit ledger record: `CREDITS#<yyyyMM>` */
+export function creditsSK(yyyyMM: string): string {
+  return `CREDITS#${yyyyMM}`;
+}
+
+/**
+ * Returns the sort key for a payment idempotency record: `PAYMENT#<mPaymentId>`.
+ * Written with attribute_not_exists so a replayed provider webhook (ITN) for the
+ * same m_payment_id cannot be applied twice.
+ */
+export function paymentSK(mPaymentId: string): string {
+  return `PAYMENT#${mPaymentId}`;
+}
+
+/**
+ * Returns the sort key for a pending checkout intent: `CHECKOUT#<mPaymentId>`.
+ * Holds the plan + expected price captured when a checkout was started, so the
+ * payment webhook can verify the amount WITHOUT touching the tenant's live
+ * `SUBSCRIPTION#current` record (an abandoned checkout must not alter it).
+ */
+export function checkoutSK(mPaymentId: string): string {
+  return `CHECKOUT#${mPaymentId}`;
+}
+
 // ---------------------------------------------------------------------------
 // Error types
 // ---------------------------------------------------------------------------
@@ -278,6 +302,10 @@ export class TenantDynamoClient {
   async transactWrite(
     input: TransactWriteCommandInput
   ): Promise<TransactWriteCommandOutput> {
+    if (!input.TransactItems || input.TransactItems.length === 0) {
+      // Fail loudly with a clear message instead of a TypeError on `.map`.
+      throw new Error('transactWrite requires at least one TransactItem');
+    }
     const enhancedItems = input.TransactItems.map((item) => {
       if (item.Put) {
         const tenantCondition =

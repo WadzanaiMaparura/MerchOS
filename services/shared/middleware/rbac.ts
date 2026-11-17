@@ -153,21 +153,14 @@ function extractClaims(authorizer: Record<string, unknown> | undefined): JwtClai
     return null;
   }
 
-  // cognito:groups may come as a JSON-encoded string array or an actual array
-  let groups: string[] | undefined;
-  const rawGroups = claimsObj['cognito:groups'];
-  if (Array.isArray(rawGroups)) {
-    groups = rawGroups as string[];
-  } else if (typeof rawGroups === 'string') {
-    try {
-      const parsed = JSON.parse(rawGroups);
-      if (Array.isArray(parsed)) {
-        groups = parsed;
-      }
-    } catch {
-      // Not valid JSON, ignore
-    }
-  }
+  // Normalise cognito:groups to a string[]. It can arrive in several shapes:
+  //   1. A real array (direct JWT decode / some authorizers): ["Seller"]
+  //   2. A JSON-encoded string array: '["Seller","Admin"]'
+  //   3. The API Gateway HTTP API JWT authorizer form: a bracketed,
+  //      space-delimited string like '[Seller]' or '[Seller Admin]' — NOT valid
+  //      JSON. This is AWS's documented array->string conversion and was the
+  //      previously-unhandled case that caused spurious MISSING_GROUP errors.
+  const groups = normaliseGroups(claimsObj['cognito:groups']);
 
   const tenantId = claimsObj['custom:tenantId'] as string | undefined;
 
@@ -180,4 +173,46 @@ function extractClaims(authorizer: Record<string, unknown> | undefined): JwtClai
   };
 
   return claims;
+}
+
+/**
+ * Normalise a raw `cognito:groups` claim value into a string[] (or undefined).
+ *
+ * Handles every shape the claim can arrive in:
+ *  - a real array                → returned as-is
+ *  - a JSON array string         → JSON.parse
+ *  - the API Gateway authorizer bracketed form '[Seller Admin]' or '[Seller]'
+ *    (space- or comma-delimited, NOT JSON) → strip brackets and split
+ *  - a plain delimited string    → split on comma/space
+ */
+function normaliseGroups(raw: unknown): string[] | undefined {
+  if (Array.isArray(raw)) {
+    const arr = raw.filter((g): g is string => typeof g === 'string');
+    return arr.length ? arr : undefined;
+  }
+  if (typeof raw !== 'string') return undefined;
+
+  const trimmed = raw.trim();
+  if (trimmed === '' || trimmed === '[]') return undefined;
+
+  // JSON array form: '["Seller","Admin"]'
+  if (trimmed.startsWith('[') && trimmed.includes('"')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        const arr = parsed.filter((g): g is string => typeof g === 'string');
+        return arr.length ? arr : undefined;
+      }
+    } catch {
+      // fall through to delimited parsing
+    }
+  }
+
+  // Bracketed/delimited form: '[Seller Admin]', '[Seller]', 'Seller,Admin'
+  const inner = trimmed.replace(/^\[/, '').replace(/\]$/, '');
+  const parts = inner
+    .split(/[\s,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return parts.length ? parts : undefined;
 }

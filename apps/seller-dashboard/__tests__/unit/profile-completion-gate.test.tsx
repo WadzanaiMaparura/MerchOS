@@ -84,42 +84,14 @@ describe('ProfileCompletionGate', () => {
     },
   );
 
-  it('on initial API failure shows the warning + retry and still renders children (fail-open)', async () => {
+  it('on initial API failure fails open: renders children, no warning banner, no redirect', async () => {
     getProfileStatus.mockRejectedValue(new Error('503'));
     renderGate();
-    await waitFor(() => expect(screen.getByRole('button', { name: /retry/i })).toBeTruthy());
-    expect(screen.getByText('app content')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('app content')).toBeTruthy());
+    expect(getProfileStatus).toHaveBeenCalled();
+    // The warning/retry banner was intentionally removed (see gate source note).
+    expect(screen.queryByRole('button', { name: /retry/i })).toBeNull();
     expect(replace).not.toHaveBeenCalled();
-  });
-
-  it('a later failed retry does not block the dashboard (stays fail-open)', async () => {
-    getProfileStatus.mockRejectedValue(new Error('503'));
-    renderGate();
-
-    const retry = await screen.findByRole('button', { name: /retry/i });
-    expect(screen.getByText('app content')).toBeTruthy();
-
-    await userEvent.click(retry);
-    // Still failing → warning + retry remain, children still rendered.
-    await waitFor(() => expect(screen.getByRole('button', { name: /retry/i })).toBeTruthy());
-    expect(screen.getByText('app content')).toBeTruthy();
-    expect(replace).not.toHaveBeenCalled();
-  });
-
-  it('a retry that resolves to needs_profile_completion redirects correctly', async () => {
-    let failing = true;
-    getProfileStatus.mockImplementation(async () => {
-      if (failing) throw new Error('503');
-      return 'needs_profile_completion';
-    });
-    renderGate();
-
-    const retry = await screen.findByRole('button', { name: /retry/i });
-    expect(replace).not.toHaveBeenCalled();
-
-    failing = false;
-    await userEvent.click(retry);
-    await waitFor(() => expect(replace).toHaveBeenCalledWith('/complete-profile'));
   });
 
   it('exempts the /complete-profile route from the gate (renders children, no status check, no redirect)', async () => {

@@ -205,7 +205,7 @@ async function queryTitlesBySupplier(
             ':pk': `TENANT#${tenantId}#SUPPLIER#${supplierId}`,
           },
           ProjectionExpression: 'productId, title',
-          ExclusiveStartKey: lastEvaluatedKey as Record<string, unknown> | undefined,
+          ...(lastEvaluatedKey ? { ExclusiveStartKey: lastEvaluatedKey as Record<string, unknown> } : {}),
         })
       );
 
@@ -254,8 +254,8 @@ async function queryTitlesBySupplier(
 export async function checkForDuplicate(params: {
   tenantId: string;
   supplierId: string;
-  sku?: string;
-  title?: string;
+  sku?: string | undefined;
+  title?: string | undefined;
 }): Promise<DuplicateCheckResult> {
   const { tenantId, supplierId, sku, title } = params;
 
@@ -324,8 +324,8 @@ export interface DetectDuplicatesParams {
   duplicateStrategy: DuplicateStrategy;
   /** Incoming product data to check */
   record: {
-    sku?: string;
-    title?: string;
+    sku?: string | undefined;
+    title?: string | undefined;
   };
 }
 

@@ -47,9 +47,9 @@ export interface TitleGenerationInput {
   /** Product data used as context for generation */
   productData: ProductData;
   /** Optional target marketplace for platform-specific rules */
-  marketplace?: MarketplaceId;
+  marketplace?: MarketplaceId | undefined;
   /** Additional attributes to incorporate into the title */
-  attributes?: Record<string, string>;
+  attributes?: Record<string, string> | undefined;
 }
 
 /**
@@ -59,11 +59,11 @@ export interface DescriptionGenerationInput {
   /** Product data used as context for generation */
   productData: ProductData;
   /** Optional target marketplace for platform-specific rules */
-  marketplace?: MarketplaceId;
+  marketplace?: MarketplaceId | undefined;
   /** Desired tone for the description */
-  tone?: 'professional' | 'casual' | 'luxury';
+  tone?: 'professional' | 'casual' | 'luxury' | undefined;
   /** Target word count range with 10% tolerance */
-  wordCountRange?: { min: number; max: number };
+  wordCountRange?: { min: number; max: number } | undefined;
 }
 
 /**
@@ -73,11 +73,11 @@ export interface BulletGenerationInput {
   /** Product data used as context for generation */
   productData: ProductData;
   /** Optional target marketplace for platform-specific rules */
-  marketplace?: MarketplaceId;
+  marketplace?: MarketplaceId | undefined;
   /** Number of bullets to produce (default 5, configurable 1-20) */
-  count?: number;
+  count?: number | undefined;
   /** Additional attributes to incorporate into bullets */
-  attributes?: Record<string, string>;
+  attributes?: Record<string, string> | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -679,7 +679,7 @@ export class ContentGenerator {
     template: PromptTemplate;
     bedrockResult: BedrockInvocationResult;
     startTime: number;
-    marketplace?: MarketplaceId;
+    marketplace?: MarketplaceId | undefined;
     truncated: boolean;
   }): GenerationResult {
     const {
@@ -741,14 +741,35 @@ export class ContentGenerator {
     startTime: number,
   ): GenerationResult {
     const latencyMs = Date.now() - startTime;
-    const errorMessage =
-      error instanceof Error ? error.message : String(error);
 
-    // Check if the error is a structured BedrockUnavailableError
-    const errorCode =
-      error && typeof error === 'object' && 'code' in error
-        ? String((error as { code: string }).code)
-        : 'GENERATION_FAILED';
+    // Check if the error is a structured error object (e.g. BedrockUnavailableError)
+    const isStructuredError =
+      error !== null && typeof error === 'object' && 'code' in error;
+
+    // Extract a human-readable message. Structured errors (plain objects) are
+    // NOT Error instances, so `String(error)` would yield "[object Object]".
+    // Prefer an explicit `message` field, then Error.message, then JSON.
+    let errorMessage: string;
+    if (error instanceof Error) {
+      errorMessage = error.message;
+    } else if (
+      isStructuredError &&
+      typeof (error as unknown as { message?: unknown }).message === 'string'
+    ) {
+      errorMessage = (error as unknown as { message: string }).message;
+    } else if (error !== null && typeof error === 'object') {
+      try {
+        errorMessage = JSON.stringify(error);
+      } catch {
+        errorMessage = 'Unknown error (unserializable)';
+      }
+    } else {
+      errorMessage = String(error);
+    }
+
+    const errorCode = isStructuredError
+      ? String((error as { code: string }).code)
+      : 'GENERATION_FAILED';
 
     return {
       resultId: randomUUID(),

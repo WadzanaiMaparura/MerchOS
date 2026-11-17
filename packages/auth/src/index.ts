@@ -19,6 +19,7 @@ export { configureCognitoAuth, defaultCognitoConfig, cognitoSignUp, cognitoConfi
 export type { CognitoConfig, SignUpParams } from './cognito';
 export { RouteGuard } from './route-guard';
 export type { RouteGuardProps } from './route-guard';
+export { safeNextPath, buildLoginUrl, readNextFromSearch, NEXT_PARAM } from './return-to';
 export { requestPasswordReset, confirmPasswordReset } from './password-reset';
 export { acceptInvitation } from './invitation';
 export { SessionManager } from './session-manager';

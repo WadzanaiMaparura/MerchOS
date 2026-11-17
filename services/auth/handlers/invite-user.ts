@@ -35,7 +35,7 @@ import { logger } from '../../shared/middleware/powertools';
 // Types
 // ---------------------------------------------------------------------------
 
-interface InviteUserEvent extends APIGatewayProxyEventV2 {
+interface InviteUserEvent extends Omit<APIGatewayProxyEventV2, 'body'> {
   body: {
     email: string;
     role: string;
@@ -135,7 +135,6 @@ async function baseHandler(event: InviteUserEvent): Promise<APIGatewayProxyResul
   // the stack does not supply.)
   const userPoolId = process.env['COGNITO_USER_POOL_ID'];
   const invitationsTable = process.env['INVITATIONS_TABLE'];
-  const eventBusName = process.env['EVENT_BUS_NAME'];
 
   if (!userPoolId || !invitationsTable) {
     logger.error('Missing required environment variables', {
@@ -453,7 +452,7 @@ export const handler = middy(baseHandler)
   .use(
     rbacMiddleware({
       resource: 'users',
-      action: 'invite',
+      action: 'create',
     }),
   )
   .use(tenantContextMiddleware())

@@ -48,6 +48,8 @@ export type {
   PlanLimits,
   UsageMeters,
   BillingOverview,
+  CreditBalance,
+  PlanCatalogueEntry,
   InvoiceStatus,
   InvoiceSummary,
 } from './billing';

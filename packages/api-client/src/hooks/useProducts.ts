@@ -18,6 +18,7 @@ import type {
   TransitionPayload,
   TriggerExportPayload,
   ExportSummary,
+  CanonicalProduct,
 } from '@merch-os/types';
 import type { ApiError } from '../errors';
 import { useApiClient } from '../context';
@@ -455,6 +456,34 @@ export function useProductSearch(
     enabled: debouncedQuery.length >= 2,
     staleTime: STALE_TIME,
     gcTime: GC_TIME,
+  });
+}
+
+// ─── useCanonicalProduct: Full canonical product for export/validation ───────
+
+/**
+ * Fetches a product as the full `CanonicalProduct` (enrichment merged into
+ * content.attributes), the shape the export/validation pipeline consumes.
+ * Unlike the `Product` DTO, this preserves variants, platformSpecific, and the
+ * full typed content. Served by GET /products/{id}/canonical.
+ */
+export function useCanonicalProduct(
+  productId: string,
+  options?: { enabled?: boolean }
+): UseQueryResult<CanonicalProduct, ApiError> {
+  const client = useApiClient();
+
+  return useQuery<CanonicalProduct, ApiError>({
+    queryKey: [...productKeys.detail(productId), 'canonical'],
+    queryFn: async () => {
+      const response = await client.get<{ product: CanonicalProduct }>(
+        `/products/${productId}/canonical`
+      );
+      return response.data.product;
+    },
+    staleTime: STALE_TIME,
+    gcTime: GC_TIME,
+    enabled: (options?.enabled ?? true) && !!productId,
   });
 }
 

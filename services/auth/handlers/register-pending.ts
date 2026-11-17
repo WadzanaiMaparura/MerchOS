@@ -22,7 +22,7 @@ import { PendingRegistrationRepository } from '../registration/pending-registrat
 import { inputValidationMiddleware } from '../../shared/middleware/input-validation';
 import { logger } from '../../shared/middleware/powertools';
 
-interface RegisterPendingEvent extends APIGatewayProxyEventV2 {
+interface RegisterPendingEvent extends Omit<APIGatewayProxyEventV2, 'body'> {
   body: {
     fullName: string;
     email: string;

@@ -413,7 +413,7 @@ export default function DashboardPage() {
                         <button
                           key={mp}
                           type="button"
-                          onClick={() => router.push(`/exports/${b.id}?marketplace=${encodeURIComponent(mp)}`)}
+                          onClick={() => router.push(`/exports?batch=${encodeURIComponent(b.id)}&marketplace=${encodeURIComponent(mp)}`)}
                           className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition-colors hover:border-gray-400 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600"
                           title={`Download ${mp} Product CSV`}
                         >

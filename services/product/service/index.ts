@@ -13,6 +13,7 @@ export {
   assembleProductDto,
   assembleProductSummary,
   resolveUiLifecycleState,
+  mergeEnrichmentIntoCanonical,
 } from './dto-mapper';
 export {
   applySynthesis,

@@ -63,10 +63,10 @@ interface PageTextBlock {
  * A candidate product extracted from a text block via heuristic analysis.
  */
 interface ProductCandidate {
-  title?: string;
-  sku?: string;
-  price?: string;
-  description?: string;
+  title?: string | undefined;
+  sku?: string | undefined;
+  price?: string | undefined;
+  description?: string | undefined;
   pageIndex: number;
 }
 
@@ -307,7 +307,7 @@ export async function parsePdf(content: Buffer): Promise<FileParseResult> {
   const rawPages = splitTextIntoPages(fullText, pageCount);
 
   for (let i = 0; i < rawPages.length; i++) {
-    pageTexts.push({ text: rawPages[i], pageIndex: i });
+    pageTexts.push({ text: rawPages[i] ?? '', pageIndex: i });
   }
 
   // Extract products using both methods

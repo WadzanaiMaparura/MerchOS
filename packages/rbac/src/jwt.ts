@@ -68,6 +68,6 @@ export function resolveRoleFromClaims(claims: JwtClaims, expectedIssuer: string)
     success: true,
     role: resolvedRole,
     userId: claims.sub,
-    tenantId: claims['custom:tenantId'],
+    ...(claims['custom:tenantId'] !== undefined ? { tenantId: claims['custom:tenantId'] } : {}),
   };
 }

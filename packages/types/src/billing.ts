@@ -37,6 +37,20 @@ export interface UsageMeters {
   csvExports: number;
 }
 
+/**
+ * Credit-based usage balance for the current billing month.
+ *
+ * MerchOS billing moved from per-feature call counters (UsageMeters) to a
+ * single monthly credit allowance. `granted`/`remaining` are null for
+ * unmetered (enterprise) plans.
+ */
+export interface CreditBalance {
+  granted: number | null;
+  consumed: number;
+  overage: number;
+  remaining: number | null;
+}
+
 /** Overview of the tenant's billing and subscription state. */
 export interface BillingOverview {
   planName: string;
@@ -46,6 +60,24 @@ export interface BillingOverview {
   currentPeriodStart: string; // ISO 8601
   currentPeriodEnd: string; // ISO 8601
   usage: UsageMeters;
+  limits: PlanLimits;
+  /**
+   * Credit model balance for the current month. Optional so existing consumers
+   * that only read usage/limits keep working unchanged.
+   */
+  credits?: CreditBalance;
+  /** The purchasable plan catalogue (ZAR) for the plan picker. */
+  plans?: PlanCatalogueEntry[];
+}
+
+/** A plan entry exposed to the frontend plan picker / pricing table. */
+export interface PlanCatalogueEntry {
+  planId: PlanId;
+  name: string;
+  /** Price in integer ZAR cents. null for custom/enterprise pricing. */
+  priceZARCents: number | null;
+  /** Monthly included credits. null = unmetered. */
+  monthlyCredits: number | null;
   limits: PlanLimits;
 }
 

@@ -32,11 +32,11 @@ export interface KeywordGenerationInput {
   /** Product data providing context for keyword generation */
   productData: ProductData;
   /** Optional target marketplace for algorithm-specific keyword tailoring */
-  marketplace?: MarketplaceId;
+  marketplace?: MarketplaceId | undefined;
   /** Number of keywords to generate (10-50, defaults to 20) */
-  count?: number;
+  count?: number | undefined;
   /** Optional competitor keywords to identify gaps */
-  competitorKeywords?: string[];
+  competitorKeywords?: string[] | undefined;
 }
 
 // ---------------------------------------------------------------------------

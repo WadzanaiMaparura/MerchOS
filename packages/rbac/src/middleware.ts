@@ -71,7 +71,7 @@ export function createAuthorizationCheck(
       context: {
         role: resolution.role,
         userId: resolution.userId,
-        tenantId: resolution.tenantId,
+        ...(resolution.tenantId !== undefined ? { tenantId: resolution.tenantId } : {}),
       },
     };
   };

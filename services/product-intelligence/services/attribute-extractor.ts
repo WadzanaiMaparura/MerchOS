@@ -31,7 +31,7 @@ export interface AttributeExtractionInput {
   /** Product data providing additional context for extraction */
   productData: ProductData;
   /** Optional target marketplace for attribute schema mapping */
-  marketplace?: MarketplaceId;
+  marketplace?: MarketplaceId | undefined;
 }
 
 /**

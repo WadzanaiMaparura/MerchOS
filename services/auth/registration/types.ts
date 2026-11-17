@@ -36,11 +36,11 @@ export interface PendingMarketingConsent {
   /** ISO-8601 timestamp when consent was captured. */
   capturedAt: string;
   /** Channels the user EXPLICITLY selected. Empty/absent when not granted. */
-  channels?: ConsentChannel[];
+  channels?: ConsentChannel[] | undefined;
   /** Identifier of the consent copy/version the user saw. */
-  consentTextVersion?: string;
+  consentTextVersion?: string | undefined;
   /** Where the consent decision originated. */
-  source?: ConsentSource;
+  source?: ConsentSource | undefined;
 }
 
 /**
@@ -176,11 +176,11 @@ export interface ConsentRecord {
   /** ISO-8601 timestamp when consent was originally captured. */
   capturedAt: string;
   /** Channels the user EXPLICITLY selected (audit). Empty when not granted. */
-  channels?: ConsentChannel[];
+  channels?: ConsentChannel[] | undefined;
   /** Identifier of the consent copy/version the user saw (audit). */
-  consentTextVersion?: string;
+  consentTextVersion?: string | undefined;
   /** Where the consent decision originated (audit). */
-  source?: ConsentSource;
+  source?: ConsentSource | undefined;
 }
 
 /**

@@ -208,6 +208,7 @@ type PersistEvent =
       currentStatus?: 'QUEUED' | 'PROCESSING';
     }
   | {
+      action?: undefined;
       tenantId: string;
       productId: string;
       imageJobId: string;
@@ -221,7 +222,7 @@ type PersistEvent =
  * event; otherwise the success path persists imageRefs and completes the job.
  */
 export async function handler(event: PersistEvent): Promise<{ status: string }> {
-  if ('action' in event && event.action === 'RECORD_FAILURE') {
+  if (event.action === 'RECORD_FAILURE') {
     await recordFailure({
       tenantId: event.tenantId,
       productId: event.productId,

@@ -123,7 +123,7 @@ export function transition(
     toState,
     transitionedAt: new Date().toISOString(),
     actor,
-    reason,
+    ...(reason !== undefined ? { reason } : {}),
   };
 }
 
