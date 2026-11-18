@@ -26,6 +26,7 @@ import { HttpJwtAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import { Construct } from 'constructs';
 import * as path from 'path';
+import { sellerDashboardOrigins } from './cors-origins';
 
 export interface ExportApiStackProps extends cdk.StackProps {
   environment: string;
@@ -73,10 +74,7 @@ export class ExportApiStack extends cdk.Stack {
         // Exact origins (required with allowCredentials — wildcards are rejected
         // by browsers for credentialed requests). Non-production also permits
         // the local seller-dashboard dev server so the UI is testable locally.
-        allowOrigins: [
-          `https://${env === 'production' ? 'app' : env}.merchos.io`,
-          ...(env === 'production' ? [] : ['http://localhost:3000']),
-        ],
+        allowOrigins: sellerDashboardOrigins(env),
         allowCredentials: true,
         maxAge: cdk.Duration.hours(1),
       },

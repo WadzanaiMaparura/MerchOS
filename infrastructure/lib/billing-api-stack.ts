@@ -39,6 +39,7 @@ import { HttpJwtAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import { Construct } from 'constructs';
 import * as path from 'path';
+import { sellerDashboardOrigins } from './cors-origins';
 
 export interface BillingApiStackProps extends cdk.StackProps {
   environment: string;
@@ -139,10 +140,7 @@ export class BillingApiStack extends cdk.Stack {
           CorsHttpMethod.PUT,
           CorsHttpMethod.OPTIONS,
         ],
-        allowOrigins: [
-          `https://${env === 'production' ? 'app' : env}.merchos.io`,
-          ...(env === 'production' ? [] : ['http://localhost:3000']),
-        ],
+        allowOrigins: sellerDashboardOrigins(env),
         allowCredentials: true,
         maxAge: cdk.Duration.hours(1),
       },

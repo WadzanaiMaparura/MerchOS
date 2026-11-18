@@ -23,6 +23,7 @@ import { HttpJwtAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import { Construct } from 'constructs';
 import * as path from 'path';
+import { sellerDashboardOrigins } from './cors-origins';
 
 export interface ProductApiStackProps extends cdk.StackProps {
   environment: string;
@@ -82,7 +83,7 @@ export class ProductApiStack extends cdk.Stack {
       corsPreflight: {
         allowHeaders: ['Content-Type', 'Authorization', 'X-Amz-Date'],
         allowMethods: [CorsHttpMethod.GET, CorsHttpMethod.POST, CorsHttpMethod.PUT, CorsHttpMethod.DELETE, CorsHttpMethod.OPTIONS],
-        allowOrigins: [`https://${env === 'production' ? 'app' : env}.merchos.io`],
+        allowOrigins: sellerDashboardOrigins(env),
         allowCredentials: true,
         maxAge: cdk.Duration.hours(1),
       },

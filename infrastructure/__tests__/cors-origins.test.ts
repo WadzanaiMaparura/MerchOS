@@ -1,0 +1,58 @@
+﻿import { describe, it, expect } from 'vitest';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import * as cdk from 'aws-cdk-lib';
+import { Template } from 'aws-cdk-lib/assertions';
+import { sellerDashboardOrigins } from '../lib/cors-origins';
+import { ProductIntelligenceStack } from '../lib/product-intelligence-stack';
+import { SupplierIntelligenceStack } from '../lib/supplier-intelligence-stack';
+
+describe('sellerDashboardOrigins', () => {
+  it('dev allows the LIVE frontend (merchos.co.za), the Amplify branch and localhost', () => {
+    expect(sellerDashboardOrigins('dev')).toEqual([
+      'https://dev.merchos.io',
+      'https://merchos.co.za',
+      'https://main.d1jwaah0zt7pg5.amplifyapp.com',
+      'http://localhost:3000',
+    ]);
+  });
+  it('production allows only its own custom domain (no localhost, no dev origins)', () => {
+    expect(sellerDashboardOrigins('production')).toEqual(['https://app.merchos.io']);
+  });
+  it('never returns a wildcard (APIs use credentials, which forbids it)', () => {
+    for (const env of ['dev', 'staging', 'production']) expect(sellerDashboardOrigins(env)).not.toContain('*');
+  });
+});
+
+describe('every seller-facing API uses the shared allow-list', () => {
+  // Regression: 7 of 8 stacks hard-coded a dev-only list, so the live site was
+  // blocked by every API except Auth.
+  const libDir = join(__dirname, '../lib');
+  const stacks = readdirSync(libDir).filter((f) => f.endsWith('-stack.ts'));
+
+  it('no stack hard-codes its own allowOrigins list', () => {
+    const offenders = stacks.filter((f) => {
+      const src = readFileSync(join(libDir, f), 'utf8');
+      return /allowOrigins:\s*\[/.test(src);
+    });
+    expect(offenders).toEqual([]);
+  });
+
+  it('every stack that configures CORS reads sellerDashboardOrigins', () => {
+    for (const f of stacks) {
+      const src = readFileSync(join(libDir, f), 'utf8');
+      if (/allowOrigins:/.test(src)) expect(src, f).toContain('sellerDashboardOrigins(');
+    }
+  });
+
+  it.each([
+    ['ProductIntelligence', (a: cdk.App) => new ProductIntelligenceStack(a, 'PI', { env: { account: '123456789012', region: 'eu-west-1' }, environment: 'dev' })],
+    ['SupplierIntelligence', (a: cdk.App) => new SupplierIntelligenceStack(a, 'SI', { env: { account: '123456789012', region: 'eu-west-1' }, environment: 'dev' })],
+  ])('%s synthesises with merchos.co.za in its CORS config', (_n, make) => {
+    const t = Template.fromStack(make(new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } })));
+    const apis = Object.values(t.findResources('AWS::ApiGatewayV2::Api')) as Array<{ Properties: { CorsConfiguration?: { AllowOrigins?: string[] } } }>;
+    const withCors = apis.filter((a) => a.Properties.CorsConfiguration);
+    expect(withCors.length).toBeGreaterThan(0);
+    for (const a of withCors) expect(a.Properties.CorsConfiguration!.AllowOrigins).toContain('https://merchos.co.za');
+  });
+});

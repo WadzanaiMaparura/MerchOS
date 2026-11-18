@@ -34,6 +34,7 @@ import { HttpJwtAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import { Construct } from 'constructs';
 import * as path from 'path';
+import { sellerDashboardOrigins } from './cors-origins';
 
 export interface SupplierIntelligenceStackProps extends cdk.StackProps {
   environment: string;
@@ -937,9 +938,7 @@ export class SupplierIntelligenceStack extends cdk.Stack {
           CorsHttpMethod.DELETE,
           CorsHttpMethod.OPTIONS,
         ],
-        allowOrigins: [
-          `https://${env === 'production' ? 'app' : env}.merchos.io`,
-        ],
+        allowOrigins: sellerDashboardOrigins(env),
         allowCredentials: true,
         maxAge: cdk.Duration.hours(1),
       },
