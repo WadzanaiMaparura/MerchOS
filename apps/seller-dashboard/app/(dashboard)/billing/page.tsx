@@ -5,6 +5,7 @@ import {
   useBilling,
   useInvoices,
   usePlanChange,
+  useInvoicePdf,
 } from '@merch-os/api-client';
 import {
   Card,
@@ -15,6 +16,7 @@ import {
   ConfirmationModal,
 } from '@merch-os/ui';
 import type { ColumnDef } from '@merch-os/ui';
+import { BillingDetailsCard } from './BillingDetailsCard';
 import { useRole } from '@merch-os/auth';
 import type {
   InvoiceSummary,
@@ -211,6 +213,8 @@ function BillingContent() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [voucherCode, setVoucherCode] = useState('');
   const [pdfError, setPdfError] = useState<Record<string, boolean>>({});
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const invoicePdf = useInvoicePdf();
 
   const planChangeMutation = usePlanChange();
 
@@ -222,16 +226,20 @@ function BillingContent() {
   const selectedPlanEntry = plans.find((p) => p.planId === selectedPlan);
 
   const handlePdfDownload = async (invoice: InvoiceSummary) => {
-    if (!invoice.downloadUrl) {
-      // Mark this invoice as having a PDF error (Requirement 8.5)
-      setPdfError((prev) => ({ ...prev, [invoice.invoiceId]: true }));
-      return;
-    }
+    setPdfError((prev) => ({ ...prev, [invoice.invoiceId]: false }));
+    setDownloadingId(invoice.invoiceId);
     try {
-      // Presigned URL download — opens in new tab (valid for 5 minutes) (Requirement 8.4)
-      window.open(invoice.downloadUrl, '_blank', 'noopener,noreferrer');
+      // The API issues the PDF if needed and returns a link valid for ~5 minutes.
+      const { url } = await invoicePdf.mutateAsync(invoice.invoiceId);
+      // The response is an attachment, so navigating starts the download without
+      // leaving this page (and, unlike window.open after an await, is not
+      // treated as a popup by browsers).
+      window.location.assign(url);
     } catch {
+      // Requirement 8.5: surface a per-invoice error, allow retry.
       setPdfError((prev) => ({ ...prev, [invoice.invoiceId]: true }));
+    } finally {
+      setDownloadingId(null);
     }
   };
 
@@ -264,6 +272,11 @@ function BillingContent() {
 
   const invoiceColumns: ColumnDef<InvoiceSummary>[] = [
     {
+      id: 'invoiceNumber',
+      header: 'Invoice no.',
+      cell: (row) => row.invoiceNumber ?? '\u2014',
+    },
+    {
       id: 'amount',
       header: 'Amount',
       cell: (row) => `${row.currency} ${(row.amount / 100).toFixed(2)}`,
@@ -292,6 +305,8 @@ function BillingContent() {
       header: 'PDF',
       cell: (row) => {
         const hasError = pdfError[row.invoiceId];
+        const busy = downloadingId === row.invoiceId;
+        const downloadable = row.status === 'paid';
         return (
           <div className="flex flex-col">
             <button
@@ -299,15 +314,15 @@ function BillingContent() {
                 e.stopPropagation();
                 handlePdfDownload(row);
               }}
-              disabled={!row.downloadUrl || hasError}
+              disabled={!downloadable || busy}
               className="text-sm font-medium text-blue-600 hover:text-blue-800 disabled:cursor-not-allowed disabled:text-gray-400"
-              aria-label={`Download PDF for invoice ${row.invoiceId}`}
+              aria-label={`Download PDF for invoice ${row.invoiceNumber ?? row.invoiceId}`}
             >
-              {hasError ? 'Unavailable' : row.downloadUrl ? 'Download' : 'Unavailable'}
+              {busy ? 'Preparing\u2026' : hasError ? 'Try again' : downloadable ? 'Download' : 'Unavailable'}
             </button>
             {hasError && (
               <span className="text-xs text-red-600" role="alert">
-                Invoice PDF is unavailable
+                Invoice PDF couldn&apos;t be prepared
               </span>
             )}
           </div>
@@ -537,6 +552,8 @@ function BillingContent() {
           )}
         </Card>
       )}
+
+      <BillingDetailsCard />
 
       {/* Invoices (Requirement 8.3) */}
       <Card title="Invoices">

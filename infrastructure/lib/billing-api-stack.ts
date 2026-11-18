@@ -31,6 +31,7 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as kms from 'aws-cdk-lib/aws-kms';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { CorsHttpMethod, HttpApi, HttpMethod } from 'aws-cdk-lib/aws-apigatewayv2';
@@ -51,6 +52,7 @@ export class BillingApiStack extends cdk.Stack {
   public readonly billingTable: dynamodb.Table;
   public readonly payfastSecret: secretsmanager.Secret;
   public readonly alarmTopic: sns.Topic;
+  public readonly invoicesBucket: s3.Bucket;
 
   constructor(scope: Construct, id: string, props: BillingApiStackProps) {
     super(scope, id, props);
@@ -131,7 +133,12 @@ export class BillingApiStack extends cdk.Stack {
       description: 'MerchOS Billing API — subscriptions, credits and PayFast payments',
       corsPreflight: {
         allowHeaders: ['Content-Type', 'Authorization', 'X-Amz-Date'],
-        allowMethods: [CorsHttpMethod.GET, CorsHttpMethod.POST, CorsHttpMethod.OPTIONS],
+        allowMethods: [
+          CorsHttpMethod.GET,
+          CorsHttpMethod.POST,
+          CorsHttpMethod.PUT,
+          CorsHttpMethod.OPTIONS,
+        ],
         allowOrigins: [
           `https://${env === 'production' ? 'app' : env}.merchos.io`,
           ...(env === 'production' ? [] : ['http://localhost:3000']),
@@ -164,6 +171,36 @@ export class BillingApiStack extends cdk.Stack {
 
     const handlersPath = path.join(__dirname, '../../services/billing/api/handlers');
 
+    // -----------------------------------------------------------------------
+    // Invoice PDFs: private bucket, never served directly
+    //
+    // Sellers download through short-lived presigned URLs issued by the API.
+    // Invoices are accounting records (SARS expects 5 years), so the bucket is
+    // versioned, retained on stack deletion, and has NO expiry rule.
+    // -----------------------------------------------------------------------
+    this.invoicesBucket = new s3.Bucket(this, 'InvoicesBucket', {
+      bucketName: `merch-os-invoices-${env}-${this.account}`,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      enforceSSL: true,
+      versioned: true,
+      objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    // Optional per-deployment overrides for the legal details printed on invoices
+    // (see services/billing/config/invoice-issuer.ts for the defaults).
+    const issuerEnv: Record<string, string> = {};
+    for (const [ctx, key] of [
+      ['invoiceIssuerLegalName', 'INVOICE_ISSUER_LEGAL_NAME'],
+      ['invoiceIssuerTradingName', 'INVOICE_ISSUER_TRADING_NAME'],
+      ['invoiceIssuerRegNo', 'INVOICE_ISSUER_REG_NO'],
+      ['invoiceIssuerEmail', 'INVOICE_ISSUER_EMAIL'],
+    ] as const) {
+      const value = this.node.tryGetContext(ctx) as string | undefined;
+      if (value) issuerEnv[key] = value;
+    }
+
     const commonEnv: Record<string, string> = {
       ENVIRONMENT: env,
       BILLING_TABLE: this.billingTable.tableName,
@@ -171,6 +208,8 @@ export class BillingApiStack extends cdk.Stack {
       // every token is rejected with INVALID_ISSUER (401).
       COGNITO_ISSUER: `https://cognito-idp.${region}.amazonaws.com/${props.userPool.userPoolId}`,
       PAYFAST_SECRET_ARN: this.payfastSecret.secretArn,
+      INVOICE_BUCKET: this.invoicesBucket.bucketName,
+      ...issuerEnv,
       PAYFAST_MODE: payfastMode,
       CHECKOUT_ENABLED: checkoutEnabled,
       APP_BASE_URL: appBaseUrl,
@@ -189,6 +228,14 @@ export class BillingApiStack extends cdk.Stack {
         minify: true,
         sourceMap: true,
         target: 'node20',
+        // Only the SDK clients already used (and present in the Lambda runtime) stay
+        // external. @aws-sdk/client-s3 and the presigner are bundled so their versions
+        // are pinned by our lockfile instead of whatever the runtime ships.
+        externalModules: [
+          '@aws-sdk/client-dynamodb',
+          '@aws-sdk/lib-dynamodb',
+          '@aws-sdk/client-secrets-manager',
+        ],
         format: lambdaNodejs.OutputFormat.ESM,
         mainFields: ['module', 'main'],
         // CJS dependencies doing require('util') crash an ESM bundle at INIT with
@@ -223,6 +270,18 @@ export class BillingApiStack extends cdk.Stack {
       effect: iam.Effect.ALLOW,
       actions: ['secretsmanager:GetSecretValue'],
       resources: [this.payfastSecret.secretArn],
+    });
+
+    // Invoice PDFs: objects live under invoices/<tenantId>/ only.
+    const invoiceObjectsWrite = new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['s3:PutObject'],
+      resources: [this.invoicesBucket.arnForObjects('invoices/*')],
+    });
+    const invoiceObjectsRead = new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['s3:GetObject'],
+      resources: [this.invoicesBucket.arnForObjects('invoices/*')],
     });
 
     const createLambda = (
@@ -275,7 +334,28 @@ export class BillingApiStack extends cdk.Stack {
       billingTableAccess,
       kmsPolicy,
       payfastSecretRead,
+      invoiceObjectsWrite, // issues the invoice PDF once the payment lands
     ]);
+
+    // Invoice PDF download: issues on demand if the webhook could not, then presigns.
+    const getInvoicePdfFn = createLambda('GetInvoicePdf', path.join(handlersPath, 'get-invoice-pdf.ts'), [
+      billingTableAccess,
+      kmsPolicy,
+      invoiceObjectsWrite,
+      invoiceObjectsRead, // the presigned URL inherits the signer's GetObject permission
+    ]);
+
+    // Seller invoicing details (company name, VAT no., address).
+    const getBillingProfileFn = createLambda(
+      'GetBillingProfile',
+      path.join(handlersPath, 'get-billing-profile.ts'),
+      [billingTableReadOnly, kmsPolicy]
+    );
+    const putBillingProfileFn = createLambda(
+      'PutBillingProfile',
+      path.join(handlersPath, 'put-billing-profile.ts'),
+      [billingTableAccess, kmsPolicy]
+    );
 
     // -----------------------------------------------------------------------
     // Routes
@@ -299,6 +379,27 @@ export class BillingApiStack extends cdk.Stack {
       path: '/billing/plan',
       methods: [HttpMethod.POST],
       integration: new HttpLambdaIntegration('ChangePlanIntegration', changePlanFn),
+      authorizer: jwtAuthorizer,
+    });
+
+    this.httpApi.addRoutes({
+      path: '/billing/invoices/{invoiceId}/pdf',
+      methods: [HttpMethod.GET],
+      integration: new HttpLambdaIntegration('GetInvoicePdfIntegration', getInvoicePdfFn),
+      authorizer: jwtAuthorizer,
+    });
+
+    this.httpApi.addRoutes({
+      path: '/billing/profile',
+      methods: [HttpMethod.GET],
+      integration: new HttpLambdaIntegration('GetBillingProfileIntegration', getBillingProfileFn),
+      authorizer: jwtAuthorizer,
+    });
+
+    this.httpApi.addRoutes({
+      path: '/billing/profile',
+      methods: [HttpMethod.PUT],
+      integration: new HttpLambdaIntegration('PutBillingProfileIntegration', putBillingProfileFn),
       authorizer: jwtAuthorizer,
     });
 
@@ -329,6 +430,7 @@ export class BillingApiStack extends cdk.Stack {
     //   - ItnAnomaly:       amount mismatch, unknown checkout, missing tenant or
     //                       payment id - tampering or a bug.
     //   - CheckoutErrors:   sellers cannot start a checkout.
+    //   - InvoiceIssueFailed: an invoice PDF could not be issued / downloaded.
     // -----------------------------------------------------------------------
 
     this.alarmTopic = new sns.Topic(this, 'BillingAlarmTopic', {
@@ -348,10 +450,21 @@ export class BillingApiStack extends cdk.Stack {
       `/aws/lambda/${payfastItnFn.functionName}`
     );
 
+    const invoicePdfLogGroup = logs.LogGroup.fromLogGroupName(
+      this,
+      'GetInvoicePdfLogGroup',
+      `/aws/lambda/${getInvoicePdfFn.functionName}`
+    );
+
     /** Counts log lines whose JSON `message` is one of `messages`. */
-    const logCountMetric = (id: string, metricName: string, messages: string[]): cloudwatch.Metric => {
+    const logCountMetric = (
+      id: string,
+      metricName: string,
+      messages: string[],
+      logGroup: logs.ILogGroup = itnLogGroup
+    ): cloudwatch.Metric => {
       new logs.MetricFilter(this, id, {
-        logGroup: itnLogGroup,
+        logGroup,
         metricNamespace,
         metricName,
         filterPattern: logs.FilterPattern.any(
@@ -425,6 +538,28 @@ export class BillingApiStack extends cdk.Stack {
       'The change-plan Lambda threw: sellers may be unable to start a PayFast checkout.'
     );
 
+    // Invoice PDFs. Two sources feed ONE metric (same namespace + name sums):
+    //   - the webhook could not issue the document right after payment (the seller
+    //     can still download later, which retries), and
+    //   - a seller's download failed for a reason other than 'not found'.
+    logCountMetric(
+      'InvoiceDownloadFailedFilter',
+      'InvoiceIssueFailed',
+      ['Get invoice PDF failed'],
+      invoicePdfLogGroup
+    );
+    alarm(
+      'InvoiceIssueFailed',
+      logCountMetric(
+        'InvoiceIssueFailedFilter',
+        'InvoiceIssueFailed',
+        ['Invoice document not issued; will retry on download'],
+        itnLogGroup
+      ),
+      1,
+      'An invoice PDF could not be issued after payment, or a seller could not download one. The payment itself is unaffected; check the PayfastItn and GetInvoicePdf logs (S3 permissions, invoice numbering).'
+    );
+
     // -----------------------------------------------------------------------
     // SSM exports + stack outputs
     // -----------------------------------------------------------------------
@@ -442,6 +577,11 @@ export class BillingApiStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'BillingApiEndpoint', {
       value: this.httpApi.apiEndpoint,
       exportName: `${id}-BillingApiEndpoint`,
+    });
+
+    new cdk.CfnOutput(this, 'InvoicesBucketName', {
+      value: this.invoicesBucket.bucketName,
+      exportName: `${id}-InvoicesBucketName`,
     });
 
     new cdk.CfnOutput(this, 'BillingAlarmTopicArn', {

@@ -47,6 +47,7 @@ import {
 } from '../../services/subscription-store';
 import { grantCredits } from '../../services/credit-ledger';
 import { recordVoucherRedemption } from '../../services/vouchers';
+import { issueInvoiceDocument } from '../../invoices/issue-invoice';
 
 let injectedProvider: PaymentProvider | undefined;
 
@@ -198,6 +199,10 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     await grantCredits(tenantId, currentBillingMonth(now), plan.monthlyCredits);
   }
 
+  // Who paid, as PayFast reports it; used on the invoice if no billing profile is set.
+  const payerName = [raw?.['name_first'], raw?.['name_last']].filter(Boolean).join(' ').trim();
+  const payerEmail = raw?.['email_address']?.trim();
+
   // Billing-history record for the seller (idempotent on the payment id).
   await upsertInvoice(tenantId, {
     invoiceId: mPaymentId,
@@ -207,7 +212,25 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     periodEnd: periodEnd.toISOString(),
     provider: 'payfast',
     providerRef: mPaymentId,
+    listPriceCents: plan.priceZARCents ?? expectedCents,
+    ...(intent.discountCents ? { discountCents: intent.discountCents } : {}),
+    ...(intent.voucherCode ? { voucherCode: intent.voucherCode } : {}),
+    ...(payerName ? { payerName } : {}),
+    ...(payerEmail ? { payerEmail } : {}),
   });
+
+  // Issue the invoice document (sequential number + PDF). Best effort: the money
+  // has landed, so a failure here must NOT fail or retry the payment. The seller's
+  // download request issues it on demand if this did not complete.
+  try {
+    await issueInvoiceDocument(tenantId, mPaymentId);
+  } catch (error) {
+    logger.error('Invoice document not issued; will retry on download', {
+      tenantId,
+      mPaymentId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   // Count the voucher only now that the money has landed (idempotent per payment).
   if (intent.voucherCode) {

@@ -82,3 +82,27 @@ Everything below is provisional and MUST be confirmed/refined before launch
   length + trial credits are undecided).
 - **Invoices:** no invoice *generation* yet — `list-invoices` reads records but
   nothing writes them (PDF/invoice creation is a follow-up).
+
+## Invoices (PDF)
+
+After a payment is applied the webhook issues an **invoice document**: a sequential
+number (`MOS-000001`, gap-free; see `invoices/invoice-number.ts`) and a PDF stored in
+the private invoices bucket under `invoices/<tenantId>/<number>.pdf`. If the webhook
+could not finish (S3 hiccup etc.) the seller's first download issues it on demand;
+every step is idempotent. Routes: `GET /billing/invoices/{invoiceId}/pdf` (returns a
+5-minute presigned URL), `GET|PUT /billing/profile` (the seller's company details for
+the "Bill to" block; each invoice keeps a snapshot, so later edits never rewrite it).
+
+**MerchOS is not VAT registered**, so the document is a plain **"Invoice"**: no VAT is
+charged or shown, and it must never be titled "Tax Invoice" (only a VAT vendor may
+issue one). Issuer details live in `config/invoice-issuer.ts` and can be overridden at
+deploy time with `--context invoiceIssuerLegalName=... invoiceIssuerRegNo=...`.
+
+**If the business registers for VAT** (compulsory above R1m turnover in 12 months),
+invoices must change: title "Tax Invoice", the supplier's VAT number, the VAT amount
+and rate, and either VAT-inclusive prices with the VAT portion shown or VAT-exclusive
+prices. That needs `config/invoice-issuer.ts`, `invoices/invoice-pdf.ts` and the plan
+pricing reviewed together - get an accountant's sign-off first.
+
+Records must be kept for 5 years, so the bucket is versioned, retained on stack
+deletion and has no expiry rule. Do not add one.

@@ -42,3 +42,24 @@ export const paginationQuerySchema = z
   .strict();
 
 export type PaginationQuery = z.infer<typeof paginationQuerySchema>;
+
+/**
+ * PUT /billing/profile - the seller's invoicing details. Optional fields are
+ * simply omitted when blank. `.strict()` rejects unknown fields.
+ */
+export const billingProfileSchema = z
+  .object({
+    companyName: z.string().trim().min(1, 'Company name is required').max(120),
+    registrationNumber: z.string().trim().min(1).max(30).optional(),
+    // The seller's own VAT number (shown on the invoice for their records).
+    vatNumber: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9 -]{5,20}$/, 'Enter a valid VAT number')
+      .optional(),
+    email: z.string().trim().email('Enter a valid email address').max(120).optional(),
+    addressLines: z.array(z.string().trim().min(1).max(100)).max(5).optional(),
+  })
+  .strict();
+
+export type BillingProfileBody = z.infer<typeof billingProfileSchema>;

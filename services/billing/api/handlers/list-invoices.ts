@@ -40,6 +40,7 @@ function toSummary(item: Record<string, unknown>): InvoiceSummary {
   const amountCents = typeof item['amountDue'] === 'number' ? (item['amountDue'] as number) : 0;
   return {
     invoiceId: String(item['invoiceId'] ?? ''),
+    ...(item['invoiceNumber'] ? { invoiceNumber: String(item['invoiceNumber']) } : {}),
     date: String(item['createdAt'] ?? ''),
     // InvoiceSummary.amount is in minor units (cents) — the billing page divides
     // by 100 when formatting, matching the stored integer-cents convention.

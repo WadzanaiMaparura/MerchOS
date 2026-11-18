@@ -8,6 +8,9 @@ vi.mock('../../services/subscription-store', () => ({
   markPaymentApplied: vi.fn(),
   upsertInvoice: vi.fn(),
 }));
+vi.mock('../../invoices/issue-invoice', () => ({
+  issueInvoiceDocument: vi.fn(),
+}));
 vi.mock('../../services/vouchers', () => ({
   recordVoucherRedemption: vi.fn(),
 }));
@@ -22,6 +25,7 @@ import { handler, setPaymentProvider } from '../handlers/payfast-itn';
 import * as store from '../../services/subscription-store';
 import * as ledger from '../../services/credit-ledger';
 import * as vouchers from '../../services/vouchers';
+import * as issuing from '../../invoices/issue-invoice';
 
 const verifyItn = vi.fn();
 const provider = {
@@ -66,6 +70,58 @@ beforeEach(() => {
   vi.mocked(store.getCheckoutIntent).mockResolvedValue(growthIntent as never);
   vi.mocked(store.recordPayment).mockResolvedValue(true);
   vi.mocked(store.getPayment).mockResolvedValue({ mPaymentId: 'pay-1', applied: false });
+});
+
+describe('PayFast ITN ? invoice document', () => {
+  it('records the voucher/payer on the invoice, then issues the document BEFORE marking applied', async () => {
+    verifyItn.mockResolvedValue({
+      ...GOOD,
+      amountGrossCents: 500,
+      raw: { ...GOOD.raw, name_first: 'Jane', name_last: 'Payer', email_address: 'jane@example.com' },
+    });
+    vi.mocked(store.getCheckoutIntent).mockResolvedValue({
+      ...growthIntent,
+      planId: 'starter',
+      priceZARCents: 500,
+      voucherCode: 'LIVE-TEST-R5',
+      listPriceCents: 49900,
+      discountCents: 49400,
+    } as never);
+    expect(await body()).toBe('ok');
+    expect(store.upsertInvoice).toHaveBeenCalledWith(
+      'tenant-1',
+      expect.objectContaining({
+        amountCents: 500,
+        listPriceCents: 49900,
+        discountCents: 49400,
+        voucherCode: 'LIVE-TEST-R5',
+        payerName: 'Jane Payer',
+        payerEmail: 'jane@example.com',
+      }),
+    );
+    expect(issuing.issueInvoiceDocument).toHaveBeenCalledWith('tenant-1', 'pay-1');
+    const order = [
+      vi.mocked(store.upsertInvoice).mock.invocationCallOrder[0]!,
+      vi.mocked(issuing.issueInvoiceDocument).mock.invocationCallOrder[0]!,
+      vi.mocked(store.markPaymentApplied).mock.invocationCallOrder[0]!,
+    ];
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
+  it('a failure issuing the document does NOT fail the payment (it is retried on download)', async () => {
+    vi.mocked(issuing.issueInvoiceDocument).mockRejectedValue(new Error('s3 down'));
+    expect(await body()).toBe('ok');
+    expect(store.markPaymentApplied).toHaveBeenCalled();
+    expect(store.upsertSubscription).toHaveBeenCalled();
+  });
+
+  it('omits payer fields when PayFast sent them blank', async () => {
+    verifyItn.mockResolvedValue({ ...GOOD, raw: { ...GOOD.raw, name_first: '', name_last: '', email_address: '' } });
+    await body();
+    const arg = vi.mocked(store.upsertInvoice).mock.calls[0]![1] as Record<string, unknown>;
+    expect(arg).not.toHaveProperty('payerName');
+    expect(arg).not.toHaveProperty('payerEmail');
+  });
 });
 
 describe('PayFast ITN ? voucher checkout', () => {

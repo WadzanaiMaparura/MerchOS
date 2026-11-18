@@ -23,10 +23,10 @@ function synth(context: Record<string, string> = {}) {
   return Template.fromStack(stack);
 }
 
-const ALARMS = ['ItnErrors', 'ItnRetrying', 'ItnRejected', 'ItnAnomaly', 'CheckoutErrors'];
+const ALARMS = ['ItnErrors', 'ItnRetrying', 'ItnRejected', 'ItnAnomaly', 'CheckoutErrors', 'InvoiceIssueFailed'];
 
 describe('Billing payment monitoring', () => {
-  it('creates the five billing alarms, each notifying the billing topic on ALARM and OK', () => {
+  it('creates the six billing alarms, each notifying the billing topic on ALARM and OK', () => {
     const t = synth();
     for (const name of ALARMS) {
       t.hasResourceProperties('AWS::CloudWatch::Alarm', {
@@ -43,7 +43,8 @@ describe('Billing payment monitoring', () => {
 
   it('builds log metric filters on the ITN log group from the handler messages', () => {
     const t = synth();
-    t.resourceCountIs('AWS::Logs::MetricFilter', 3);
+    // 3 ITN filters + 2 feeding the invoice-failure metric.
+    t.resourceCountIs('AWS::Logs::MetricFilter', 5);
     t.hasResourceProperties('AWS::Logs::MetricFilter', {
       // Built from the ITN function's name (a CloudFormation reference), so the
       // filter always targets that function's log group.

@@ -14,6 +14,7 @@ export default defineConfig({
       'providers/__tests__/**/*.test.ts',
       'services/__tests__/**/*.test.ts',
       'api/__tests__/**/*.test.ts',
+      'invoices/__tests__/**/*.test.ts',
     ],
     coverage: {
       provider: 'v8',

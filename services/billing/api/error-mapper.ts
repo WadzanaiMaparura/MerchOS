@@ -8,6 +8,7 @@
 
 import { CreditLimitError } from '../services/credit-ledger';
 import { VoucherError } from '../services/vouchers';
+import { InvoiceNotFoundError } from '../invoices/issue-invoice';
 
 export interface ErrorBody {
   error: { code: string; message: string; field?: string };
@@ -38,6 +39,9 @@ function respond(statusCode: number, code: string, message: string, field?: stri
  * becomes a 409. Everything else collapses to a generic 500 with no detail.
  */
 export function mapErrorToResponse(error: unknown): MappedResponse {
+  if (error instanceof InvoiceNotFoundError) {
+    return respond(error.status, error.code, error.message);
+  }
   if (error instanceof VoucherError) {
     return respond(error.status, error.code, error.message, 'voucherCode');
   }
