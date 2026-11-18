@@ -125,35 +125,55 @@ export interface UpsertInvoiceInput {
   periodEnd: string;
   provider: PaymentProviderId;
   providerRef?: string;
+  /** Plan list price and any voucher discount, so the invoice can show both. */
+  listPriceCents?: number;
+  discountCents?: number;
+  voucherCode?: string;
+  /** Who paid, as reported by PayFast; used as the invoice's buyer when no billing profile is set. */
+  payerName?: string;
+  payerEmail?: string;
 }
 
 /**
- * Writes a PAID invoice record for a confirmed payment. Idempotent on invoiceId.
+ * Writes a PAID invoice record for a confirmed payment. Idempotent on invoiceId:
+ * FIRST WRITE WINS. A retried/resumed ITN must not overwrite the record, because
+ * that would wipe the invoice number and PDF key assigned after the first write.
  *
  * NOTE: this is an invoice RECORD for the seller's billing history, not a VAT
  * tax-invoice document. PDF / tax-invoice generation is a separate follow-up.
  */
 export async function upsertInvoice(tenantId: string, input: UpsertInvoiceInput): Promise<void> {
   const client = createTenantDynamoClient(tenantId);
-  await client.put({
-    TableName: BILLING_TABLE,
-    Item: {
-      PK: tenantPK(tenantId),
-      SK: invoiceSK(input.invoiceId),
-      tenantId,
-      invoiceId: input.invoiceId,
-      planId: input.planId,
-      amountDue: input.amountCents,
-      amountPaid: input.amountCents,
-      currency: 'ZAR',
-      status: 'paid',
-      periodStart: input.periodStart,
-      periodEnd: input.periodEnd,
-      provider: input.provider,
-      ...(input.providerRef !== undefined ? { providerRef: input.providerRef } : {}),
-      createdAt: new Date().toISOString(),
-    },
-  });
+  try {
+    await client.put({
+      TableName: BILLING_TABLE,
+      ConditionExpression: 'attribute_not_exists(SK)',
+      Item: {
+        PK: tenantPK(tenantId),
+        SK: invoiceSK(input.invoiceId),
+        tenantId,
+        invoiceId: input.invoiceId,
+        planId: input.planId,
+        amountDue: input.amountCents,
+        amountPaid: input.amountCents,
+        currency: 'ZAR',
+        status: 'paid',
+        periodStart: input.periodStart,
+        periodEnd: input.periodEnd,
+        provider: input.provider,
+        ...(input.providerRef !== undefined ? { providerRef: input.providerRef } : {}),
+        ...(input.listPriceCents !== undefined ? { listPriceCents: input.listPriceCents } : {}),
+        ...(input.discountCents ? { discountCents: input.discountCents } : {}),
+        ...(input.voucherCode ? { voucherCode: input.voucherCode } : {}),
+        ...(input.payerName ? { payerName: input.payerName } : {}),
+        ...(input.payerEmail ? { payerEmail: input.payerEmail } : {}),
+        createdAt: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    // Already written by an earlier attempt of the same payment: keep it as is.
+    if ((error as { name?: string }).name !== 'ConditionalCheckFailedException') throw error;
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -87,6 +87,8 @@ export type InvoiceStatus = 'paid' | 'open' | 'void' | 'uncollectible';
 /** Summary representation of an invoice for list views. */
 export interface InvoiceSummary {
   invoiceId: string;
+  /** Sequential invoice number (e.g. MOS-000123); absent until the document is issued. */
+  invoiceNumber?: string;
   date: string; // ISO 8601
   amount: number;
   currency: string;

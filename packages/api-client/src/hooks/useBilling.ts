@@ -16,6 +16,7 @@ export const billingKeys = {
   overview: () => [...billingKeys.all, 'overview'] as const,
   invoices: (page?: number) => [...billingKeys.all, 'invoices', page] as const,
   invoicePdf: (invoiceId: string) => [...billingKeys.all, 'pdf', invoiceId] as const,
+  profile: () => [...billingKeys.all, 'profile'] as const,
 };
 
 export interface InvoiceListParams {
@@ -109,6 +110,70 @@ export function usePlanChange() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: billingKeys.all });
+    },
+  });
+}
+
+/** The seller's invoicing details, printed in the "Bill to" block of invoices. */
+export interface BillingProfile {
+  companyName: string;
+  registrationNumber?: string;
+  vatNumber?: string;
+  email?: string;
+  addressLines?: string[];
+  updatedAt: string;
+}
+
+/** What the seller submits; omitted optional fields are cleared (PUT semantics). */
+export type BillingProfileInput = Omit<BillingProfile, 'updatedAt'>;
+
+/** Fetches the invoicing details, or null if the seller has not set any yet. */
+export function useBillingProfile() {
+  const client = useBillingClient();
+  return useQuery<BillingProfile | null, ApiError>({
+    queryKey: billingKeys.profile(),
+    queryFn: async () => {
+      const { data } = await client.get<{ profile: BillingProfile | null }>('/billing/profile');
+      return data.profile;
+    },
+  });
+}
+
+/** Saves the invoicing details. Affects FUTURE invoices only. */
+export function useUpdateBillingProfile() {
+  const client = useBillingClient();
+  const queryClient = useQueryClient();
+  return useMutation<BillingProfile, ApiError, BillingProfileInput>({
+    mutationFn: async (input) => {
+      const { data } = await client.put<{ profile: BillingProfile }>('/billing/profile', input);
+      return data.profile;
+    },
+    onSuccess: (profile) => {
+      queryClient.setQueryData(billingKeys.profile(), profile);
+    },
+  });
+}
+
+/** A short-lived link to an invoice PDF. */
+export interface InvoicePdfResult {
+  url: string;
+  invoiceNumber: string;
+  expiresInSeconds: number;
+}
+
+/**
+ * Mutation that asks the Billing API for a download link for one invoice (the
+ * server issues the PDF first if needed). The caller opens `url` right away; it
+ * expires after a few minutes, so it must not be cached or stored.
+ */
+export function useInvoicePdf() {
+  const client = useBillingClient();
+  return useMutation<InvoicePdfResult, ApiError, string>({
+    mutationFn: async (invoiceId) => {
+      const { data } = await client.get<InvoicePdfResult>(
+        `/billing/invoices/${encodeURIComponent(invoiceId)}/pdf`
+      );
+      return data;
     },
   });
 }

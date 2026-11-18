@@ -32,6 +32,9 @@ export {
   useBilling,
   useInvoices,
   usePlanChange,
+  useBillingProfile,
+  useUpdateBillingProfile,
+  useInvoicePdf,
   billingKeys,
 } from './hooks/useBilling';
 export type {
@@ -39,6 +42,9 @@ export type {
   PlanChangePayload,
   PlanChangeResult,
   UseBillingOptions,
+  BillingProfile,
+  BillingProfileInput,
+  InvoicePdfResult,
 } from './hooks/useBilling';
 
 // Channels hooks
