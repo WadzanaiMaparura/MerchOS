@@ -55,6 +55,14 @@ export const generateRequestSchema = z.object({
   productData: productDataSchema,
   marketplace: marketplaceIdEnum.optional(),
   options: z.record(z.string(), z.unknown()).optional(),
+  /**
+   * The product this generation is for, when there is one. Lets the free-trial gate
+   * allow a trial seller to keep correcting THEIR trial products after the cap.
+   */
+  productId: z
+    .string()
+    .regex(/^[A-Za-z0-9-]{1,100}$/, 'productId must be a valid product id')
+    .optional(),
 });
 
 export type GenerateRequestInput = z.infer<typeof generateRequestSchema>;

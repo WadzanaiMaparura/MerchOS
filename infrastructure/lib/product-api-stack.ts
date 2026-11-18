@@ -102,9 +102,17 @@ export class ProductApiStack extends cdk.Stack {
 
     const handlersPath = path.join(__dirname, '../../services/product/api/handlers');
 
+
+    // Free-trial enforcement switch. OFF unless explicitly enabled with
+    // `--context trialEnforcement=true`, and it must be set the SAME way on the Product API,
+    // Supplier Intelligence and Product Intelligence stacks (all three enforce the cap).
+    const trialEnforcement =
+      String(this.node.tryGetContext('trialEnforcement') ?? 'false') === 'true' ? 'true' : 'false';
+
     const commonLambdaEnv: Record<string, string> = {
       PRODUCTS_TABLE: this.productsTable.tableName,
       ENVIRONMENT: env,
+      TRIAL_ENFORCEMENT: trialEnforcement,
     };
 
     const defaultLambdaProps: Partial<lambdaNodejs.NodejsFunctionProps> = {

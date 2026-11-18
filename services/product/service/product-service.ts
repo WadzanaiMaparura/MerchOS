@@ -22,6 +22,7 @@ import {
 } from './dto-mapper';
 import { applySynthesis, type GlueGenerationResult } from './synthesis-glue';
 import { assertTransition } from './lifecycle';
+import { reserveProductSlot, releaseProductSlot } from '../../shared/entitlements/trial-gate';
 import type {
   LifecycleTransition,
   LifecycleState,
@@ -63,6 +64,10 @@ export class ProductService {
 
     // 3. Generate productId
     const productId = crypto.randomUUID();
+
+    // 3b. Free-trial gate: take a trial slot for this product. A no-op unless
+    // TRIAL_ENFORCEMENT is on; throws a 402 TRIAL_* error BEFORE anything is written.
+    await reserveProductSlot(tenantId, productId);
 
     // 4. Construct full CanonicalProduct
     const product: CanonicalProduct = {
@@ -119,6 +124,10 @@ export class ProductService {
       const created = await this.repository.create(product);
       return created;
     } catch (error) {
+      // The product was NOT created, so give the slot back: a failed upload must
+      // not use up the seller's free trial. Best effort - if releasing also fails the
+      // slot stays used, which errs on the side of never granting extra products.
+      await releaseProductSlot(tenantId, productId).catch(() => undefined);
       if (error instanceof RepoAlreadyExistsError) {
         throw new ProductAlreadyExistsError(tenantId, productId);
       }

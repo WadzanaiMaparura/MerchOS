@@ -63,6 +63,8 @@ export interface GenerationRequest {
   type: GenerationType;
   /** Product data used as context for generation */
   productData: ProductData;
+  /** The product this is for, if any (used by the free-trial gate). */
+  productId?: string | undefined;
   /** Optional target marketplace for platform-specific rules */
   marketplace?: MarketplaceId;
   /** Additional generation options (type-specific) */

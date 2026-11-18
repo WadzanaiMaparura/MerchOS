@@ -26,6 +26,7 @@ import type { ImportMetadata, ImportJobResults, SourceType } from '../types/supp
 import type { ValidatedRecord } from '../types/validation.types';
 import { updateImportJobStatus } from '../utils/import-job-status';
 import { emitImportJobCompleted } from '../utils/event-emitter';
+import { reserveProductSlots, releaseProductSlot } from '../../shared/entitlements/trial-gate';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -360,11 +361,22 @@ export async function persistProducts(
   // Build all DynamoDB items before any writes
   // ---------------------------------------------------------------------------
 
-  const productItems: Record<string, unknown>[] = products.map(
-    ({ record, importMetadata, productId }) => {
-      const resolvedId = productId ?? randomUUID();
-      return buildProductItem(tenantId, resolvedId, record, importMetadata);
-    },
+  // Resolve every product id first: the free-trial gate reserves a slot PER product
+  // BEFORE anything is written. BatchWriteItem cannot carry conditions, so a bulk
+  // import has to be truncated here or one big file would bypass the cap.
+  const resolved = products.map((p) => ({ ...p, resolvedId: p.productId ?? randomUUID() }));
+  const gate = await reserveProductSlots(
+    tenantId,
+    resolved.map((r) => r.resolvedId),
+    { tableName: productsTableName },
+  );
+  const allowedIds = new Set(gate.allowed);
+  const allowedProducts = resolved.filter((r) => allowedIds.has(r.resolvedId));
+  const blockedByTrial = resolved.length - allowedProducts.length;
+
+  const productItems: Record<string, unknown>[] = allowedProducts.map(
+    ({ record, importMetadata, resolvedId }) =>
+      buildProductItem(tenantId, resolvedId, record, importMetadata),
   );
 
   // ---------------------------------------------------------------------------
@@ -392,7 +404,17 @@ export async function persistProducts(
     }
   }
 
-  const failed = products.length - persisted;
+  // Give back the slots of products that were never even attempted (everything
+  // after the failing batch). The failing batch itself may be partly written, so its
+  // slots stay used: over-counting is safe, handing out extra products is not.
+  if (failureAtIndex !== null) {
+    for (const p of allowedProducts.slice(failureAtIndex + BATCH_WRITE_MAX_ITEMS)) {
+      await releaseProductSlot(tenantId, p.resolvedId, { tableName: productsTableName });
+    }
+  }
+
+  // Write failures only; products blocked by the trial are reported separately.
+  const failed = productItems.length - persisted;
 
   // ---------------------------------------------------------------------------
   // Build ImportJobResults
@@ -404,6 +426,7 @@ export async function persistProducts(
     updated: 0,
     duplicates: 0,
     validationFailed: 0,
+    ...(blockedByTrial > 0 ? { blockedByTrial } : {}),
   };
 
   // ---------------------------------------------------------------------------
@@ -425,7 +448,9 @@ export async function persistProducts(
       percentage: 100,
       currentStep: failureError
         ? `Completed with errors — ${failed} record(s) failed`
-        : 'Completed',
+        : blockedByTrial > 0
+          ? `Completed: ${persisted} imported, ${blockedByTrial} not imported because the free trial limit was reached`
+          : 'Completed',
     },
   });
 

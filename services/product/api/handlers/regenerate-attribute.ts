@@ -17,6 +17,7 @@ import {
 } from '../../service';
 import { extractTenantContext } from '../../../shared/middleware/tenant-context';
 import { mapErrorToResponse } from '../error-mapper';
+import { assertCanGenerate } from '../../../shared/entitlements/trial-gate';
 
 let productService: ProductService | undefined;
 export function setProductService(service: ProductService): void {
@@ -85,6 +86,12 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
   } catch (error) {
     return mapErrorToResponse(error);
   }
+  // Free-trial gate (before any state change).
+  try {
+    await assertCanGenerate(tenantContext.tenantId, productId);
+  } catch (error) {
+    return mapErrorToResponse(error);
+  }
   if (dto.lifecycleState !== 'REVIEW') {
     return { statusCode: 409, body: JSON.stringify({ error: { code: 'INVALID_PRODUCT_LIFECYCLE', message: 'Product must be in REVIEW to regenerate a field' } }) };
   }
@@ -100,7 +107,7 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
   const options = reason ? { regenerationReason: reason } : undefined;
 
   const result = await caller.generate(
-    { type, productData, ...(marketplace ? { marketplace } : {}), ...(options ? { options } : {}) },
+    { type, productData, productId, ...(marketplace ? { marketplace } : {}), ...(options ? { options } : {}) },
     token
   );
 
