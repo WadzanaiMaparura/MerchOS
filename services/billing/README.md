@@ -86,7 +86,7 @@ Everything below is provisional and MUST be confirmed/refined before launch
 ## Invoices (PDF)
 
 After a payment is applied the webhook issues an **invoice document**: a sequential
-number (`MOS-000001`, gap-free; see `invoices/invoice-number.ts`) and a PDF stored in
+number (`MOS-010000`, gap-free; see `invoices/invoice-number.ts`) and a PDF stored in
 the private invoices bucket under `invoices/<tenantId>/<number>.pdf`. If the webhook
 could not finish (S3 hiccup etc.) the seller's first download issues it on demand;
 every step is idempotent. Routes: `GET /billing/invoices/{invoiceId}/pdf` (returns a
