@@ -96,6 +96,8 @@ export interface ImportJobResults {
   updated: number;
   duplicates: number;
   validationFailed: number;
+  /** Products not imported because the seller's free trial limit was reached (or not activated). */
+  blockedByTrial?: number;
 }
 
 /** An error entry recorded during import processing. */

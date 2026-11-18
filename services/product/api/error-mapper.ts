@@ -6,6 +6,7 @@ import {
   ProductValidationError,
   InvalidProductLifecycleError,
 } from '../service/errors';
+import { isTrialError } from '../../shared/entitlements/trial-gate';
 
 export function mapErrorToResponse(error: unknown): { statusCode: number; body: string } {
   if (error instanceof ProductNotFoundError) {
@@ -42,6 +43,13 @@ export function mapErrorToResponse(error: unknown): { statusCode: number; body: 
     return {
       statusCode: 500,
       body: JSON.stringify({ error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' } }),
+    };
+  }
+  if (isTrialError(error)) {
+    // Payment Required: the free trial is not active or is used up.
+    return {
+      statusCode: 402,
+      body: JSON.stringify({ error: { code: error.code, message: error.message } }),
     };
   }
   // Unknown error — never expose details

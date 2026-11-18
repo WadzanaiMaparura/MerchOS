@@ -610,9 +610,17 @@ export class SupplierIntelligenceStack extends cdk.Stack {
       importJobsTableReadWrite,
       eventBusPutEvents,
       // Write access to the Products table (batch-writes imported products).
+      // GetItem + DeleteItem are for the free-trial gate: it reads the seller's
+      // entitlement and reserves/releases one allow-list marker per product.
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: ['dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:BatchWriteItem'],
+        actions: [
+          'dynamodb:PutItem',
+          'dynamodb:UpdateItem',
+          'dynamodb:BatchWriteItem',
+          'dynamodb:GetItem',
+          'dynamodb:DeleteItem',
+        ],
         resources: [productsTableArn],
       }),
     ], { timeout: cdk.Duration.seconds(120), memorySize: 512 });
@@ -635,6 +643,13 @@ export class SupplierIntelligenceStack extends cdk.Stack {
     );
 
     productPersisterFn.addEnvironment('PRODUCTS_TABLE_NAME', productsTableName);
+
+    // Free-trial enforcement switch. OFF unless explicitly enabled with
+    // `--context trialEnforcement=true`, and it must be set the SAME way on the Product API,
+    // Supplier Intelligence and Product Intelligence stacks (all three enforce the cap).
+    const trialEnforcement =
+      String(this.node.tryGetContext('trialEnforcement') ?? 'false') === 'true' ? 'true' : 'false';
+    productPersisterFn.addEnvironment('TRIAL_ENFORCEMENT', trialEnforcement);
     duplicateDetectorFn.addEnvironment('PRODUCTS_TABLE_NAME', productsTableName);
 
     // -----------------------------------------------------------------------

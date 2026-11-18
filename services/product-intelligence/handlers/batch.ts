@@ -41,6 +41,8 @@ import { attributeExtractor } from '../services/attribute-extractor';
 import { keywordGenerator } from '../services/keyword-generator';
 import { complianceValidator } from '../services/compliance-validator';
 import { shouldRecommendReview } from '../services/confidence-scorer';
+import { assertCanGenerate, isTrialError } from '../../shared/entitlements/trial-gate';
+import { trialFailedResult } from './trial-guard';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -248,6 +250,14 @@ async function processItemsConcurrently(
 
     const batchResults = await Promise.allSettled(
       batch.map(async (item) => {
+        // Free-trial gate, per item (each may name a different product).
+        try {
+          await assertCanGenerate(tenantId, item.productId);
+        } catch (error) {
+          if (isTrialError(error)) return trialFailedResult(item.type, error.code, error.message);
+          throw error;
+        }
+
         // Check budget before processing each item
         const budgetCheck = await tokenTracker.checkBudget(tenantId);
         if (!budgetCheck.allowed) {

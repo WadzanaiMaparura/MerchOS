@@ -26,6 +26,7 @@ import {
 } from '../../service';
 import { extractTenantContext } from '../../../shared/middleware/tenant-context';
 import { mapErrorToResponse } from '../error-mapper';
+import { assertCanGenerate } from '../../../shared/entitlements/trial-gate';
 
 let productService: ProductService | undefined;
 
@@ -120,6 +121,13 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
   } catch (error) {
     return mapErrorToResponse(error);
   }
+  // 5b. Free-trial gate. Deliberately BEFORE the GENERATING transition below, so a
+  // blocked product is never left stuck in GENERATING.
+  try {
+    await assertCanGenerate(tenantId, productId);
+  } catch (error) {
+    return mapErrorToResponse(error);
+  }
   const currentState = dto.lifecycleState;
 
   // 6. Transition → GENERATING
@@ -146,7 +154,7 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
   let anyFailure = false;
   for (const type of types) {
     const result = await caller.generate(
-      { type, productData, ...(marketplace ? { marketplace } : {}) },
+      { type, productData, productId, ...(marketplace ? { marketplace } : {}) },
       token
     );
     if (result && result.status === 'completed') {

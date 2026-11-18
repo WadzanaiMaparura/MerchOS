@@ -358,6 +358,33 @@ export class ProductIntelligenceStack extends cdk.Stack {
       [dynamoReadOnlyPolicy, kmsPolicy],
     );
 
+    // -----------------------------------------------------------------------
+    // Free-trial gate: /generate and /batch must check the seller's entitlement,
+    // which lives in the PRODUCTS table (see services/shared/entitlements). Read-only
+    // (GetItem): this service never writes entitlements. KMS is already granted.
+    // -----------------------------------------------------------------------
+    // Free-trial enforcement switch. OFF unless explicitly enabled with
+    // `--context trialEnforcement=true`, and it must be set the SAME way on the Product API,
+    // Supplier Intelligence and Product Intelligence stacks (all three enforce the cap).
+    const trialEnforcement =
+      String(this.node.tryGetContext('trialEnforcement') ?? 'false') === 'true' ? 'true' : 'false';
+    const trialProductsTableName = ssm.StringParameter.valueForStringParameter(
+      this,
+      `${ssmPrefix}/product-api/table-name`,
+    );
+    const trialProductsTableArn = `arn:aws:dynamodb:${this.region}:${this.account}:table/merch-os-products-${env}`;
+    for (const fn of [generateFn, batchFn]) {
+      fn.addEnvironment('PRODUCTS_TABLE', trialProductsTableName);
+      fn.addEnvironment('TRIAL_ENFORCEMENT', trialEnforcement);
+      fn.addToRolePolicy(
+        new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          actions: ['dynamodb:GetItem'],
+          resources: [trialProductsTableArn],
+        }),
+      );
+    }
+
     // Expose Lambda functions map
     this.lambdaFunctions = {
       generate: generateFn,
