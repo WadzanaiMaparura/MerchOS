@@ -117,6 +117,28 @@ describe('Billing invoice infrastructure', () => {
     expect(fn.Properties.Environment.Variables).not.toHaveProperty('INVOICE_ISSUER_LEGAL_NAME');
   });
 
+  it('creates the download Lambda log group explicitly, so its metric filter can be created at deploy time', () => {
+    // Regression: a Lambda's log group only exists after its first invocation, so a
+    // metric filter pointing at the auto-created name made CloudFormation fail with
+    // "The specified log group does not exist" and roll the whole stack back.
+    const t = synth();
+    t.hasResourceProperties('AWS::Logs::LogGroup', {
+      LogGroupName: '/aws/lambda/merch-os-billing-getinvoicepdf-dev',
+      RetentionInDays: 365,
+    });
+    t.hasResource('AWS::Logs::LogGroup', { DeletionPolicy: 'Delete' });
+    // The filter references the resource (a Ref), not a hard-coded name string.
+    t.hasResourceProperties('AWS::Logs::MetricFilter', {
+      LogGroupName: Match.objectLike({ Ref: Match.stringLikeRegexp('GetInvoicePdfLogGroup') }),
+      FilterPattern: Match.stringLikeRegexp('Get invoice PDF failed'),
+    });
+    // And the function logs into that group.
+    t.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'merch-os-billing-getinvoicepdf-dev',
+      LoggingConfig: Match.objectLike({ LogGroup: Match.objectLike({ Ref: Match.stringLikeRegexp('GetInvoicePdfLogGroup') }) }),
+    });
+  });
+
   it('raises an alarm when invoices cannot be issued', () => {
     synth().hasResourceProperties('AWS::CloudWatch::Alarm', {
       AlarmName: 'merch-os-billing-InvoiceIssueFailed-dev',

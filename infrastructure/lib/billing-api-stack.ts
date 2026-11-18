@@ -287,7 +287,8 @@ export class BillingApiStack extends cdk.Stack {
     const createLambda = (
       logicalId: string,
       entry: string,
-      policyStatements: iam.PolicyStatement[]
+      policyStatements: iam.PolicyStatement[],
+      logGroup?: logs.ILogGroup
     ): lambdaNodejs.NodejsFunction => {
       const role = new iam.Role(this, `${logicalId}Role`, {
         assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com') as unknown as iam.IPrincipal,
@@ -304,6 +305,7 @@ export class BillingApiStack extends cdk.Stack {
         functionName: `merch-os-billing-${logicalId.toLowerCase()}-${env}`,
         entry,
         role: role as unknown as iam.IRole,
+        ...(logGroup ? { logGroup } : {}),
       });
     };
 
@@ -338,12 +340,27 @@ export class BillingApiStack extends cdk.Stack {
     ]);
 
     // Invoice PDF download: issues on demand if the webhook could not, then presigns.
-    const getInvoicePdfFn = createLambda('GetInvoicePdf', path.join(handlersPath, 'get-invoice-pdf.ts'), [
-      billingTableAccess,
-      kmsPolicy,
-      invoiceObjectsWrite,
-      invoiceObjectsRead, // the presigned URL inherits the signer's GetObject permission
-    ]);
+    //
+    // Its log group is created explicitly: Lambda only creates one on first
+    // invocation, and the failure alarm below needs a metric filter on it at deploy
+    // time (CloudFormation fails with "log group does not exist" otherwise).
+    const getInvoicePdfLogGroup = new logs.LogGroup(this, 'GetInvoicePdfLogGroup', {
+      logGroupName: `/aws/lambda/merch-os-billing-getinvoicepdf-${env}`,
+      retention: logs.RetentionDays.ONE_YEAR,
+      // DESTROY so a failed/rolled-back deploy cannot leave an orphan that blocks the retry.
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+    const getInvoicePdfFn = createLambda(
+      'GetInvoicePdf',
+      path.join(handlersPath, 'get-invoice-pdf.ts'),
+      [
+        billingTableAccess,
+        kmsPolicy,
+        invoiceObjectsWrite,
+        invoiceObjectsRead, // the presigned URL inherits the signer's GetObject permission
+      ],
+      getInvoicePdfLogGroup
+    );
 
     // Seller invoicing details (company name, VAT no., address).
     const getBillingProfileFn = createLambda(
@@ -450,12 +467,6 @@ export class BillingApiStack extends cdk.Stack {
       `/aws/lambda/${payfastItnFn.functionName}`
     );
 
-    const invoicePdfLogGroup = logs.LogGroup.fromLogGroupName(
-      this,
-      'GetInvoicePdfLogGroup',
-      `/aws/lambda/${getInvoicePdfFn.functionName}`
-    );
-
     /** Counts log lines whose JSON `message` is one of `messages`. */
     const logCountMetric = (
       id: string,
@@ -546,7 +557,7 @@ export class BillingApiStack extends cdk.Stack {
       'InvoiceDownloadFailedFilter',
       'InvoiceIssueFailed',
       ['Get invoice PDF failed'],
-      invoicePdfLogGroup
+      getInvoicePdfLogGroup
     );
     alarm(
       'InvoiceIssueFailed',
