@@ -29,7 +29,7 @@ export interface InvoiceIssuer {
  */
 export const DEFAULT_ISSUER: InvoiceIssuer = {
   legalName: 'MerchOS',
-  addressLines: ['424 Pretorius Road', 'Henley On Klip', 'Meyerton', 'South Africa'],
+  addressLines: ['424 Pretorius Road', 'Henley On Klip', 'Meyerton, 1961', 'South Africa'],
   email: 'admin@merchos.co.za',
   website: 'merchos.co.za',
 };
