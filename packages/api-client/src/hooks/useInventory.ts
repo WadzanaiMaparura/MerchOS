@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { InventorySummary, StockAdjustmentPayload } from '@merch-os/types';
-import { useApiClient } from '../context';
+import { useInventoryClient } from '../context';
 import type { ApiError } from '../errors';
 
 /** Query key factory for inventory domain */
@@ -41,7 +41,7 @@ export interface InventoryTransaction {
  * Validates: Requirements 7.1
  */
 export function useInventory(params?: InventoryListParams) {
-  const client = useApiClient();
+  const client = useInventoryClient();
 
   return useQuery<InventorySummary[], ApiError>({
     queryKey: inventoryKeys.list(params?.warehouseId),
@@ -64,7 +64,7 @@ export function useInventory(params?: InventoryListParams) {
  * Validates: Requirements 7.3
  */
 export function useStockAdjustment() {
-  const client = useApiClient();
+  const client = useInventoryClient();
   const queryClient = useQueryClient();
 
   return useMutation<void, ApiError, StockAdjustmentPayload>({
@@ -90,7 +90,7 @@ export function useStockAdjustment() {
  * Validates: Requirements 7.5
  */
 export function useTransactionHistory(params: TransactionHistoryParams) {
-  const client = useApiClient();
+  const client = useInventoryClient();
 
   return useQuery<InventoryTransaction[], ApiError>({
     queryKey: inventoryKeys.transactions(params.sku, params.warehouseId),

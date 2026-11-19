@@ -1,12 +1,12 @@
 /**
  * Trigger File Import Lambda handler for POST /suppliers/{supplierId}/imports/file.
  *
- * Accepts multipart upload metadata, stores the raw file in S3 at
- * `suppliers/{tenantId}/{supplierId}/{filename}`, creates an ImportJob record
- * in DynamoDB with status QUEUED, and sends an SQS message to the FIFO queue
- * with MessageGroupId=tenantId for per-tenant ordering.
+ * Stages a file import: validates the declared file (name, type, size), creates
+ * the ImportJob as AWAITING_UPLOAD and returns a presigned S3 PUT URL. The browser
+ * uploads the file directly to S3, then calls POST /imports/{importJobId}/start,
+ * which verifies the upload and queues the import (see utils/upload-staging.ts).
  *
- * Returns 202 Accepted with the importJobId.
+ * Returns 201 with { importJobId, uploads: [{ url, method, headers }], startUrl }.
  *
  * Requirements: 2.5, 5.1, 5.2
  */
@@ -16,8 +16,7 @@ import crypto from 'node:crypto';
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand } from '@aws-sdk/lib-dynamodb';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
+import { S3Client } from '@aws-sdk/client-s3';
 
 import { triggerFileImportSchema } from '../schemas/import.schema';
 import type { ImportJob, ImportJobStatus, SourceType } from '../types';
@@ -26,6 +25,7 @@ import { rbacMiddleware } from '../../shared/middleware/rbac';
 import { tenantContextMiddleware } from '../../shared/middleware/tenant-context';
 import { rateLimitMiddleware } from '../../shared/middleware/rate-limit';
 import { logger } from '../../shared/middleware/powertools';
+import { presignUpload, sanitizeFileName, type PendingUpload } from '../utils/upload-staging';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -65,14 +65,6 @@ function getS3Client(): S3Client {
     s3Client = new S3Client({ region });
   }
   return s3Client;
-}
-
-let sqsClient: SQSClient | null = null;
-function getSqsClient(): SQSClient {
-  if (!sqsClient) {
-    sqsClient = new SQSClient({ region });
-  }
-  return sqsClient;
 }
 
 // ---------------------------------------------------------------------------
@@ -139,13 +131,10 @@ async function baseHandler(event: TriggerFileImportEvent): Promise<APIGatewayPro
   // Validate environment variables
   const importJobsTable = process.env['IMPORT_JOBS_TABLE'];
   const rawUploadsBucket = process.env['RAW_UPLOADS_BUCKET'];
-  const importQueueUrl = process.env['IMPORT_QUEUE_URL'];
-
-  if (!importJobsTable || !rawUploadsBucket || !importQueueUrl) {
+  if (!importJobsTable || !rawUploadsBucket) {
     logger.error('Missing required environment variables', {
       hasImportJobsTable: !!importJobsTable,
       hasRawUploadsBucket: !!rawUploadsBucket,
-      hasImportQueueUrl: !!importQueueUrl,
     });
     return {
       statusCode: 500,
@@ -157,60 +146,51 @@ async function baseHandler(event: TriggerFileImportEvent): Promise<APIGatewayPro
   }
 
   const importJobId = crypto.randomUUID();
-  const s3Key = `suppliers/${tenantId}/${supplierId}/${fileName}`;
+  const safeName = sanitizeFileName(fileName);
+  const s3Key = `suppliers/${tenantId}/${supplierId}/files/${importJobId}/${safeName}`;
   const sourceType = resolveSourceType(contentType);
-  const now = new Date().toISOString();
-  const ttl = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60; // 365 days
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const ttl = Math.floor(now.getTime() / 1000) + 365 * 24 * 60 * 60; // 365 days
 
-  logger.info('Triggering file import', {
+  logger.info('Staging file import (awaiting browser upload)', {
     tenantId,
     supplierId,
     importJobId,
-    fileName,
     contentType,
     fileSizeBytes,
-    s3Key,
   });
 
   try {
-    // Step 1: Store raw file content in S3
-    // Note: In a real multipart upload scenario, the file body would come from
-    // the raw event body. Here we store the file metadata as a placeholder;
-    // the actual binary upload is handled via a pre-signed URL or direct upload.
-    // For the handler pattern, we store the raw body if present.
-    const rawBody = (event as unknown as Record<string, unknown>)['rawBody'] as
-      | Buffer
-      | string
-      | undefined;
+    const pendingUploads: PendingUpload[] = [
+      { key: s3Key, contentType, sizeBytes: fileSizeBytes, originalFileName: fileName },
+    ];
 
-    await getS3Client().send(
-      new PutObjectCommand({
-        Bucket: rawUploadsBucket,
-        Key: s3Key,
-        ContentType: contentType,
-        Body: rawBody ?? Buffer.alloc(0),
-        Metadata: {
-          tenantId,
-          supplierId,
-          importJobId,
-          originalFileName: fileName,
-        },
-      }),
-    );
+    // The exact message the queue consumer expects, sent by POST /imports/{id}/start
+    // only after the upload is verified. Nothing is queued now.
+    const queueMessage = {
+      importJobId,
+      tenantId,
+      supplierId,
+      sourceType,
+      sourceReference: s3Key,
+      fileName: safeName,
+      contentType,
+      fileSizeBytes,
+    };
 
-    logger.info('File uploaded to S3', { s3Key, bucket: rawUploadsBucket });
-
-    // Step 2: Create ImportJob record in DynamoDB with status QUEUED
     const importJob: ImportJob = {
       importJobId,
       tenantId,
       supplierId,
       sourceType,
       sourceReference: s3Key,
-      status: 'QUEUED' as ImportJobStatus,
+      status: 'AWAITING_UPLOAD' as ImportJobStatus,
       errors: [],
-      createdAt: now,
+      createdAt: nowIso,
       ttl,
+      pendingUploads,
+      queueMessage,
     };
 
     await getDynamoDocClient().send(
@@ -220,49 +200,30 @@ async function baseHandler(event: TriggerFileImportEvent): Promise<APIGatewayPro
           PK: `TENANT#${tenantId}`,
           SK: `IMPORT#${importJobId}`,
           GSI1PK: `TENANT#${tenantId}#SUPPLIER#${supplierId}`,
-          GSI1SK: `IMPORT#CREATED#${now}`,
-          GSI2PK: `TENANT#${tenantId}#STATUS#QUEUED`,
-          GSI2SK: `IMPORT#CREATED#${now}`,
+          GSI1SK: `IMPORT#CREATED#${nowIso}`,
+          GSI2PK: `TENANT#${tenantId}#STATUS#AWAITING_UPLOAD`,
+          GSI2SK: `IMPORT#CREATED#${nowIso}`,
           ...importJob,
         },
+        ConditionExpression: 'attribute_not_exists(PK)',
       }),
     );
 
-    logger.info('ImportJob record created in DynamoDB', { importJobId, status: 'QUEUED' });
+    const upload = await presignUpload(getS3Client(), rawUploadsBucket, pendingUploads[0]!, {
+      tenantid: tenantId,
+      supplierid: supplierId,
+      importjobid: importJobId,
+    }, now);
 
-    // Step 3: Send SQS message to FIFO queue with MessageGroupId=tenantId
-    const messageDeduplicationId = importJobId; // UUID guarantees uniqueness
-    await getSqsClient().send(
-      new SendMessageCommand({
-        QueueUrl: importQueueUrl,
-        MessageGroupId: tenantId,
-        MessageDeduplicationId: messageDeduplicationId,
-        MessageBody: JSON.stringify({
-          importJobId,
-          tenantId,
-          supplierId,
-          sourceType,
-          sourceReference: s3Key,
-          fileName,
-          contentType,
-          fileSizeBytes,
-        }),
-      }),
-    );
-
-    logger.info('SQS message sent to import queue', {
-      importJobId,
-      messageGroupId: tenantId,
-    });
-
-    // Step 4: Return 202 Accepted with importJobId
+    // 201: the job exists but is not running yet; the client uploads, then calls start.
     return {
-      statusCode: 202,
+      statusCode: 201,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         importJobId,
-        status: 'QUEUED',
-        sourceReference: s3Key,
+        status: 'AWAITING_UPLOAD',
+        uploads: [upload],
+        startUrl: `/imports/${importJobId}/start`,
       }),
     };
   } catch (error) {

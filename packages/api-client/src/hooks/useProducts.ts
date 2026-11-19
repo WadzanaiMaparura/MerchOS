@@ -21,7 +21,7 @@ import type {
   CanonicalProduct,
 } from '@merch-os/types';
 import type { ApiError } from '../errors';
-import { useApiClient } from '../context';
+import { useProductClient, useExportClient } from '../context';
 
 // ─── Query Keys ──────────────────────────────────────────────────────────────
 
@@ -54,7 +54,7 @@ interface ProductMutationContext {
 export function useProducts(
   params: ProductListParams
 ): UseQueryResult<PaginatedResponse<ProductSummary>, ApiError> {
-  const client = useApiClient();
+  const client = useProductClient();
 
   return useQuery<PaginatedResponse<ProductSummary>, ApiError>({
     queryKey: productKeys.list(params),
@@ -81,7 +81,7 @@ export function useProducts(
 export function useProduct(
   productId: string
 ): UseQueryResult<Product, ApiError> {
-  const client = useApiClient();
+  const client = useProductClient();
 
   return useQuery<Product, ApiError>({
     queryKey: productKeys.detail(productId),
@@ -114,7 +114,7 @@ export function useUpdateProduct(): UseMutationResult<
   UpdateProductPayload,
   ProductMutationContext
 > {
-  const client = useApiClient();
+  const client = useProductClient();
   const queryClient = useQueryClient();
 
   return useMutation<Product, ApiError, UpdateProductPayload, ProductMutationContext>({
@@ -208,7 +208,7 @@ export function useApproveAttribute(): UseMutationResult<
   ApproveAttributeVariables,
   ProductMutationContext
 > {
-  const client = useApiClient();
+  const client = useProductClient();
   const queryClient = useQueryClient();
 
   return useMutation<void, ApiError, ApproveAttributeVariables, ProductMutationContext>({
@@ -282,7 +282,7 @@ export function useOverrideAttribute(): UseMutationResult<
   OverrideAttributePayload,
   ProductMutationContext
 > {
-  const client = useApiClient();
+  const client = useProductClient();
   const queryClient = useQueryClient();
 
   return useMutation<void, ApiError, OverrideAttributePayload, ProductMutationContext>({
@@ -356,7 +356,7 @@ export function useTransitionLifecycle(): UseMutationResult<
   TransitionPayload,
   ProductMutationContext
 > {
-  const client = useApiClient();
+  const client = useProductClient();
   const queryClient = useQueryClient();
 
   return useMutation<void, ApiError, TransitionPayload, ProductMutationContext>({
@@ -422,7 +422,7 @@ export function useProductSearch(
   query: string,
   params?: Omit<ProductListParams, 'search'>
 ): UseQueryResult<PaginatedResponse<ProductSummary>, ApiError> {
-  const client = useApiClient();
+  const client = useProductClient();
   const [debouncedQuery, setDebouncedQuery] = useState(query);
 
   useEffect(() => {
@@ -471,7 +471,7 @@ export function useCanonicalProduct(
   productId: string,
   options?: { enabled?: boolean }
 ): UseQueryResult<CanonicalProduct, ApiError> {
-  const client = useApiClient();
+  const client = useProductClient();
 
   return useQuery<CanonicalProduct, ApiError>({
     queryKey: [...productKeys.detail(productId), 'canonical'],
@@ -504,7 +504,7 @@ export function useProductExport(): UseMutationResult<
   ApiError,
   ProductExportPayload
 > {
-  const client = useApiClient();
+  const client = useExportClient();
   const queryClient = useQueryClient();
 
   return useMutation<ExportSummary, ApiError, ProductExportPayload>({
@@ -547,7 +547,7 @@ export function useProductUpload(): UseMutationResult<
   ApiError,
   File
 > {
-  const client = useApiClient();
+  const client = useProductClient();
   const queryClient = useQueryClient();
 
   return useMutation<ProductUploadResult, ApiError, File>({

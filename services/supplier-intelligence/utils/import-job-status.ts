@@ -26,6 +26,7 @@ import type { ImportJobStatus, ImportJobProgress } from '../types/supplier.types
  * transition to. Export it so callers and tests can inspect it directly.
  */
 export const VALID_TRANSITIONS: Readonly<Record<ImportJobStatus, ReadonlySet<ImportJobStatus>>> = {
+  AWAITING_UPLOAD: new Set<ImportJobStatus>(['QUEUED', 'FAILED']),
   QUEUED: new Set<ImportJobStatus>(['PROCESSING', 'FAILED']),
   PROCESSING: new Set<ImportJobStatus>(['VALIDATING', 'FAILED']),
   VALIDATING: new Set<ImportJobStatus>(['PERSISTING', 'FAILED']),

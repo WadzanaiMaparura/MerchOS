@@ -20,7 +20,7 @@ import {
   UseMutationResult,
 } from '@tanstack/react-query';
 import type { ApiError } from '../errors';
-import { useApiClient } from '../context';
+import { useImageClient } from '../context';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -112,7 +112,7 @@ export function useRequestUploadUrl(): UseMutationResult<
   ApiError,
   RequestUploadUrlPayload
 > {
-  const client = useApiClient();
+  const client = useImageClient();
   return useMutation<UploadUrlResponse, ApiError, RequestUploadUrlPayload>({
     mutationFn: async (payload) => {
       const response = await client.post<UploadUrlResponse>('/v1/images/upload', payload);
@@ -143,7 +143,7 @@ export function useStartImageProcessing(): UseMutationResult<
   ApiError,
   StartProcessingPayload
 > {
-  const client = useApiClient();
+  const client = useImageClient();
   const queryClient = useQueryClient();
   return useMutation<StartProcessingResponse, ApiError, StartProcessingPayload>({
     mutationFn: async (payload) => {
@@ -168,7 +168,7 @@ export function useStartImageProcessing(): UseMutationResult<
 export function useImageJob(
   imageJobId: string | undefined,
 ): UseQueryResult<ImageJob, ApiError> {
-  const client = useApiClient();
+  const client = useImageClient();
   return useQuery<ImageJob, ApiError>({
     queryKey: imageKeys.job(imageJobId ?? 'none'),
     enabled: Boolean(imageJobId),
@@ -197,7 +197,7 @@ export function useImageSignedUrl(
   imageId: string | undefined,
   channel: string | undefined,
 ): UseQueryResult<SignedUrlResponse, ApiError> {
-  const client = useApiClient();
+  const client = useImageClient();
   return useQuery<SignedUrlResponse, ApiError>({
     queryKey: imageKeys.signedUrl(imageId ?? 'none', channel ?? 'none'),
     enabled: Boolean(imageId && channel),

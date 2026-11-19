@@ -12,6 +12,14 @@ export {
   useExportClient,
   BillingClientContext,
   useBillingClient,
+  ProductClientContext,
+  useProductClient,
+  SupplierClientContext,
+  useSupplierClient,
+  InventoryClientContext,
+  useInventoryClient,
+  ImageClientContext,
+  useImageClient,
 } from './context';
 
 // Inventory hooks
@@ -230,6 +238,10 @@ export type {
   ImportJobListParams,
   ImportJobListResponse,
 } from './hooks/useImportJobs';
+
+// Supplier import triggers (direct-to-S3 uploads)
+export { useStartFileImport, useStartImageImport, useStartUrlImport, importContentType } from './hooks/useImportUpload';
+export type { StartedImport } from './hooks/useImportUpload';
 
 // Supplier hooks
 export {

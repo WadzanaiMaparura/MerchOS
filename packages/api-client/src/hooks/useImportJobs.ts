@@ -5,7 +5,7 @@ import {
   UseQueryResult,
 } from '@tanstack/react-query';
 import type { ApiError } from '../errors';
-import { useApiClient } from '../context';
+import { useSupplierClient } from '../context';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -136,7 +136,7 @@ const GC_TIME = 5 * 60_000; // 5 minutes
 export function useImportJobs(
   params: ImportJobListParams
 ): UseQueryResult<ImportJobListResponse, ApiError> {
-  const client = useApiClient();
+  const client = useSupplierClient();
 
   return useQuery<ImportJobListResponse, ApiError>({
     queryKey: importJobKeys.list(params),
@@ -175,7 +175,7 @@ const POLL_INTERVAL = 3_000; // 3 seconds for in-progress jobs
 export function useImportJobDetail(
   importJobId: string
 ): UseQueryResult<ImportJobDetail, ApiError> {
-  const client = useApiClient();
+  const client = useSupplierClient();
 
   return useQuery<ImportJobDetail, ApiError>({
     queryKey: importJobKeys.detail(importJobId),

@@ -8,7 +8,7 @@ import {
   UseMutationResult,
 } from '@tanstack/react-query';
 import type { ApiError } from '../errors';
-import { useApiClient } from '../context';
+import { useSupplierClient } from '../context';
 import type { ImportJobSummary } from './useImportJobs';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -108,7 +108,7 @@ const GC_TIME = 5 * 60_000; // 5 minutes
 export function useSuppliers(
   params: SupplierListParams = {}
 ): UseQueryResult<SupplierListResponse, ApiError> {
-  const client = useApiClient();
+  const client = useSupplierClient();
 
   return useQuery<SupplierListResponse, ApiError>({
     queryKey: supplierKeys.list(params),
@@ -139,7 +139,7 @@ export function useSuppliers(
 export function useSupplierDetail(
   supplierId: string
 ): UseQueryResult<SupplierSummary, ApiError> {
-  const client = useApiClient();
+  const client = useSupplierClient();
 
   return useQuery<SupplierSummary, ApiError>({
     queryKey: supplierKeys.detail(supplierId),
@@ -163,7 +163,7 @@ export function useSupplierDetail(
 export function useSupplierVersions(
   supplierId: string
 ): UseQueryResult<SupplierVersionsResponse, ApiError> {
-  const client = useApiClient();
+  const client = useSupplierClient();
 
   return useQuery<SupplierVersionsResponse, ApiError>({
     queryKey: supplierKeys.versions(supplierId),
@@ -189,7 +189,7 @@ export function useSupplierImports(
   supplierId: string,
   params: SupplierImportsParams = {}
 ): UseQueryResult<SupplierImportsResponse, ApiError> {
-  const client = useApiClient();
+  const client = useSupplierClient();
 
   return useQuery<SupplierImportsResponse, ApiError>({
     queryKey: supplierKeys.imports(supplierId, params),
@@ -226,7 +226,7 @@ export function useCreateSupplier(): UseMutationResult<
   ApiError,
   CreateSupplierPayload
 > {
-  const client = useApiClient();
+  const client = useSupplierClient();
   const queryClient = useQueryClient();
 
   return useMutation<SupplierSummary, ApiError, CreateSupplierPayload>({
@@ -249,7 +249,7 @@ export function useCreateSupplier(): UseMutationResult<
 export function useUpdateSupplier(
   supplierId: string
 ): UseMutationResult<SupplierSummary, ApiError, UpdateSupplierPayload> {
-  const client = useApiClient();
+  const client = useSupplierClient();
   const queryClient = useQueryClient();
 
   return useMutation<SupplierSummary, ApiError, UpdateSupplierPayload>({

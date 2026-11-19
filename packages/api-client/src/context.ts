@@ -99,3 +99,37 @@ export function useBillingClient(): AxiosInstance {
   }
   return client;
 }
+
+// ---------------------------------------------------------------------------
+// Per-service clients
+//
+// Each MerchOS service is a SEPARATE HTTP API with its own base URL. Previously
+// only Intelligence, Export and Billing had their own client; products,
+// suppliers/imports, inventory and images all fell through to the main client,
+// whose base URL is the Auth API, where those routes do not exist (404). Every
+// hook now uses the client for the service that actually serves its routes.
+// ---------------------------------------------------------------------------
+
+function serviceClient(name: string) {
+  const context = createContext<AxiosInstance | null>(null);
+  function useClient(): AxiosInstance {
+    const client = useContext(context);
+    if (!client) {
+      throw new Error(
+        `use${name}Client must be used within a provider supplying ${name}ClientContext ` +
+          '(see ApiClientProvider).'
+      );
+    }
+    return client;
+  }
+  return [context, useClient] as const;
+}
+
+/** Product API: /products/** (NEXT_PUBLIC_PRODUCT_API_URL). */
+export const [ProductClientContext, useProductClient] = serviceClient('Product');
+/** Supplier Intelligence API: /suppliers/**, /imports/** (NEXT_PUBLIC_SUPPLIER_API_URL). */
+export const [SupplierClientContext, useSupplierClient] = serviceClient('Supplier');
+/** Inventory API: /inventory/** (NEXT_PUBLIC_INVENTORY_API_URL). */
+export const [InventoryClientContext, useInventoryClient] = serviceClient('Inventory');
+/** Image Intelligence API: /v1/images/** (NEXT_PUBLIC_IMAGE_API_URL). */
+export const [ImageClientContext, useImageClient] = serviceClient('Image');

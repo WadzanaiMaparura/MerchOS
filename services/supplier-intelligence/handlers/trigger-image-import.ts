@@ -1,13 +1,12 @@
 /**
  * Trigger Image Import Lambda handler for POST /suppliers/{supplierId}/imports/images.
  *
- * Accepts image batch metadata, stores image references in S3 at
- * `suppliers/{tenantId}/{supplierId}/images/{fileName}`, creates an ImportJob
- * record in DynamoDB with status QUEUED and source type IMAGE_BATCH,
- * and sends an SQS message to the FIFO queue with MessageGroupId=tenantId
- * for per-tenant ordering.
+ * Stages an image import: validates up to 50 declared images, creates the
+ * ImportJob as AWAITING_UPLOAD and returns one presigned S3 PUT URL per image. The
+ * browser uploads them directly, then calls POST /imports/{importJobId}/start,
+ * which verifies every upload and queues the import (see utils/upload-staging.ts).
  *
- * Returns 202 Accepted with the importJobId.
+ * Returns 201 with { importJobId, uploads: [...], startUrl }.
  *
  * Requirements: 3.1, 4.1, 5.1
  */
@@ -17,8 +16,7 @@ import crypto from 'node:crypto';
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand } from '@aws-sdk/lib-dynamodb';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
+import { S3Client } from '@aws-sdk/client-s3';
 
 import { triggerImageImportSchema } from '../schemas/import.schema';
 import type { ImportJob, ImportJobStatus, SourceType } from '../types';
@@ -27,6 +25,7 @@ import { rbacMiddleware } from '../../shared/middleware/rbac';
 import { tenantContextMiddleware } from '../../shared/middleware/tenant-context';
 import { rateLimitMiddleware } from '../../shared/middleware/rate-limit';
 import { logger } from '../../shared/middleware/powertools';
+import { presignUpload, sanitizeFileName, type PendingUpload } from '../utils/upload-staging';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -70,14 +69,6 @@ function getS3Client(): S3Client {
     s3Client = new S3Client({ region });
   }
   return s3Client;
-}
-
-let sqsClient: SQSClient | null = null;
-function getSqsClient(): SQSClient {
-  if (!sqsClient) {
-    sqsClient = new SQSClient({ region });
-  }
-  return sqsClient;
 }
 
 // ---------------------------------------------------------------------------
@@ -126,13 +117,10 @@ async function baseHandler(event: TriggerImageImportEvent): Promise<APIGatewayPr
   // Validate environment variables
   const importJobsTable = process.env['IMPORT_JOBS_TABLE'];
   const rawUploadsBucket = process.env['RAW_UPLOADS_BUCKET'];
-  const importQueueUrl = process.env['IMPORT_QUEUE_URL'];
-
-  if (!importJobsTable || !rawUploadsBucket || !importQueueUrl) {
+  if (!importJobsTable || !rawUploadsBucket) {
     logger.error('Missing required environment variables', {
       hasImportJobsTable: !!importJobsTable,
       hasRawUploadsBucket: !!rawUploadsBucket,
-      hasImportQueueUrl: !!importQueueUrl,
     });
     return {
       statusCode: 500,
@@ -145,58 +133,56 @@ async function baseHandler(event: TriggerImageImportEvent): Promise<APIGatewayPr
 
   const importJobId = crypto.randomUUID();
   const sourceType: SourceType = 'IMAGE';
-  const now = new Date().toISOString();
-  const ttl = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60; // 365 days
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const ttl = Math.floor(now.getTime() / 1000) + 365 * 24 * 60 * 60; // 365 days
 
-  // Store images under a common prefix for this import job
+  // All images for this job share one prefix. Each key is prefixed with the image's
+  // position, so two files with the same name can never overwrite each other.
   const s3Prefix = `suppliers/${tenantId}/${supplierId}/images/${importJobId}`;
 
-  logger.info('Triggering image import', {
+  logger.info('Staging image import (awaiting browser upload)', {
     tenantId,
     supplierId,
     importJobId,
     imageCount: images.length,
-    s3Prefix,
   });
 
   try {
-    // Step 1: Store each image reference in S3
-    for (const image of images) {
-      const s3Key = `${s3Prefix}/${image.fileName}`;
+    const pendingUploads: PendingUpload[] = images.map((image, index) => ({
+      key: `${s3Prefix}/${String(index + 1).padStart(3, '0')}-${sanitizeFileName(image.fileName)}`,
+      contentType: image.contentType,
+      sizeBytes: image.fileSizeBytes,
+      originalFileName: image.fileName,
+    }));
 
-      await getS3Client().send(
-        new PutObjectCommand({
-          Bucket: rawUploadsBucket,
-          Key: s3Key,
-          ContentType: image.contentType,
-          Body: Buffer.alloc(0), // Placeholder — actual binary uploaded via pre-signed URL
-          Metadata: {
-            tenantId,
-            supplierId,
-            importJobId,
-            originalFileName: image.fileName,
-          },
-        }),
-      );
-    }
+    // The exact message the queue consumer expects, sent by POST /imports/{id}/start.
+    const queueMessage = {
+      importJobId,
+      tenantId,
+      supplierId,
+      sourceType,
+      sourceReference: s3Prefix,
+      images: pendingUploads.map((u) => ({
+        fileName: u.key.slice(s3Prefix.length + 1),
+        contentType: u.contentType,
+        fileSizeBytes: u.sizeBytes,
+        s3Key: u.key,
+      })),
+    };
 
-    logger.info('Image references stored in S3', {
-      s3Prefix,
-      bucket: rawUploadsBucket,
-      imageCount: images.length,
-    });
-
-    // Step 2: Create ImportJob record in DynamoDB with status QUEUED
     const importJob: ImportJob = {
       importJobId,
       tenantId,
       supplierId,
       sourceType,
       sourceReference: s3Prefix,
-      status: 'QUEUED' as ImportJobStatus,
+      status: 'AWAITING_UPLOAD' as ImportJobStatus,
       errors: [],
-      createdAt: now,
+      createdAt: nowIso,
       ttl,
+      pendingUploads,
+      queueMessage,
     };
 
     await getDynamoDocClient().send(
@@ -206,52 +192,34 @@ async function baseHandler(event: TriggerImageImportEvent): Promise<APIGatewayPr
           PK: `TENANT#${tenantId}`,
           SK: `IMPORT#${importJobId}`,
           GSI1PK: `TENANT#${tenantId}#SUPPLIER#${supplierId}`,
-          GSI1SK: `IMPORT#CREATED#${now}`,
-          GSI2PK: `TENANT#${tenantId}#STATUS#QUEUED`,
-          GSI2SK: `IMPORT#CREATED#${now}`,
+          GSI1SK: `IMPORT#CREATED#${nowIso}`,
+          GSI2PK: `TENANT#${tenantId}#STATUS#AWAITING_UPLOAD`,
+          GSI2SK: `IMPORT#CREATED#${nowIso}`,
           ...importJob,
         },
+        ConditionExpression: 'attribute_not_exists(PK)',
       }),
     );
 
-    logger.info('ImportJob record created in DynamoDB', { importJobId, status: 'QUEUED' });
-
-    // Step 3: Send SQS message to FIFO queue with MessageGroupId=tenantId
-    const messageDeduplicationId = importJobId; // UUID guarantees uniqueness
-    await getSqsClient().send(
-      new SendMessageCommand({
-        QueueUrl: importQueueUrl,
-        MessageGroupId: tenantId,
-        MessageDeduplicationId: messageDeduplicationId,
-        MessageBody: JSON.stringify({
-          importJobId,
-          tenantId,
-          supplierId,
-          sourceType,
-          sourceReference: s3Prefix,
-          images: images.map((img) => ({
-            fileName: img.fileName,
-            contentType: img.contentType,
-            fileSizeBytes: img.fileSizeBytes,
-            s3Key: `${s3Prefix}/${img.fileName}`,
-          })),
-        }),
-      }),
+    const s3 = getS3Client();
+    const uploads = await Promise.all(
+      pendingUploads.map((u) =>
+        presignUpload(s3, rawUploadsBucket, u, {
+          tenantid: tenantId,
+          supplierid: supplierId,
+          importjobid: importJobId,
+        }, now),
+      ),
     );
 
-    logger.info('SQS message sent to import queue', {
-      importJobId,
-      messageGroupId: tenantId,
-    });
-
-    // Step 4: Return 202 Accepted with importJobId
     return {
-      statusCode: 202,
+      statusCode: 201,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         importJobId,
-        status: 'QUEUED',
-        sourceReference: s3Prefix,
+        status: 'AWAITING_UPLOAD',
+        uploads,
+        startUrl: `/imports/${importJobId}/start`,
       }),
     };
   } catch (error) {

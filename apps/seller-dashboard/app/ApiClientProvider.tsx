@@ -14,7 +14,10 @@
  *    pages fall back to their demo/placeholder state.
  *  - onUnauthorized: clear Cognito state and return to login.
  *
- * Base URL comes from NEXT_PUBLIC_API_URL (the MerchOS API Gateway base).
+ * Each MerchOS service is its own HTTP API, so each gets its own client and base
+ * URL (NEXT_PUBLIC_<SERVICE>_API_URL). NEXT_PUBLIC_API_URL is the Auth API.
+ * Products, suppliers/imports, inventory and images previously fell through to
+ * the Auth API (where those routes 404) because they had no client of their own.
  */
 
 import React, { useMemo } from 'react';
@@ -25,6 +28,10 @@ import {
   IntelligenceClientContext,
   ExportClientContext,
   BillingClientContext,
+  ProductClientContext,
+  SupplierClientContext,
+  InventoryClientContext,
+  ImageClientContext,
   createApiClient,
 } from '@merch-os/api-client';
 
@@ -100,12 +107,44 @@ export function ApiClientProvider({ children }: ApiClientProviderProps) {
     [onUnauthorized]
   );
 
+  // One client per remaining service (same token getter and 401 handling).
+  const serviceClient = (baseUrl: string | undefined) =>
+    createApiClient({ baseUrl: baseUrl ?? '', getAccessToken, onUnauthorized });
+  const productClient = useMemo(
+    () => serviceClient(process.env.NEXT_PUBLIC_PRODUCT_API_URL),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [onUnauthorized]
+  );
+  const supplierClient = useMemo(
+    () => serviceClient(process.env.NEXT_PUBLIC_SUPPLIER_API_URL),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [onUnauthorized]
+  );
+  const inventoryClient = useMemo(
+    () => serviceClient(process.env.NEXT_PUBLIC_INVENTORY_API_URL),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [onUnauthorized]
+  );
+  const imageClient = useMemo(
+    () => serviceClient(process.env.NEXT_PUBLIC_IMAGE_API_URL),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [onUnauthorized]
+  );
+
   return (
     <ApiClientContext.Provider value={client}>
       <IntelligenceClientContext.Provider value={intelligenceClient}>
         <ExportClientContext.Provider value={exportClient}>
           <BillingClientContext.Provider value={billingClient}>
-            {children}
+            <ProductClientContext.Provider value={productClient}>
+              <SupplierClientContext.Provider value={supplierClient}>
+                <InventoryClientContext.Provider value={inventoryClient}>
+                  <ImageClientContext.Provider value={imageClient}>
+                    {children}
+                  </ImageClientContext.Provider>
+                </InventoryClientContext.Provider>
+              </SupplierClientContext.Provider>
+            </ProductClientContext.Provider>
           </BillingClientContext.Provider>
         </ExportClientContext.Provider>
       </IntelligenceClientContext.Provider>
