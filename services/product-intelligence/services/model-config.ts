@@ -23,13 +23,28 @@ import type { ModelConfig } from '../types/usage.types';
  * Verified via `bedrock list-inference-profiles`. Keep in sync with the IAM
  * policy in infrastructure/lib/product-intelligence-stack.ts.
  *
- * Current generation (Nov 2026): Haiku 5.5 / Sonnet 5.5, both ACTIVE.
- * Previously Haiku 4.5 (ACTIVE) and Sonnet 4.5 (LEGACY, Bedrock EOL
- * 2027-04-08) — upgraded to current-gen to avoid running on a deprecated
- * model.
+ * WHICH GENERATION, AND WHY (Nov 2026): Haiku 4.5 / Sonnet 4.5.
+ * This account is denied the 5.5 models (AccessDeniedException; AWS Support
+ * confirmed access is unchanged pending a Sales review), while the 4.5 models are
+ * entitled (Marketplace agreement accepted) and only blocked by an account-wide
+ * 0-token quota. Targeting 4.5 means AI works the moment that quota is lifted.
+ *
+ * Sonnet 4.5 is LEGACY with Bedrock end-of-life 2027-04-08, so move to 5.5 once
+ * AWS grants access. That is a configuration change, not a code change: set
+ * BEDROCK_HAIKU_MODEL_ID / BEDROCK_SONNET_MODEL_ID on the Lambdas, e.g.
+ *   eu.anthropic.claude-haiku-5-5 / eu.anthropic.claude-sonnet-5-5
  */
-const CLAUDE_HAIKU = 'eu.anthropic.claude-haiku-5-5';
-const CLAUDE_SONNET = 'eu.anthropic.claude-sonnet-5-5';
+export const DEFAULT_HAIKU_MODEL_ID = 'eu.anthropic.claude-haiku-4-5-20251001-v1:0';
+export const DEFAULT_SONNET_MODEL_ID = 'eu.anthropic.claude-sonnet-4-5-20250929-v1:0';
+
+/** Only EU cross-region inference-profile ids are valid here (see above). */
+function modelIdFromEnv(name: string, fallback: string): string {
+  const value = process.env[name]?.trim();
+  return value && /^eu\.[a-z0-9.:-]+$/i.test(value) ? value : fallback;
+}
+
+const CLAUDE_HAIKU = modelIdFromEnv('BEDROCK_HAIKU_MODEL_ID', DEFAULT_HAIKU_MODEL_ID);
+const CLAUDE_SONNET = modelIdFromEnv('BEDROCK_SONNET_MODEL_ID', DEFAULT_SONNET_MODEL_ID);
 
 /**
  * Default model configuration for each generation type.
