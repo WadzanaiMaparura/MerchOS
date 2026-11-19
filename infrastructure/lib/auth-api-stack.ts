@@ -28,6 +28,7 @@ import { HttpJwtAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import { Construct } from 'constructs';
 import * as path from 'path';
+import { sellerDashboardOrigins } from './cors-origins';
 
 export interface AuthApiStackProps extends cdk.StackProps {
   environment: string;
@@ -98,20 +99,8 @@ export class AuthApiStack extends cdk.Stack {
     // so that live origin, the raw Amplify branch origin and localhost (local
     // development) are all allowed. We never use '*' — allowCredentials:true
     // forbids it and it would be insecure.
-    const customDomainOrigin = `https://${env === 'production' ? 'app' : env}.merchos.io`;
-    const corsAllowOrigins: string[] = [customDomainOrigin];
-    if (env === 'dev') {
-      corsAllowOrigins.push(
-        // Live seller frontend (custom domain served via CloudFront). This is
-        // the exact Origin the browser sends from the deployed dev frontend.
-        'https://merchos.co.za',
-        // Raw Amplify branch origin hosting the dev frontend (direct access
-        // and pre-custom-domain fallback).
-        'https://main.d1jwaah0zt7pg5.amplifyapp.com',
-        // Local development.
-        'http://localhost:3000',
-      );
-    }
+    // Shared with every other seller-facing API (see ./cors-origins.ts).
+    const corsAllowOrigins = sellerDashboardOrigins(env);
 
     // -----------------------------------------------------------------------
     // HTTP API Gateway
