@@ -163,6 +163,16 @@ export class ProductIntelligenceStack extends cdk.Stack {
       // Expected token issuer for RBAC middleware (FR-3.3 / FR-4.2).
       COGNITO_ISSUER: cognitoIssuer,
       POWERTOOLS_SERVICE_NAME: 'product-intelligence',
+      // Optional model overrides, e.g. to move to Claude 5.5 once AWS grants access:
+      //   --context bedrockHaikuModelId=eu.anthropic.claude-haiku-5-5
+      //   --context bedrockSonnetModelId=eu.anthropic.claude-sonnet-5-5
+      // Unset -> the defaults in services/product-intelligence/services/model-config.ts.
+      ...(this.node.tryGetContext('bedrockHaikuModelId')
+        ? { BEDROCK_HAIKU_MODEL_ID: String(this.node.tryGetContext('bedrockHaikuModelId')) }
+        : {}),
+      ...(this.node.tryGetContext('bedrockSonnetModelId')
+        ? { BEDROCK_SONNET_MODEL_ID: String(this.node.tryGetContext('bedrockSonnetModelId')) }
+        : {}),
       LOG_LEVEL: env === 'production' ? 'WARN' : 'DEBUG',
     };
 
