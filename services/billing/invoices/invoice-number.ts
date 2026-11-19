@@ -1,5 +1,5 @@
 /**
- * Sequential, gap-free invoice numbers (MOS-010000, MOS-010001, ...).
+ * Sequential, gap-free invoice numbers (MOS-016750, MOS-016751, ...).
  *
  * The sequence starts at INVOICE_START_NUMBER rather than 1, so early customers
  * do not see "000001" and learn exactly how many invoices have been issued. Gap-free
@@ -21,7 +21,7 @@ import { getDocClient } from '../services/doc-client';
 export const INVOICE_PREFIX = 'MOS-';
 
 /** First invoice number ever issued. Changing it only affects a counter that has not reached it. */
-export const INVOICE_START_NUMBER = 10000;
+export const INVOICE_START_NUMBER = 16750;
 const COUNTER_KEY = { PK: 'COUNTER#INVOICE', SK: 'META' };
 const MAX_ATTEMPTS = 8;
 

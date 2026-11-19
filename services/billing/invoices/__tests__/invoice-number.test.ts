@@ -37,32 +37,32 @@ describe('assignInvoiceNumber', () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 
-  it('starts at the configured offset (MOS-010000), not at 1, when no counter exists yet', async () => {
-    expect(INVOICE_START_NUMBER).toBe(10000);
+  it('starts at the configured offset (MOS-016750), not at 1, when no counter exists yet', async () => {
+    expect(INVOICE_START_NUMBER).toBe(16750);
     queue(invoiceItem(), {} /* no counter */, {} /* transaction ok */);
-    expect(await assignInvoiceNumber('t1', 'i1')).toBe('MOS-010000');
+    expect(await assignInvoiceNumber('t1', 'i1')).toBe('MOS-016750');
     const tx = send.mock.calls[2]![0].input.TransactItems;
     expect(tx[0].Update.Key).toEqual({ PK: 'COUNTER#INVOICE', SK: 'META' });
-    expect(tx[0].Update.ExpressionAttributeValues).toEqual({ ':next': 10000, ':current': 0 });
+    expect(tx[0].Update.ExpressionAttributeValues).toEqual({ ':next': 16750, ':current': 0 });
   });
 
   it('claims counter+1 and stamps it on the invoice in ONE transaction, guarded both ways', async () => {
-    queue(invoiceItem(), { Item: { seq: 10041 } }, {});
-    expect(await assignInvoiceNumber('t1', 'i1')).toBe('MOS-010042');
+    queue(invoiceItem(), { Item: { seq: 16791 } }, {});
+    expect(await assignInvoiceNumber('t1', 'i1')).toBe('MOS-016792');
     const [counter, invoice] = send.mock.calls[2]![0].input.TransactItems;
     expect(counter.Update.ConditionExpression).toBe('attribute_not_exists(#s) OR #s = :current');
-    expect(counter.Update.ExpressionAttributeValues).toEqual({ ':next': 10042, ':current': 10041 });
+    expect(counter.Update.ExpressionAttributeValues).toEqual({ ':next': 16792, ':current': 16791 });
     expect(invoice.Update.Key).toEqual({ PK: 'TENANT#t1', SK: 'INVOICE#i1' });
     expect(invoice.Update.ConditionExpression).toBe('attribute_exists(PK) AND attribute_not_exists(#n)');
-    expect(invoice.Update.ExpressionAttributeValues[':number']).toBe('MOS-010042');
+    expect(invoice.Update.ExpressionAttributeValues[':number']).toBe('MOS-016792');
   });
 
   it('on a lost race (counter moved) re-reads and takes the next number: no number is skipped or reused', async () => {
     queue(
-      invoiceItem(), { Item: { seq: 10005 } }, cancelled(), // someone else took 10006
-      invoiceItem(), { Item: { seq: 10006 } }, {} // we take 10007
+      invoiceItem(), { Item: { seq: 16755 } }, cancelled(), // someone else took 16756
+      invoiceItem(), { Item: { seq: 16756 } }, {} // we take 16757
     );
-    expect(await assignInvoiceNumber('t1', 'i1')).toBe('MOS-010007');
+    expect(await assignInvoiceNumber('t1', 'i1')).toBe('MOS-016757');
   });
 
   it('if another attempt numbered THIS invoice meanwhile, returns that number and consumes nothing', async () => {
@@ -74,7 +74,7 @@ describe('assignInvoiceNumber', () => {
 
   it('a counter below the offset (e.g. left over from testing) still jumps to the offset, never below it', async () => {
     queue(invoiceItem(), { Item: { seq: 3 } }, {});
-    expect(await assignInvoiceNumber('t1', 'i1')).toBe('MOS-010000');
+    expect(await assignInvoiceNumber('t1', 'i1')).toBe('MOS-016750');
   });
 
   it('rejects an unknown invoice', async () => {
