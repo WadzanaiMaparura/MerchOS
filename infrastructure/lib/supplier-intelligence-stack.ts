@@ -449,17 +449,25 @@ export class SupplierIntelligenceStack extends cdk.Stack {
     // Lambda Functions — Import Trigger Handlers (Req 2.x, 3.x, 4.x, 5.x)
     // -----------------------------------------------------------------------
 
+    // File/image triggers only stage the job and sign upload URLs; they no longer
+    // queue anything (the start-import Lambda does, after verifying the upload).
     const triggerFileImportFn = createFn('TriggerFileImport', path.join(handlersPath, 'trigger-file-import.ts'), [
-      rawUploadsReadWrite,
+      rawUploadsReadWrite, // the presigned PUT is authorised by this role
       importJobsTableReadWrite,
-      sqsSendMessage,
-    ], { timeout: cdk.Duration.seconds(60), memorySize: 512 });
+    ], { timeout: cdk.Duration.seconds(30) });
 
     const triggerImageImportFn = createFn('TriggerImageImport', path.join(handlersPath, 'trigger-image-import.ts'), [
       rawUploadsReadWrite,
       importJobsTableReadWrite,
+    ], { timeout: cdk.Duration.seconds(30) });
+
+    // POST /imports/{importJobId}/start: verifies the browser upload (HeadObject,
+    // covered by s3:GetObject) and only then queues the import.
+    const startImportFn = createFn('StartImport', path.join(handlersPath, 'start-import.ts'), [
+      rawUploadsReadWrite,
+      importJobsTableReadWrite,
       sqsSendMessage,
-    ], { timeout: cdk.Duration.seconds(60), memorySize: 512 });
+    ]);
 
     const triggerUrlImportFn = createFn('TriggerUrlImport', path.join(handlersPath, 'trigger-url-import.ts'), [
       importJobsTableReadWrite,
@@ -602,6 +610,7 @@ export class SupplierIntelligenceStack extends cdk.Stack {
       triggerFileImport: triggerFileImportFn,
       triggerImageImport: triggerImageImportFn,
       triggerUrlImport: triggerUrlImportFn,
+      startImport: startImportFn,
       listImportJobs: listImportJobsFn,
       getImportJob: getImportJobFn,
       getSupplierImports: getSupplierImportsFn,
@@ -1049,6 +1058,13 @@ export class SupplierIntelligenceStack extends cdk.Stack {
     });
 
     this.httpApi.addRoutes({
+      path: '/imports/{importJobId}/start',
+      methods: [HttpMethod.POST],
+      integration: integration('StartImportIntegration', startImportFn),
+      authorizer: jwtAuthorizer,
+    });
+
+    this.httpApi.addRoutes({
       path: '/suppliers/{supplierId}/imports',
       methods: [HttpMethod.GET],
       integration: integration('GetSupplierImportsIntegration', getSupplierImportsFn),
@@ -1088,6 +1104,7 @@ export class SupplierIntelligenceStack extends cdk.Stack {
       triggerUrlImportFn,
       listImportJobsFn,
       getImportJobFn,
+      startImportFn,
       getSupplierImportsFn,
       whatsappWebhookFn,
     ];

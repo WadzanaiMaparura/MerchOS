@@ -27,6 +27,7 @@ import type { ImportJobStatus } from '../../types/supplier.types';
 // ---------------------------------------------------------------------------
 
 const ALL_STATUSES: ImportJobStatus[] = [
+  'AWAITING_UPLOAD',
   'QUEUED',
   'PROCESSING',
   'VALIDATING',
@@ -46,6 +47,10 @@ describe('VALID_TRANSITIONS', () => {
     for (const status of ALL_STATUSES) {
       expect(VALID_TRANSITIONS).toHaveProperty(status);
     }
+  });
+
+  it('maps AWAITING_UPLOAD to QUEUED and FAILED only (an upload must be verified first)', () => {
+    expect([...VALID_TRANSITIONS.AWAITING_UPLOAD].sort()).toEqual(['FAILED', 'QUEUED']);
   });
 
   it('maps QUEUED to PROCESSING and FAILED only', () => {

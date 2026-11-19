@@ -16,6 +16,7 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
+import { sellerDashboardOrigins } from './cors-origins';
 
 export interface FoundationStackProps extends cdk.StackProps {
   environment: string;
@@ -94,6 +95,19 @@ export class FoundationStack extends cdk.Stack {
     this.rawUploadsBucket = new s3.Bucket(this, 'RawUploadsBucket', {
       ...bucketDefaults,
       bucketName: `merch-os-raw-uploads-${env}`,
+      // Sellers' browsers upload import files straight to this bucket using short-lived
+      // presigned PUT URLs (see services/supplier-intelligence/utils/upload-staging.ts).
+      // CORS only lets the browser make that request from our own frontend; access is
+      // still granted solely by the signature, and the bucket stays fully private.
+      cors: [
+        {
+          allowedOrigins: sellerDashboardOrigins(env),
+          allowedMethods: [s3.HttpMethods.PUT],
+          allowedHeaders: ['content-type'],
+          exposedHeaders: ['ETag'],
+          maxAge: 3600,
+        },
+      ],
       lifecycleRules: [
         {
           id: 'RetainFailedUploads7Days',

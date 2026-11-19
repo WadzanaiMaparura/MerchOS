@@ -1,4 +1,4 @@
-﻿import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as cdk from 'aws-cdk-lib';
@@ -55,4 +55,22 @@ describe('every seller-facing API uses the shared allow-list', () => {
     expect(withCors.length).toBeGreaterThan(0);
     for (const a of withCors) expect(a.Properties.CorsConfiguration!.AllowOrigins).toContain('https://merchos.co.za');
   });
+});
+
+describe('every route method is allowed by the CORS config of its API', () => {
+  // Regression: PATCH /products/{productId}/attributes existed but the Product API's
+  // CORS allowMethods lacked PATCH, so browsers blocked every attribute edit.
+  const libDir = join(__dirname, '../lib');
+  for (const f of readdirSync(libDir).filter((n) => n.endsWith('-stack.ts'))) {
+    const src = readFileSync(join(libDir, f), 'utf8');
+    const cors = src.match(/allowMethods:\s*\[([\s\S]*?)\]/);
+    if (!cors) continue;
+    it(f, () => {
+      const allowed = new Set([...cors[1]!.matchAll(/CorsHttpMethod\.(\w+)/g)].map((m) => m[1]));
+      const used = [...src.matchAll(/methods:\s*\[([^\]]+)\]/g)].flatMap((m) =>
+        [...m[1]!.matchAll(/HttpMethod\.(\w+)/g)].map((x) => x[1])
+      );
+      expect(used.filter((m) => !allowed.has(m))).toEqual([]);
+    });
+  }
 });

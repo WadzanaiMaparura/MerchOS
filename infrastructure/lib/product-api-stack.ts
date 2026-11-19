@@ -82,7 +82,8 @@ export class ProductApiStack extends cdk.Stack {
       description: 'MerchOS Product API — product CRUD endpoints',
       corsPreflight: {
         allowHeaders: ['Content-Type', 'Authorization', 'X-Amz-Date'],
-        allowMethods: [CorsHttpMethod.GET, CorsHttpMethod.POST, CorsHttpMethod.PUT, CorsHttpMethod.DELETE, CorsHttpMethod.OPTIONS],
+        // PATCH is required by PATCH /products/{productId}/attributes (attribute edits).
+        allowMethods: [CorsHttpMethod.GET, CorsHttpMethod.POST, CorsHttpMethod.PUT, CorsHttpMethod.PATCH, CorsHttpMethod.DELETE, CorsHttpMethod.OPTIONS],
         allowOrigins: sellerDashboardOrigins(env),
         allowCredentials: true,
         maxAge: cdk.Duration.hours(1),

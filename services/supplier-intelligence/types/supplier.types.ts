@@ -24,6 +24,8 @@ export type SourceType =
  * or from any active state → FAILED.
  */
 export type ImportJobStatus =
+  /** Created; waiting for the seller's browser to upload the file(s) to S3. */
+  | 'AWAITING_UPLOAD'
   | 'QUEUED'
   | 'PROCESSING'
   | 'VALIDATING'
@@ -129,6 +131,10 @@ export interface ImportJob {
   createdAt: string;
   /** Unix timestamp — TTL for DynamoDB auto-expiry (365 days from creation) */
   ttl: number;
+  /** AWAITING_UPLOAD only: the objects the browser must upload before the import can start. */
+  pendingUploads?: Array<{ key: string; contentType: string; sizeBytes: number; originalFileName: string }>;
+  /** AWAITING_UPLOAD only: the import-queue message to send once the uploads are verified. */
+  queueMessage?: Record<string, unknown>;
 }
 
 /** Crawl statistics recorded on URL-based import jobs. */

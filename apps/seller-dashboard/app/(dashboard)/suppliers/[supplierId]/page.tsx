@@ -6,6 +6,9 @@ import {
   useSupplierDetail,
   useSupplierVersions,
   useSupplierImports,
+  useStartFileImport,
+  useStartImageImport,
+  useStartUrlImport,
 } from '@merch-os/api-client';
 import type { SupplierVersion, ImportJobSummary } from '@merch-os/api-client';
 import { Badge, Skeleton, Tabs, DataTable, FileUpload, Input } from '@merch-os/ui';
@@ -126,53 +129,74 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
 // ─── Import Trigger Section ──────────────────────────────────────────────────
 
 function ImportTriggerSection({ supplierId }: { supplierId: string }) {
+  const router = useRouter();
   const [urlValue, setUrlValue] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const fileImport = useStartFileImport(supplierId);
+  const imageImport = useStartImageImport(supplierId);
+  const urlImport = useStartUrlImport(supplierId);
+  const isSubmitting = fileImport.isPending || imageImport.isPending || urlImport.isPending;
 
-  const handleFileUpload = useCallback(
-    async (files: File[]) => {
-      if (files.length === 0) return;
-      setIsSubmitting(true);
-      try {
-        // POST /suppliers/{supplierId}/imports/file
-        // This would use the api client, simplified for now
-        const formData = new FormData();
-        files.forEach((file) => formData.append('files', file));
-        // Trigger handled by parent form/mutation — placeholder for wiring
-        console.info('[ImportTrigger] File import triggered', { supplierId, fileCount: files.length });
-      } finally {
-        setIsSubmitting(false);
+  /** One import: open its progress page. Several: say so (they are listed below). */
+  const onStarted = useCallback(
+    (ids: string[]) => {
+      setError(null);
+      if (ids.length === 1) {
+        router.push(`/imports/${ids[0]}`);
+      } else {
+        setNotice(`${ids.length} imports started. Track them under Import history below.`);
       }
     },
-    [supplierId]
+    [router]
+  );
+  const onFailed = useCallback((e: { message?: string }) => {
+    setNotice(null);
+    setError(e.message || 'The import could not be started. Please try again.');
+  }, []);
+
+  const handleFileUpload = useCallback(
+    (files: File[]) => {
+      if (files.length === 0) return;
+      setNotice(null);
+      fileImport.mutate(files, {
+        onSuccess: (started) => onStarted(started.map((s) => s.importJobId)),
+        onError: onFailed,
+      });
+    },
+    [fileImport, onStarted, onFailed]
   );
 
   const handleImageUpload = useCallback(
-    async (files: File[]) => {
+    (files: File[]) => {
       if (files.length === 0) return;
-      setIsSubmitting(true);
-      try {
-        console.info('[ImportTrigger] Image import triggered', { supplierId, fileCount: files.length });
-      } finally {
-        setIsSubmitting(false);
-      }
+      setNotice(null);
+      imageImport.mutate(files, {
+        onSuccess: (started) => onStarted([started.importJobId]),
+        onError: onFailed,
+      });
     },
-    [supplierId]
+    [imageImport, onStarted, onFailed]
   );
 
   const handleUrlImport = useCallback(
-    async (e: React.FormEvent) => {
+    (e: React.FormEvent) => {
       e.preventDefault();
-      if (!urlValue.trim()) return;
-      setIsSubmitting(true);
-      try {
-        console.info('[ImportTrigger] URL import triggered', { supplierId, url: urlValue });
-      } finally {
-        setIsSubmitting(false);
-        setUrlValue('');
-      }
+      const url = urlValue.trim();
+      if (!url) return;
+      setNotice(null);
+      urlImport.mutate(
+        { url },
+        {
+          onSuccess: (started) => {
+            setUrlValue('');
+            onStarted([started.importJobId]);
+          },
+          onError: onFailed,
+        }
+      );
     },
-    [supplierId, urlValue]
+    [urlImport, urlValue, onStarted, onFailed]
   );
 
   const importTabs: TabItem[] = [
@@ -259,6 +283,21 @@ function ImportTriggerSection({ supplierId }: { supplierId: string }) {
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-4">
       <h2 className="mb-4 text-sm font-medium text-gray-900">Import Products</h2>
+      {isSubmitting && (
+        <p className="mb-3 text-sm text-gray-600" role="status" aria-live="polite">
+          Uploading and starting your import. Keep this page open.
+        </p>
+      )}
+      {error && (
+        <p className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+          {error}
+        </p>
+      )}
+      {notice && (
+        <p className="mb-3 rounded-md bg-green-50 px-3 py-2 text-sm text-green-800" role="status">
+          {notice}
+        </p>
+      )}
       <Tabs tabs={importTabs} defaultValue="file" ariaLabel="Import method" />
     </div>
   );

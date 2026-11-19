@@ -61,7 +61,9 @@ export const triggerImageImportSchema = z.object({
           .max(MAX_FILE_SIZE_BYTES, `File size must not exceed ${MAX_FILE_SIZE_BYTES} bytes (50MB)`),
       }),
     )
-    .min(1, 'At least one image is required'),
+    .min(1, 'At least one image is required')
+    // Bounds the number of upload URLs one request can mint.
+    .max(50, 'At most 50 images can be imported at once'),
 });
 
 export type TriggerImageImportInput = z.infer<typeof triggerImageImportSchema>;
