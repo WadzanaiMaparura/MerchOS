@@ -9,6 +9,8 @@ export interface ApiError {
   message: string;
   requestId: string;
   code?: string;
+  /** The request field the error refers to, when the API names one (validation errors). */
+  field?: string;
 }
 
 /**
@@ -35,20 +37,31 @@ export function normalizeError(error: unknown): ApiError {
   if (error instanceof AxiosError) {
     const response = error.response;
     const data = response?.data as Record<string, unknown> | undefined;
+    // MerchOS services answer with { error: { code, message, field? } }. Older or
+    // third-party responses may be flat ({ code, message }). Read the nested shape
+    // first, then fall back, so the seller sees our message and the UI can branch
+    // on the code instead of Axios's generic "Request failed with status code 4xx".
+    const nested =
+      data && typeof data['error'] === 'object' && data['error'] !== null
+        ? (data['error'] as Record<string, unknown>)
+        : undefined;
+    const pick = (key: string): string | undefined => {
+      const v = nested?.[key] ?? data?.[key];
+      return typeof v === 'string' && v.length > 0 ? v : undefined;
+    };
+    const field = pick('field');
 
     return {
       statusCode: response?.status ?? 0,
-      message:
-        (typeof data?.message === 'string' ? data.message : undefined) ??
-        error.message ??
-        'An unexpected error occurred',
+      message: pick('message') ?? error.message ?? 'An unexpected error occurred',
       requestId:
         (typeof data?.requestId === 'string' ? data.requestId : undefined) ??
         (typeof response?.headers?.['x-request-id'] === 'string'
           ? response.headers['x-request-id']
           : '') ??
         '',
-      code: typeof data?.code === 'string' ? data.code : error.code,
+      code: pick('code') ?? error.code,
+      ...(field ? { field } : {}),
     };
   }
 
