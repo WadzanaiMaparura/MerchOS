@@ -84,6 +84,13 @@ export interface GenerationResult {
  */
 export const GENERATION_LIMIT_REACHED = 'GENERATION_LIMIT_REACHED' as const;
 
+/** Free-trial gate error codes (HTTP 402 from the product + intelligence APIs). */
+export const TRIAL_LIMIT_REACHED = 'TRIAL_LIMIT_REACHED' as const;
+export const TRIAL_NOT_ACTIVATED = 'TRIAL_NOT_ACTIVATED' as const;
+export function isTrialErrorCode(code: string | undefined): boolean {
+  return code === TRIAL_LIMIT_REACHED || code === TRIAL_NOT_ACTIVATED;
+}
+
 /**
  * Mutation to request AI content generation for a product.
  *
@@ -112,7 +119,8 @@ export function useGenerateContent(): UseMutationResult<
         // The client interceptor already normalizes to ApiError. Re-map the
         // engine's 402 budget response to a stable, user-switchable code.
         const apiErr = err as ApiError;
-        if (apiErr?.statusCode === 402) {
+        // The free-trial gate also answers 402; keep its code and message.
+        if (apiErr?.statusCode === 402 && !isTrialErrorCode(apiErr.code)) {
           const mapped: ApiError = {
             statusCode: 402,
             message:

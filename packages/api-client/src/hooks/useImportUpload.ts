@@ -80,6 +80,28 @@ function useInvalidateImports(supplierId: string) {
   };
 }
 
+async function startFileImports(
+  client: ReturnType<typeof useSupplierClient>,
+  supplierId: string,
+  files: File[]
+): Promise<StartedImport[]> {
+  const started: StartedImport[] = [];
+  for (const file of files) {
+    try {
+      const { data } = await client.post<StagedImport>(
+        `/suppliers/${encodeURIComponent(supplierId)}/imports/file`,
+        { fileName: file.name, contentType: importContentType(file), fileSizeBytes: file.size }
+      );
+      await putToS3(data.uploads[0]!, file);
+      const { data: begun } = await client.post<StartedImport>(data.startUrl);
+      started.push(begun);
+    } catch (error) {
+      throw normalizeError(error);
+    }
+  }
+  return started;
+}
+
 /** Starts one import per file (the API takes one file per import job). */
 export function useStartFileImport(
   supplierId: string
@@ -87,23 +109,21 @@ export function useStartFileImport(
   const client = useSupplierClient();
   const invalidate = useInvalidateImports(supplierId);
   return useMutation<StartedImport[], ApiError, File[]>({
-    mutationFn: async (files) => {
-      const started: StartedImport[] = [];
-      for (const file of files) {
-        try {
-          const { data } = await client.post<StagedImport>(
-            `/suppliers/${encodeURIComponent(supplierId)}/imports/file`,
-            { fileName: file.name, contentType: importContentType(file), fileSizeBytes: file.size }
-          );
-          await putToS3(data.uploads[0]!, file);
-          const { data: begun } = await client.post<StartedImport>(data.startUrl);
-          started.push(begun);
-        } catch (error) {
-          throw normalizeError(error);
-        }
-      }
-      return started;
-    },
+    mutationFn: (files) => startFileImports(client, supplierId, files),
+    onSettled: invalidate,
+  });
+}
+
+/** Same as useStartFileImport, for callers that only know the supplier at submit time. */
+export function useImportFiles(): UseMutationResult<
+  StartedImport[],
+  ApiError,
+  { supplierId: string; files: File[] }
+> {
+  const client = useSupplierClient();
+  const invalidate = useInvalidateImports('');
+  return useMutation<StartedImport[], ApiError, { supplierId: string; files: File[] }>({
+    mutationFn: ({ supplierId, files }) => startFileImports(client, supplierId, files),
     onSettled: invalidate,
   });
 }
