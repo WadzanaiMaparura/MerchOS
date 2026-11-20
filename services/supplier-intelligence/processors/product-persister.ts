@@ -112,6 +112,11 @@ export interface PersistProductsParams {
   importJobsTableName?: string;
   /** ISO 8601 start timestamp used to compute job duration (defaults to now). */
   jobStartedAt?: string;
+  /**
+   * Counts known to the caller but not to the persister (extracted rows,
+   * merged/duplicate/invalid records). Merged over the computed results.
+   */
+  resultCounts?: Partial<Omit<ImportJobResults, 'created'>>;
 }
 
 /**
@@ -404,6 +409,7 @@ export async function persistProducts(
     updated: 0,
     duplicates: 0,
     validationFailed: 0,
+    ...params.resultCounts,
   };
 
   // ---------------------------------------------------------------------------

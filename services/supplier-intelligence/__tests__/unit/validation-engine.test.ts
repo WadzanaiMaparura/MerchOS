@@ -439,3 +439,23 @@ describe('validateRecords — output record structure', () => {
     expect(rec['images']).toEqual(['https://img.com/p.jpg']);
   });
 });
+
+describe('normalisePrice: South African Rand formats', () => {
+  it.each([
+    ['R 499', 499],
+    ['R499.00', 499],
+    ['r 49,99', 49.99],
+    ['R1 299,99', 1299.99],
+    ['R 1\u00a0299.50', 1299.5],
+    ['ZAR 349.99', 349.99],
+    ['349.99 ZAR', 349.99],
+    ['1 299', 1299],
+  ])('%s -> %d', (raw, expected) => {
+    expect(normalisePrice(raw)).toBe(expected);
+  });
+
+  it('still rejects text that is not a price', () => {
+    expect(normalisePrice('Red')).toBeNull();
+    expect(normalisePrice('R')).toBeNull();
+  });
+});

@@ -234,7 +234,9 @@ export class SupplierIntelligenceStack extends cdk.Stack {
     // -----------------------------------------------------------------------
 
     const handlersPath = path.join(__dirname, '../../services/supplier-intelligence/handlers');
-    const processorsPath = path.join(__dirname, '../../services/supplier-intelligence/processors');
+    // Step Functions task entry points. They wrap the pure functions in
+    // processors/ (which export no `handler`, so the tasks could never run).
+    const workflowPath = path.join(__dirname, '../../services/supplier-intelligence/workflow');
 
     // Cognito user pool id (set by the Auth platform stack). Read here so it
     // can seed COGNITO_ISSUER for the handlers' in-code JWT issuer validation
@@ -386,6 +388,24 @@ export class SupplierIntelligenceStack extends cdk.Stack {
       resources: [`arn:aws:s3:::${rawUploadsBucketName}/*`],
     });
 
+    // Without ListBucket, S3 answers HeadObject on a MISSING key with a bodiless
+    // 403 instead of 404, so "not uploaded yet" was indistinguishable from a real
+    // permission error (start-import returned 500 instead of 409). Also lets the
+    // persister list the job's work files to delete them.
+    const rawUploadsList = new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['s3:ListBucket'],
+      resources: [`arn:aws:s3:::${rawUploadsBucketName}`],
+    });
+
+    // Intermediate workflow files (suppliers/<t>/<s>/work/<job>/*.json) are
+    // removed once the import finishes; they contain catalogue data.
+    const rawUploadsWorkDelete = new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['s3:DeleteObject'],
+      resources: [`arn:aws:s3:::${rawUploadsBucketName}/suppliers/*/work/*`],
+    });
+
     const assetsWrite = new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: ['s3:PutObject', 's3:GetObject'],
@@ -465,6 +485,7 @@ export class SupplierIntelligenceStack extends cdk.Stack {
     // covered by s3:GetObject) and only then queues the import.
     const startImportFn = createFn('StartImport', path.join(handlersPath, 'start-import.ts'), [
       rawUploadsReadWrite,
+      rawUploadsList,
       importJobsTableReadWrite,
       sqsSendMessage,
     ]);
@@ -521,36 +542,41 @@ export class SupplierIntelligenceStack extends cdk.Stack {
     // Lambda Functions — Step Functions Task Processors (Req 2.x, 3.x, 4.x, 6.x, 7.x, 14.x)
     // -----------------------------------------------------------------------
 
-    const fileParserFn = createFn('FileParser', path.join(processorsPath, 'file-parser.ts'), [
+    // Every step reads/writes its intermediate records in the raw-uploads bucket
+    // (rawUploadsReadWrite) rather than passing them through the 256 KB SFN payload.
+    // Timeouts stay under the Express workflow's 5-minute execution limit.
+    const fileParserFn = createFn('FileParser', path.join(workflowPath, 'parse-file.ts'), [
       rawUploadsReadWrite,
       importJobsTableReadWrite,
-    ], { timeout: cdk.Duration.seconds(300), memorySize: 1024 });
+    ], { timeout: cdk.Duration.seconds(120), memorySize: 1024 });
 
-    const pdfParserFn = createFn('PdfParser', path.join(processorsPath, 'pdf-parser.ts'), [
+    const pdfParserFn = createFn('PdfParser', path.join(workflowPath, 'parse-pdf.ts'), [
       rawUploadsReadWrite,
       importJobsTableReadWrite,
-    ], { timeout: cdk.Duration.seconds(300), memorySize: 1024 });
+    ], { timeout: cdk.Duration.seconds(120), memorySize: 1024 });
 
-    const zipHandlerFn = createFn('ZipHandler', path.join(processorsPath, 'zip-handler.ts'), [
+    const zipHandlerFn = createFn('ZipHandler', path.join(workflowPath, 'parse-zip.ts'), [
       rawUploadsReadWrite,
       importJobsTableReadWrite,
-    ], { timeout: cdk.Duration.seconds(300), memorySize: 1024 });
+    ], { timeout: cdk.Duration.seconds(120), memorySize: 1024 });
 
-    const imageProcessorFn = createFn('ImageProcessor', path.join(processorsPath, 'image-processor.ts'), [
+    const imageProcessorFn = createFn('ImageProcessor', path.join(workflowPath, 'process-images.ts'), [
       rawUploadsReadWrite,
       assetsWrite,
       importJobsTableReadWrite,
       textractDetect,
-    ], { timeout: cdk.Duration.seconds(300), memorySize: 512 });
+    ], { timeout: cdk.Duration.seconds(180), memorySize: 512 });
 
-    const urlCrawlerFn = createFn('UrlCrawler', path.join(processorsPath, 'url-crawler.ts'), [
+    const urlCrawlerFn = createFn('UrlCrawler', path.join(workflowPath, 'crawl-url.ts'), [
+      rawUploadsReadWrite,
       assetsWrite,
       importJobsTableReadWrite,
-    ], { timeout: cdk.Duration.seconds(900), memorySize: 512 });
+    ], { timeout: cdk.Duration.seconds(240), memorySize: 512 });
 
-    const validationEngineFn = createFn('ValidationEngine', path.join(processorsPath, 'validation-engine.ts'), [
+    const validationEngineFn = createFn('ValidationEngine', path.join(workflowPath, 'validate.ts'), [
+      rawUploadsReadWrite,
       importJobsTableReadWrite,
-    ], { timeout: cdk.Duration.seconds(300), memorySize: 512 });
+    ], { timeout: cdk.Duration.seconds(60), memorySize: 512 });
 
     // Products table ARN — reconstructed deterministically from the fixed
     // naming convention (merch-os-products-{env}), the same approach used by
@@ -559,17 +585,28 @@ export class SupplierIntelligenceStack extends cdk.Stack {
     const productsTableArn = `arn:aws:dynamodb:${this.region}:${this.account}:table/merch-os-products-${env}`;
     const productsGsi1Arn = `${productsTableArn}/index/GSI1`;
 
-    const duplicateDetectorFn = createFn('DuplicateDetector', path.join(processorsPath, 'duplicate-detector.ts'), [
+    const duplicateDetectorFn = createFn('DuplicateDetector', path.join(workflowPath, 'detect-duplicates.ts'), [
+      rawUploadsReadWrite,
       importJobsTableReadWrite,
+      // The supplier's duplicateStrategy (SKIP / MERGE / CREATE_FLAGGED).
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['dynamodb:GetItem'],
+        resources: [this.suppliersTable.tableArn],
+      }),
       // Read access to the Products table + GSI1 (SKU lookups for dedupe).
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['dynamodb:Query', 'dynamodb:GetItem'],
         resources: [productsTableArn, productsGsi1Arn],
       }),
-    ], { timeout: cdk.Duration.seconds(300), memorySize: 512 });
+    ], { timeout: cdk.Duration.seconds(120), memorySize: 512 });
 
-    const productPersisterFn = createFn('ProductPersister', path.join(processorsPath, 'product-persister.ts'), [
+    // Also serves HandleFailure ({ action: 'RECORD_FAILURE' }).
+    const productPersisterFn = createFn('ProductPersister', path.join(workflowPath, 'persist.ts'), [
+      rawUploadsReadWrite,
+      rawUploadsList,
+      rawUploadsWorkDelete,
       importJobsTableReadWrite,
       eventBusPutEvents,
       // Write access to the Products table (batch-writes imported products).
@@ -578,7 +615,10 @@ export class SupplierIntelligenceStack extends cdk.Stack {
         actions: ['dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:BatchWriteItem'],
         resources: [productsTableArn],
       }),
-    ], { timeout: cdk.Duration.seconds(300), memorySize: 512 });
+    ], { timeout: cdk.Duration.seconds(120), memorySize: 512 });
+
+    // event-emitter.ts reads EVENT_BUS_NAME; PutEvents accepts the bus ARN there.
+    productPersisterFn.addEnvironment('EVENT_BUS_NAME', eventBusArn);
 
     // -----------------------------------------------------------------------
     // Products table name — imported from the Product API stack via SSM,
@@ -656,9 +696,23 @@ export class SupplierIntelligenceStack extends cdk.Stack {
       backoffRate: 2,
     };
 
+    /**
+     * Bad seller input (unreadable file, no products, all rows invalid) fails
+     * the same way every time. Retriers match in order and States.TaskFailed
+     * matches everything, so this must come first to skip the pointless retries.
+     */
+    const noRetryOnInputError: sfn.RetryProps = {
+      errors: ['ImportInputError'],
+      maxAttempts: 0,
+    };
+
     // Helper: apply the full set of retry policies to a Lambda invoke task
     const withRetries = (task: tasks.LambdaInvoke): tasks.LambdaInvoke =>
-      task.addRetry(transientRetry).addRetry(dynamoThrottleRetry).addRetry(s3Retry) as tasks.LambdaInvoke;
+      task
+        .addRetry(noRetryOnInputError)
+        .addRetry(transientRetry)
+        .addRetry(dynamoThrottleRetry)
+        .addRetry(s3Retry) as tasks.LambdaInvoke;
 
     // -----------------------------------------------------------------------
     // Step Functions — State machine states
@@ -680,10 +734,25 @@ export class SupplierIntelligenceStack extends cdk.Stack {
       resultPath: '$.failureResult',
       comment: 'Records the failure in DynamoDB and emits ImportJobFailed event',
     });
-    importFailed.next(new sfn.Fail(this, 'ImportFailed', {
-      errorPath: '$.error.code',
-      causePath: '$.error.message',
-    }));
+    importFailed.addRetry(transientRetry);
+    // A Catch puts { Error, Cause } at $.error (there is no code/message there).
+    const failExecution = new sfn.Fail(this, 'ImportFailed', {
+      errorPath: '$.error.Error',
+      causePath: '$.error.Cause',
+    });
+    importFailed.next(failExecution);
+    // If even recording the failure fails, still end the execution as failed.
+    importFailed.addCatch(failExecution, { resultPath: '$.failureError' });
+
+    // DetermineSourceType's default branch has no Catch output, so build one.
+    const unsupportedSourceType = new sfn.Pass(this, 'UnsupportedSourceType', {
+      result: sfn.Result.fromObject({
+        Error: 'UNSUPPORTED_SOURCE_TYPE',
+        Cause: 'The import job has an unsupported sourceType',
+      }),
+      resultPath: '$.error',
+    });
+    unsupportedSourceType.next(importFailed);
 
     // Step 5 — Persist products (maps to product-persister.ts)
     const persistProducts = withRetries(
@@ -801,7 +870,7 @@ export class SupplierIntelligenceStack extends cdk.Stack {
       .when(sfn.Condition.stringEquals('$.sourceType', 'FILE_ZIP'), handleZip)
       .when(sfn.Condition.stringEquals('$.sourceType', 'IMAGE'), processImages)
       .when(sfn.Condition.stringEquals('$.sourceType', 'URL'), crawlUrl)
-      .otherwise(importFailed);
+      .otherwise(unsupportedSourceType);
 
     // -----------------------------------------------------------------------
     // Step Functions — Express State Machine
@@ -827,7 +896,8 @@ export class SupplierIntelligenceStack extends cdk.Stack {
         includeExecutionData: true,
       },
       tracingEnabled: true, // X-Ray (Req 13.3)
-      timeout: cdk.Duration.minutes(30),
+      // Express executions are hard-capped at 5 minutes regardless of this value.
+      timeout: cdk.Duration.minutes(5),
     });
 
     // Grant the queue consumer the ability to start executions on the state machine

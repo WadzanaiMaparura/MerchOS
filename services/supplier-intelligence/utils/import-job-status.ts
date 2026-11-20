@@ -141,6 +141,12 @@ export async function updateImportJobStatus(params: UpdateImportJobStatusParams)
   };
   const updateParts: string[] = ['#status = :newStatus', '#updatedAt = :now'];
 
+  // Keep the status index (GSI2, used to list jobs by status) in step with the
+  // status; it is written at creation and otherwise goes stale.
+  expressionAttributeNames['#gsi2pk'] = 'GSI2PK';
+  expressionAttributeValues[':gsi2pk'] = `TENANT#${tenantId}#STATUS#${newStatus}`;
+  updateParts.push('#gsi2pk = :gsi2pk');
+
   // Attach progress metadata when provided
   if (progress !== undefined) {
     expressionAttributeNames['#progress'] = 'progress';
