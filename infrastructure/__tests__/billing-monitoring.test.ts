@@ -6,7 +6,7 @@ import * as cognito from 'aws-cdk-lib/aws-cognito';
 import { BillingApiStack } from '../lib/billing-api-stack';
 
 /** Synthesises the Billing API stack (bundling stubbed) with optional context. */
-function synth(context: Record<string, string> = {}) {
+function synth(context: Record<string, unknown> = {}) {
   const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [], ...context } });
   const envProps = { account: '123456789012', region: 'eu-west-1' };
   const deps = new cdk.Stack(app, 'TestDeps', { env: envProps });
@@ -46,9 +46,9 @@ describe('Billing payment monitoring', () => {
     // 3 ITN filters + 2 feeding the invoice-failure metric.
     t.resourceCountIs('AWS::Logs::MetricFilter', 5);
     t.hasResourceProperties('AWS::Logs::MetricFilter', {
-      // Built from the ITN function's name (a CloudFormation reference), so the
-      // filter always targets that function's log group.
-      LogGroupName: { 'Fn::Join': ['', ['/aws/lambda/', Match.objectLike({ Ref: Match.stringLikeRegexp('PayfastItn') })]] },
+      // The stack-owned ITN log group (a Ref), so the filter can be created in a
+      // fresh environment before the Lambda has ever run.
+      LogGroupName: { Ref: Match.stringLikeRegexp('PayfastItnManagedLogGroup') },
       FilterPattern: Match.stringLikeRegexp('ITN rejected'),
       MetricTransformations: [
         Match.objectLike({ MetricNamespace: 'MerchOS/Billing/dev', MetricName: 'ItnRejected', DefaultValue: 0 }),
@@ -56,6 +56,30 @@ describe('Billing payment monitoring', () => {
     });
     t.hasResourceProperties('AWS::Logs::MetricFilter', {
       FilterPattern: Match.stringLikeRegexp('ITN amount mismatch'),
+    });
+    // ...and the ITN Lambda actually writes to that group.
+    t.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'merch-os-billing-payfastitn-dev',
+      LoggingConfig: { LogGroup: { Ref: Match.stringLikeRegexp('PayfastItnManagedLogGroup') } },
+    });
+    t.hasResourceProperties('AWS::Logs::LogGroup', {
+      LogGroupName: '/merch-os/dev/billing/payfast-itn',
+      RetentionInDays: 365,
+    });
+  });
+
+  it('reads per-environment settings from envConfig, with --context overriding them', () => {
+    const fromConfig = synth({ envConfig: { dev: { payfastMode: 'live', billingAlarmEmail: 'ops@example.com' } } });
+    fromConfig.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'merch-os-billing-payfastitn-dev',
+      Environment: { Variables: Match.objectLike({ PAYFAST_MODE: 'live', CHECKOUT_ENABLED: 'false' }) },
+    });
+    fromConfig.hasResourceProperties('AWS::SNS::Subscription', { Endpoint: 'ops@example.com' });
+
+    const overridden = synth({ envConfig: { dev: { payfastMode: 'live' } }, payfastMode: 'sandbox' });
+    overridden.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'merch-os-billing-payfastitn-dev',
+      Environment: { Variables: Match.objectLike({ PAYFAST_MODE: 'sandbox' }) },
     });
   });
 
