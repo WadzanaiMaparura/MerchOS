@@ -48,6 +48,7 @@ import {
 import { grantCredits } from '../../services/credit-ledger';
 import { recordVoucherRedemption } from '../../services/vouchers';
 import { issueInvoiceDocument } from '../../invoices/issue-invoice';
+import { markSubscribed } from '../../../shared/entitlements/trial-gate';
 
 let injectedProvider: PaymentProvider | undefined;
 
@@ -197,6 +198,20 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
 
   if (plan.monthlyCredits !== null) {
     await grantCredits(tenantId, currentBillingMonth(now), plan.monthlyCredits);
+  }
+
+  // Lift the free-trial cap for the paid period (it lapses on its own at
+  // periodEnd). Best effort: the payment and subscription are already recorded,
+  // so this must not fail or retry the payment. Logged as an anomaly so the
+  // billing alarm fires and the seller can be unblocked by hand.
+  try {
+    await markSubscribed(tenantId, periodEnd.toISOString());
+  } catch (error) {
+    logger.error('ITN trial entitlement not updated', {
+      tenantId,
+      mPaymentId,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 
   // Who paid, as PayFast reports it; used on the invoice if no billing profile is set.

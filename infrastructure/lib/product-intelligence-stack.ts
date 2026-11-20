@@ -28,6 +28,7 @@ import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations
 import { Construct } from 'constructs';
 import * as path from 'path';
 import { sellerDashboardOrigins } from './cors-origins';
+import { envFlag } from './env-config';
 
 export interface ProductIntelligenceStackProps extends cdk.StackProps {
   environment: string;
@@ -364,10 +365,10 @@ export class ProductIntelligenceStack extends cdk.Stack {
     // (GetItem): this service never writes entitlements. KMS is already granted.
     // -----------------------------------------------------------------------
     // Free-trial enforcement switch. OFF unless explicitly enabled with
-    // `--context trialEnforcement=true`, and it must be set the SAME way on the Product API,
+    // cdk.json envConfig.<env>.trialEnforcement (or --context), read the SAME way by the Product API,
     // Supplier Intelligence and Product Intelligence stacks (all three enforce the cap).
     const trialEnforcement =
-      String(this.node.tryGetContext('trialEnforcement') ?? 'false') === 'true' ? 'true' : 'false';
+      envFlag(this, env, 'trialEnforcement');
     const trialProductsTableName = ssm.StringParameter.valueForStringParameter(
       this,
       `${ssmPrefix}/product-api/table-name`,

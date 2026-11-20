@@ -20,8 +20,18 @@
  * items carry no GSI keys, so they never appear as products.
  *
  * SAFETY: enforcement is OFF unless TRIAL_ENFORCEMENT=true. When off, every
- * function returns immediately without touching DynamoDB, so shipping this code
- * cannot change existing behaviour. Turn it on only once sellers can activate.
+ * gate function returns immediately without touching DynamoDB, so shipping this
+ * code cannot change existing behaviour.
+ *
+ * ACTIVATION (TRIAL_ACTIVATION):
+ *  - 'auto' (default): a seller's trial starts with their first product. Anti-abuse
+ *    is enforced at sign-up (one account per email / phone / business name).
+ *  - 'card': the trial must be activated by billing after a card check (parked
+ *    with the PayFast card-verification work); until then creation is refused.
+ *
+ * SUBSCRIPTIONS: billing calls markSubscribed() when a payment lands, recording
+ * `subscribedUntil` (the paid period end). A subscription past that date counts
+ * as the trial again, so a lapsed seller is capped without any cancellation hook.
  *
  * COUNTING RULES
  *  - A slot is reserved atomically (counter bump + marker, one transaction) with
@@ -51,6 +61,24 @@ export interface Entitlement {
   productsUsed: number;
   productLimit: number;
   cardVerifiedAt?: string;
+  /** ISO end of the paid period; absent for exempt / never-paid tenants. */
+  subscribedUntil?: string;
+}
+
+/**
+ * The status that applies right now: a subscription whose paid period has
+ * ended is treated as the trial again ('active').
+ */
+export function effectiveStatus(e: Entitlement, now: Date = new Date()): EntitlementStatus {
+  if (e.status === "subscribed" && e.subscribedUntil && e.subscribedUntil <= now.toISOString()) {
+    return "active";
+  }
+  return e.status;
+}
+
+export type TrialActivationMode = "auto" | "card";
+export function trialActivationMode(): TrialActivationMode {
+  return process.env["TRIAL_ACTIVATION"] === "card" ? "card" : "auto";
 }
 
 export class TrialNotActivatedError extends Error {
@@ -135,7 +163,117 @@ export async function getEntitlement(
     ...(typeof item["cardVerifiedAt"] === "string"
       ? { cardVerifiedAt: item["cardVerifiedAt"] as string }
       : {}),
+    ...(typeof item["subscribedUntil"] === "string"
+      ? { subscribedUntil: item["subscribedUntil"] as string }
+      : {}),
   };
+}
+
+function isConditionalFailure(error: unknown): boolean {
+  return (error as { name?: string })?.name === "ConditionalCheckFailedException";
+}
+
+/**
+ * Returns the tenant's entitlement, starting the free trial if it has none and
+ * activation is automatic. Concurrent first calls are safe (put-if-absent).
+ */
+async function ensureEntitlement(
+  tenantId: string,
+  options: GateOptions,
+): Promise<Entitlement | null> {
+  const existing = await getEntitlement(tenantId, options);
+  if (existing || trialActivationMode() !== "auto") return existing;
+  try {
+    await createTenantDynamoClient(tenantId).put({
+      TableName: tableFor(options),
+      Item: {
+        PK: tenantPK(tenantId),
+        SK: ENTITLEMENT_SK,
+        tenantId,
+        status: "active",
+        productsUsed: 0,
+        productLimit: TRIAL_PRODUCT_LIMIT,
+        activation: "auto",
+        activatedAt: new Date().toISOString(),
+      },
+      ConditionExpression: "attribute_not_exists(SK)",
+    });
+  } catch (error) {
+    if (!isConditionalFailure(error)) throw error; // another request created it first
+  }
+  return getEntitlement(tenantId, options);
+}
+
+/** What the seller UI shows ("X of 15 free products used"). Never creates anything. */
+export interface TrialUsage {
+  enforced: boolean;
+  /** 'not_started' = no product created yet (the trial starts with the first one). */
+  status: "not_started" | "trial" | "subscribed" | "exempt";
+  productsUsed: number;
+  productLimit: number;
+  remaining: number;
+  subscribedUntil?: string;
+  activation: TrialActivationMode;
+}
+
+export async function getTrialUsage(
+  tenantId: string,
+  options: GateOptions = {},
+): Promise<TrialUsage> {
+  const enforced = isTrialEnforced(options);
+  const e = await getEntitlement(tenantId, options);
+  const productLimit = e?.productLimit ?? TRIAL_PRODUCT_LIMIT;
+  const productsUsed = e?.productsUsed ?? 0;
+  const s = e ? effectiveStatus(e) : null;
+  return {
+    enforced,
+    status: !e ? "not_started" : s === "active" ? "trial" : s === "subscribed" ? "subscribed" : "exempt",
+    productsUsed,
+    productLimit,
+    remaining: Math.max(0, productLimit - productsUsed),
+    ...(e?.subscribedUntil ? { subscribedUntil: e.subscribedUntil } : {}),
+    activation: trialActivationMode(),
+  };
+}
+
+/**
+ * Billing: the tenant has paid until `until` (ISO). Recorded whether or not
+ * enforcement is on, so switching it on later does not cap paying sellers.
+ * Idempotent, and never shortens an existing paid period.
+ */
+export async function markSubscribed(
+  tenantId: string,
+  until: string,
+  options: { tableName?: string } = {},
+): Promise<void> {
+  const client = createTenantDynamoClient(tenantId);
+  const TableName = tableFor(options);
+  const Key = { PK: tenantPK(tenantId), SK: ENTITLEMENT_SK };
+  try {
+    await client.put({
+      TableName,
+      Item: { ...Key, tenantId, status: "subscribed", subscribedUntil: until, productsUsed: 0, productLimit: TRIAL_PRODUCT_LIMIT },
+      ConditionExpression: "attribute_not_exists(SK)",
+    });
+    return;
+  } catch (error) {
+    if (!isConditionalFailure(error)) throw error;
+  }
+  try {
+    await client.update({
+      TableName,
+      Key,
+      // exempt accounts stay exempt; a later (or equal) period wins.
+      UpdateExpression: "SET #status = :subscribed, #until = :until",
+      ConditionExpression:
+        "#status <> :exempt AND (attribute_not_exists(#until) OR #until <= :until OR #status <> :subscribed)",
+      ExpressionAttributeNames: { "#status": "status", "#until": "subscribedUntil" },
+      ExpressionAttributeValues: { ":subscribed": "subscribed", ":exempt": "exempt", ":until": until },
+    });
+  } catch (error) {
+    // Exempt, or already paid for a later period: nothing to do.
+    if (!isConditionalFailure(error)) throw error;
+  }
 }
 
 async function isTrialProduct(
@@ -196,9 +334,9 @@ export async function reserveProductSlot(
   if (!isTrialEnforced(options)) return "unlimited";
   const tableName = tableFor(options);
 
-  const entitlement = await getEntitlement(tenantId, options);
+  const entitlement = await ensureEntitlement(tenantId, options);
   if (!entitlement) throw new TrialNotActivatedError();
-  if (entitlement.status !== "active") return "unlimited";
+  if (effectiveStatus(entitlement) !== "active") return "unlimited";
 
   const client = createTenantDynamoClient(tenantId);
   const pk = tenantPK(tenantId);
@@ -212,14 +350,21 @@ export async function reserveProductSlot(
               Key: { PK: pk, SK: ENTITLEMENT_SK },
               UpdateExpression: "ADD #used :one",
               // The cap is enforced IN the write: two concurrent creates cannot both pass.
+              // A lapsed subscription (paid period over) is capped like the trial.
               ConditionExpression:
-                "#status = :active AND (attribute_not_exists(#used) OR #used < #limit)",
+                "(#status = :active OR (#status = :subscribed AND #until <= :now)) AND (attribute_not_exists(#used) OR #used < #limit)",
               ExpressionAttributeNames: {
                 "#used": "productsUsed",
                 "#status": "status",
                 "#limit": "productLimit",
+                "#until": "subscribedUntil",
               },
-              ExpressionAttributeValues: { ":one": 1, ":active": "active" },
+              ExpressionAttributeValues: {
+                ":one": 1,
+                ":active": "active",
+                ":subscribed": "subscribed",
+                ":now": new Date().toISOString(),
+              },
             },
           },
           {
@@ -249,7 +394,7 @@ export async function reserveProductSlot(
       if (counterReason === "ConditionalCheckFailed") {
         // Either the cap is full, or the tenant subscribed between our read and write.
         const fresh = await getEntitlement(tenantId, options);
-        if (fresh && fresh.status !== "active") return "unlimited";
+        if (fresh && effectiveStatus(fresh) !== "active") return "unlimited";
         throw new TrialLimitReachedError();
       }
       throw error;
@@ -276,6 +421,11 @@ export async function reserveProductSlots(
   options: GateOptions = {},
 ): Promise<ReserveManyResult> {
   if (!isTrialEnforced(options))
+    return { allowed: [...productIds], blocked: [] };
+
+  // Subscribed / exempt: one read instead of one per product (large imports).
+  const entitlement = await ensureEntitlement(tenantId, options);
+  if (entitlement && effectiveStatus(entitlement) !== "active")
     return { allowed: [...productIds], blocked: [] };
 
   const allowed: string[] = [];
@@ -368,9 +518,9 @@ export async function assertCanGenerate(
   options: GateOptions = {},
 ): Promise<void> {
   if (!isTrialEnforced(options)) return;
-  const entitlement = await getEntitlement(tenantId, options);
+  const entitlement = await ensureEntitlement(tenantId, options);
   if (!entitlement) throw new TrialNotActivatedError();
-  if (entitlement.status !== "active") return;
+  if (effectiveStatus(entitlement) !== "active") return;
 
   if (productId) {
     if (await isTrialProduct(tenantId, productId, tableFor(options))) return;

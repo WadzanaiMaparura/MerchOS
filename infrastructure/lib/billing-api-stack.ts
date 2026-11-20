@@ -346,6 +346,15 @@ export class BillingApiStack extends cdk.Stack {
       retention: logs.RetentionDays.ONE_YEAR,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
+    // The free-trial entitlement lives in the products table (see
+    // services/shared/entitlements/trial-gate.ts); billing is its only writer of
+    // "subscribed". Get/Put/Update on the table only: no delete, query or scan.
+    const productsTableName = `merch-os-products-${env}`;
+    const trialEntitlementWrite = new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem'],
+      resources: [`arn:aws:dynamodb:${region}:${this.account}:table/${productsTableName}`],
+    });
     const payfastItnFn = createLambda(
       'PayfastItn',
       path.join(handlersPath, 'payfast-itn.ts'),
@@ -354,9 +363,11 @@ export class BillingApiStack extends cdk.Stack {
         kmsPolicy,
         payfastSecretRead,
         invoiceObjectsWrite, // issues the invoice PDF once the payment lands
+        trialEntitlementWrite,
       ],
       payfastItnLogGroup
     );
+    payfastItnFn.addEnvironment('PRODUCTS_TABLE', productsTableName);
 
     // Invoice PDF download: issues on demand if the webhook could not, then presigns.
     //
@@ -553,6 +564,8 @@ export class BillingApiStack extends cdk.Stack {
         'ITN amount mismatch',
         'ITN has no matching checkout intent',
         'ITN missing tenant or payment id',
+        // Paid, but the free-trial cap could not be lifted: unblock the seller by hand.
+        'ITN trial entitlement not updated',
       ]),
       1,
       'A verified ITN did not match our records (amount, checkout or tenant). Possible tampering or a bug; the payment was not applied.'

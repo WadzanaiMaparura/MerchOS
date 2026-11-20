@@ -1,10 +1,12 @@
-﻿import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const get = vi.fn();
 const transactWrite = vi.fn();
+const put = vi.fn();
+const update = vi.fn();
 vi.mock('../../utils/dynamo-client', async (orig) => ({
   ...(await orig<typeof import('../../utils/dynamo-client')>()),
-  createTenantDynamoClient: () => ({ get, transactWrite }),
+  createTenantDynamoClient: () => ({ get, transactWrite, put, update }),
 }));
 
 import {
@@ -20,6 +22,8 @@ import {
   releaseProductSlot,
   assertCanGenerate,
   isTrialError,
+  markSubscribed,
+  getTrialUsage,
 } from '../trial-gate';
 
 const ON = { enforced: true, tableName: 'products-test' };
@@ -38,7 +42,10 @@ const cancelled = (...codes: string[]) =>
 beforeEach(() => {
   get.mockReset();
   transactWrite.mockReset();
+  put.mockReset();
+  update.mockReset();
   delete process.env['TRIAL_ENFORCEMENT'];
+  delete process.env['TRIAL_ACTIVATION'];
 });
 
 describe('enforcement switch', () => {
@@ -91,7 +98,8 @@ describe('getEntitlement', () => {
 });
 
 describe('reserveProductSlot', () => {
-  it('refuses a tenant that has not activated its trial', async () => {
+  it('in card mode, refuses a tenant that has not activated its trial', async () => {
+    process.env['TRIAL_ACTIVATION'] = 'card';
     get.mockResolvedValue({});
     await expect(reserveProductSlot(T, 'p1', ON)).rejects.toBeInstanceOf(TrialNotActivatedError);
     expect(transactWrite).not.toHaveBeenCalled();
@@ -111,7 +119,9 @@ describe('reserveProductSlot', () => {
     expect(counter.Update.Key).toEqual({ PK: 'TENANT#tenant-1', SK: 'ENTITLEMENT#trial' });
     expect(counter.Update.UpdateExpression).toBe('ADD #used :one');
     // The cap is checked INSIDE the write, which is what makes concurrent creates safe.
-    expect(counter.Update.ConditionExpression).toBe('#status = :active AND (attribute_not_exists(#used) OR #used < #limit)');
+    expect(counter.Update.ConditionExpression).toBe(
+      '(#status = :active OR (#status = :subscribed AND #until <= :now)) AND (attribute_not_exists(#used) OR #used < #limit)',
+    );
     expect(marker.Put.Item).toMatchObject({ PK: 'TENANT#tenant-1', SK: trialProductSK('p1'), productId: 'p1' });
     expect(marker.Put.ConditionExpression).toBe('attribute_not_exists(SK)');
   });
@@ -200,7 +210,8 @@ describe('reserveProductSlots (bulk import)', () => {
     expect(transactWrite).toHaveBeenCalledTimes(3);
   });
 
-  it('blocks everything with TRIAL_NOT_ACTIVATED when the trial was never activated', async () => {
+  it('in card mode, blocks everything with TRIAL_NOT_ACTIVATED when the trial was never activated', async () => {
+    process.env['TRIAL_ACTIVATION'] = 'card';
     get.mockResolvedValue({});
     expect(await reserveProductSlots(T, ['a', 'b'], ON)).toEqual({
       allowed: [],
@@ -242,7 +253,8 @@ describe('releaseProductSlot', () => {
 });
 
 describe('assertCanGenerate', () => {
-  it('refuses a tenant that has not activated', async () => {
+  it('in card mode, refuses a tenant that has not activated', async () => {
+    process.env['TRIAL_ACTIVATION'] = 'card';
     get.mockResolvedValue({});
     await expect(assertCanGenerate(T, 'p1', ON)).rejects.toBeInstanceOf(TrialNotActivatedError);
   });
@@ -274,5 +286,87 @@ describe('isTrialError', () => {
     expect(isTrialError(new TrialLimitReachedError())).toBe(true);
     expect(isTrialError(new TrialNotActivatedError())).toBe(true);
     expect(isTrialError(new Error('x'))).toBe(false);
+  });
+});
+
+describe('automatic activation (default)', () => {
+  it("starts the trial with the seller's first product (put-if-absent), then reserves", async () => {
+    get.mockResolvedValueOnce({}).mockResolvedValue(entitlement());
+    put.mockResolvedValue({});
+    transactWrite.mockResolvedValue({});
+    expect(await reserveProductSlot(T, 'p1', ON)).toBe('reserved');
+    expect(put).toHaveBeenCalledWith(expect.objectContaining({
+      Item: expect.objectContaining({ SK: ENTITLEMENT_SK, status: 'active', productsUsed: 0, productLimit: TRIAL_PRODUCT_LIMIT, activation: 'auto' }),
+      ConditionExpression: 'attribute_not_exists(SK)',
+    }));
+  });
+
+  it('is safe when two first products race (the loser re-reads the winner)', async () => {
+    get.mockResolvedValueOnce({}).mockResolvedValue(entitlement({ productsUsed: 1 }));
+    put.mockRejectedValue(Object.assign(new Error('exists'), { name: 'ConditionalCheckFailedException' }));
+    transactWrite.mockResolvedValue({});
+    expect(await reserveProductSlot(T, 'p2', ON)).toBe('reserved');
+  });
+});
+
+describe('subscriptions', () => {
+  const future = new Date(Date.now() + 86_400_000).toISOString();
+  const past = new Date(Date.now() - 86_400_000).toISOString();
+
+  it('a paid-up subscription is unlimited; a lapsed one is capped like the trial', async () => {
+    get.mockResolvedValue(entitlement({ status: 'subscribed', subscribedUntil: future }));
+    expect(await reserveProductSlot(T, 'p1', ON)).toBe('unlimited');
+
+    get.mockResolvedValue(entitlement({ status: 'subscribed', subscribedUntil: past, productsUsed: 15 }));
+    transactWrite.mockRejectedValue(cancelled('ConditionalCheckFailed', 'None'));
+    await expect(reserveProductSlot(T, 'p1', ON)).rejects.toBeInstanceOf(TrialLimitReachedError);
+    await expect(assertCanGenerate(T, undefined, ON)).rejects.toBeInstanceOf(TrialLimitReachedError);
+  });
+
+  it('bulk import by a subscribed seller costs one read, not one per product', async () => {
+    get.mockResolvedValue(entitlement({ status: 'subscribed', subscribedUntil: future }));
+    const ids = Array.from({ length: 500 }, (_, i) => `p${i}`);
+    expect((await reserveProductSlots(T, ids, ON)).allowed).toHaveLength(500);
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(transactWrite).not.toHaveBeenCalled();
+  });
+
+  it('markSubscribed creates the record for a tenant with none', async () => {
+    put.mockResolvedValue({});
+    await markSubscribed(T, future, { tableName: 'products-test' });
+    expect(put).toHaveBeenCalledWith(expect.objectContaining({
+      Item: expect.objectContaining({ status: 'subscribed', subscribedUntil: future }),
+      ConditionExpression: 'attribute_not_exists(SK)',
+    }));
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('markSubscribed updates an existing record, never downgrades exempt or shortens a period', async () => {
+    put.mockRejectedValue(Object.assign(new Error('exists'), { name: 'ConditionalCheckFailedException' }));
+    update.mockResolvedValue({});
+    await markSubscribed(T, future, { tableName: 'products-test' });
+    const call = update.mock.calls[0]![0];
+    expect(call.UpdateExpression).toBe('SET #status = :subscribed, #until = :until');
+    expect(call.ConditionExpression).toContain('#status <> :exempt');
+    expect(call.ConditionExpression).toContain('#until <= :until');
+
+    update.mockRejectedValue(Object.assign(new Error('no'), { name: 'ConditionalCheckFailedException' }));
+    await expect(markSubscribed(T, past, { tableName: 'products-test' })).resolves.toBeUndefined();
+  });
+});
+
+describe('getTrialUsage', () => {
+  it('reports not_started without creating anything', async () => {
+    get.mockResolvedValue({});
+    expect(await getTrialUsage(T, ON)).toMatchObject({ enforced: true, status: 'not_started', productsUsed: 0, productLimit: 15, remaining: 15 });
+    expect(put).not.toHaveBeenCalled();
+  });
+  it('reports trial usage and never a negative remainder', async () => {
+    get.mockResolvedValue(entitlement({ productsUsed: 17 }));
+    expect(await getTrialUsage(T, ON)).toMatchObject({ status: 'trial', productsUsed: 17, remaining: 0 });
+  });
+  it('a lapsed subscription reads as the trial', async () => {
+    get.mockResolvedValue(entitlement({ status: 'subscribed', subscribedUntil: '2000-01-01T00:00:00.000Z', productsUsed: 4 }));
+    expect(await getTrialUsage(T, ON)).toMatchObject({ status: 'trial', remaining: 11 });
   });
 });

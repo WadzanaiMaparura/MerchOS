@@ -66,6 +66,16 @@ export async function createPendingRegistration(
   }
 
   if (!response.ok) {
+    // 409: this email / phone / business name already has an account (one free
+    // trial per seller). Show the server's explanation instead of "try again".
+    if (response.status === 409) {
+      const err = (await response.json().catch(() => null)) as
+        | { error?: { code?: string; message?: string } }
+        | null;
+      if (err?.error?.code === 'ACCOUNT_ALREADY_EXISTS' && err.error.message) {
+        throw new PendingRegistrationError(err.error.message);
+      }
+    }
     throw new PendingRegistrationError(
       'Registration could not be started. Please try again.',
     );

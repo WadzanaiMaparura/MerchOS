@@ -150,15 +150,22 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     images: dto.images.map((i) => i.s3Key),
   };
 
+  // In parallel: sequential calls (~5-10 s each) overran API Gateway's 30 s limit
+  // and the Lambda timeout, which left the product stuck in GENERATING. A single
+  // failed type must not discard the others, so failures are collected, not thrown.
+  const settled = await Promise.allSettled(
+    types.map((type) =>
+      caller.generate(
+        { type, productData, productId, ...(marketplace ? { marketplace } : {}) },
+        token
+      )
+    )
+  );
   const results: GlueGenerationResult[] = [];
   let anyFailure = false;
-  for (const type of types) {
-    const result = await caller.generate(
-      { type, productData, productId, ...(marketplace ? { marketplace } : {}) },
-      token
-    );
-    if (result && result.status === 'completed') {
-      results.push(result);
+  for (const s of settled) {
+    if (s.status === 'fulfilled' && s.value && s.value.status === 'completed') {
+      results.push(s.value);
     } else {
       anyFailure = true;
     }
