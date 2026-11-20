@@ -1,5 +1,9 @@
 /**
- * Sequential, gap-free invoice numbers (MOS-000001, MOS-000002, ...).
+ * Sequential, gap-free invoice numbers (MOS-016750, MOS-016751, ...).
+ *
+ * The sequence starts at INVOICE_START_NUMBER rather than 1, so early customers
+ * do not see "000001" and learn exactly how many invoices have been issued. Gap-free
+ * means no number is skipped AFTER the start; the start itself is a deliberate offset.
  *
  * A serial number is a legal requirement on invoices and an auditor expects an
  * unbroken sequence. So the number is claimed in ONE DynamoDB transaction that
@@ -15,6 +19,9 @@ import { BILLING_TABLE, invoiceSK, tenantPK } from '../../shared/utils/dynamo-cl
 import { getDocClient } from '../services/doc-client';
 
 export const INVOICE_PREFIX = 'MOS-';
+
+/** First invoice number ever issued. Changing it only affects a counter that has not reached it. */
+export const INVOICE_START_NUMBER = 16750;
 const COUNTER_KEY = { PK: 'COUNTER#INVOICE', SK: 'META' };
 const MAX_ATTEMPTS = 8;
 
@@ -47,7 +54,8 @@ export async function assignInvoiceNumber(tenantId: string, invoiceId: string): 
       new GetCommand({ TableName: BILLING_TABLE, Key: COUNTER_KEY, ConsistentRead: true })
     );
     const current = typeof counter.Item?.['seq'] === 'number' ? (counter.Item['seq'] as number) : 0;
-    const next = current + 1;
+    // First ever invoice starts at the offset; afterwards strictly +1 (gap-free).
+    const next = Math.max(current + 1, INVOICE_START_NUMBER);
     const number = formatInvoiceNumber(next);
 
     try {
