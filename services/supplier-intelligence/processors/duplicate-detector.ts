@@ -226,7 +226,9 @@ async function queryTitlesBySupplier(
     // Missing index (GSI2 not provisioned) or other query failure: degrade to
     // SKU-only duplicate detection rather than failing the import.
     const name = err instanceof Error ? err.name : '';
-    if (name === 'ValidationException' || name === 'ResourceNotFoundException') {
+    // AccessDeniedException: IAM is evaluated before the index lookup, and the
+    // role is (correctly) only granted the indexes that exist.
+    if (name === 'ValidationException' || name === 'ResourceNotFoundException' || name === 'AccessDeniedException') {
       return [];
     }
     throw err;

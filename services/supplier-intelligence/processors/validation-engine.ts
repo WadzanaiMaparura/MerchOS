@@ -25,6 +25,12 @@ import type {
 /** Currency symbols to strip during price normalisation. */
 const CURRENCY_SYMBOLS_RE = /[$€£¥]/g;
 
+/**
+ * Leading/trailing currency codes, including the Rand ("R 499", "R1 299,99",
+ * "ZAR 499", "499 ZAR"), the most common format in MerchOS supplier files.
+ */
+const CURRENCY_CODES_RE = /^(?:ZAR|USD|EUR|GBP|R)\s*|\s*(?:ZAR|USD|EUR|GBP)$/i;
+
 // ---------------------------------------------------------------------------
 // Price Normalisation (Requirement 6.3)
 // ---------------------------------------------------------------------------
@@ -53,8 +59,10 @@ export function normalisePrice(raw: string): number | null {
 
   let cleaned = raw.trim();
 
-  // Strip currency symbols
-  cleaned = cleaned.replace(CURRENCY_SYMBOLS_RE, '');
+  // Strip currency symbols and codes
+  cleaned = cleaned.replace(CURRENCY_SYMBOLS_RE, '').trim().replace(CURRENCY_CODES_RE, '');
+  // Spaces (incl. non-breaking/thin) as thousand separators: "1 299,99" (SA style)
+  cleaned = cleaned.replace(/[\s\u00a0\u202f]+/g, '');
 
   // Strip thousand separators.
   // Heuristic: if both comma and period are present, the one occurring more than once

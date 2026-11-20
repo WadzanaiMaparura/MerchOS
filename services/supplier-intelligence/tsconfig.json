@@ -11,7 +11,8 @@
     "processors/**/*.ts",
     "schemas/**/*.ts",
     "utils/**/*.ts",
-    "types/**/*.ts"
+    "types/**/*.ts",
+    "workflow/**/*.ts"
   ],
   "exclude": [
     "node_modules",

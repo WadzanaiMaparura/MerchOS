@@ -36,6 +36,8 @@ interface ImportQueueMessage {
   fileSizeBytes?: number | undefined;
   url?: string | undefined;
   crawlDepth?: number | undefined;
+  /** IMAGE imports: the uploaded photos (max 50, so well inside the SFN payload limit). */
+  images?: Array<{ s3Key: string; fileName: string; contentType: string }> | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -160,6 +162,7 @@ async function processRecord(messageBody: string, stateMachineArn: string): Prom
         fileSizeBytes: message.fileSizeBytes,
         url: message.url,
         crawlDepth: message.crawlDepth,
+        images: message.images,
       }),
     }),
   );
@@ -215,5 +218,17 @@ function parseMessageBody(body: string): ImportQueueMessage {
     fileSizeBytes: typeof msg['fileSizeBytes'] === 'number' ? msg['fileSizeBytes'] : undefined,
     url: typeof msg['url'] === 'string' ? msg['url'] : undefined,
     crawlDepth: typeof msg['crawlDepth'] === 'number' ? msg['crawlDepth'] : undefined,
+    images: parseImages(msg['images']),
   };
+}
+
+/** Keeps only well-formed image entries; anything else is dropped. */
+function parseImages(raw: unknown): ImportQueueMessage['images'] {
+  if (!Array.isArray(raw)) return undefined;
+  return raw.flatMap((i: unknown) => {
+    const o = i as Record<string, unknown> | null;
+    return o && typeof o['s3Key'] === 'string' && typeof o['fileName'] === 'string' && typeof o['contentType'] === 'string'
+      ? [{ s3Key: o['s3Key'], fileName: o['fileName'], contentType: o['contentType'] }]
+      : [];
+  });
 }
