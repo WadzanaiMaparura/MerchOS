@@ -6,11 +6,12 @@ import { PricingHero } from './components/PricingHero';
 import { PricingCards } from './components/PricingCards';
 import { ComparisonMatrix } from './components/ComparisonMatrix';
 import { FAQSection } from './components/FAQSection';
+import TrainingSection from '../components/TrainingSection';
 
 export const metadata: Metadata = {
   title: 'Pricing — MerchOS',
   description:
-    'Compare MerchOS subscription plans and find the right tier for your marketplace business. From Launch to Enterprise, scale your product listings with AI-powered tools.',
+    'MerchOS plans from R499 a month: AI-written marketplace listings, corrections included, export to every marketplace, unlimited team members and free training. Start free, no card.',
 };
 
 export default function PricingPage() {
@@ -18,6 +19,7 @@ export default function PricingPage() {
     <>
       <PricingHero />
       <PricingCards tiers={pricingConfig.tiers} />
+      <TrainingSection />
       <ComparisonMatrix
         categories={pricingConfig.comparison}
         tiers={pricingConfig.tiers}

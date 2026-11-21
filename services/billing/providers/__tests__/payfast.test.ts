@@ -210,7 +210,7 @@ describe('PayFastProvider.initiateCheckout', () => {
       cancelUrl: 'https://app/c',
     });
     const map = Object.fromEntries(queryPairs(r.redirectUrl));
-    expect(map['amount']).toBe('999.00');
+    expect(map['amount']).toBe('899.00'); // Growth launch price
     expect(map['custom_str1']).toBe('tenant-xyz');
     expect(map['m_payment_id']).toBe(r.mPaymentId);
   });

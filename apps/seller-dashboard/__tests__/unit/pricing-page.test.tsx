@@ -33,10 +33,10 @@ describe('PricingHero', () => {
 });
 
 describe('FAQSection', () => {
-  it('renders all 7 FAQ questions', () => {
+  it('renders every FAQ question from the config', () => {
     render(<FAQSection items={pricingConfig.faq} />);
     const buttons = screen.getAllByRole('button');
-    expect(buttons).toHaveLength(7);
+    expect(buttons).toHaveLength(pricingConfig.faq.length);
     pricingConfig.faq.forEach((item) => {
       expect(screen.getByText(item.question)).toBeTruthy();
     });
@@ -85,7 +85,7 @@ describe('PricingCards', () => {
 
 describe('Highlighted card non-color differentiation', () => {
   it('highlighted card has non-color indicator (scale/border-width/badge)', () => {
-    const professionalTier = pricingConfig.tiers.find((t) => t.id === 'professional')!;
+    const professionalTier = pricingConfig.tiers.find((t) => t.highlighted)!;
     const { container } = render(<PricingCard tier={professionalTier} />);
     const card = container.firstElementChild as HTMLElement;
 

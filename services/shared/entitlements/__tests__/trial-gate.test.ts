@@ -24,6 +24,10 @@ import {
   isTrialError,
   markSubscribed,
   getTrialUsage,
+  PlanLimitReachedError,
+  monthKey,
+  monthCounterSK,
+  monthProductSK,
 } from '../trial-gate';
 
 const ON = { enforced: true, tableName: 'products-test' };
@@ -346,7 +350,8 @@ describe('subscriptions', () => {
     update.mockResolvedValue({});
     await markSubscribed(T, future, { tableName: 'products-test' });
     const call = update.mock.calls[0]![0];
-    expect(call.UpdateExpression).toBe('SET #status = :subscribed, #until = :until');
+    // No plan limit passed: unlimited (custom plan) clears any previous monthly limit.
+    expect(call.UpdateExpression).toBe('SET #status = :subscribed, #until = :until REMOVE #mpl');
     expect(call.ConditionExpression).toContain('#status <> :exempt');
     expect(call.ConditionExpression).toContain('#until <= :until');
 
@@ -368,5 +373,81 @@ describe('getTrialUsage', () => {
   it('a lapsed subscription reads as the trial', async () => {
     get.mockResolvedValue(entitlement({ status: 'subscribed', subscribedUntil: '2000-01-01T00:00:00.000Z', productsUsed: 4 }));
     expect(await getTrialUsage(T, ON)).toMatchObject({ status: 'trial', remaining: 11 });
+  });
+});
+
+describe('paid plans: new products per month', () => {
+  const future = new Date(Date.now() + 30 * 86_400_000).toISOString();
+  const paid = (over: Record<string, unknown> = {}) =>
+    entitlement({ status: 'subscribed', subscribedUntil: future, monthlyProductLimit: 500, ...over });
+
+  it("counts a new product against this month's allowance (cap checked in the write)", async () => {
+    get.mockResolvedValue(paid());
+    put.mockResolvedValue({});
+    transactWrite.mockResolvedValue({});
+    expect(await reserveProductSlot(T, 'p1', ON)).toBe('reserved');
+    const [counter, marker] = transactWrite.mock.calls[0]![0].TransactItems;
+    expect(counter.Update.Key.SK).toBe(monthCounterSK(monthKey()));
+    expect(counter.Update.ConditionExpression).toBe('attribute_not_exists(#used) OR #used < :limit');
+    expect(counter.Update.ExpressionAttributeValues[':limit']).toBe(500);
+    expect(marker.Put.Item.SK).toBe(monthProductSK(monthKey(), 'p1'));
+  });
+
+  it('refuses the 501st product with PLAN_LIMIT_REACHED, and a retry of a counted product is free', async () => {
+    get.mockResolvedValue(paid());
+    put.mockRejectedValue(Object.assign(new Error('exists'), { name: 'ConditionalCheckFailedException' }));
+    transactWrite.mockRejectedValueOnce(cancelled('ConditionalCheckFailed', 'None'));
+    const err = await reserveProductSlot(T, 'p501', ON).catch((e) => e);
+    expect(err).toBeInstanceOf(PlanLimitReachedError);
+    expect(err.code).toBe('PLAN_LIMIT_REACHED');
+    expect(isTrialError(err)).toBe(true); // -> HTTP 402 via the existing mappers
+
+    transactWrite.mockRejectedValueOnce(cancelled('None', 'ConditionalCheckFailed'));
+    expect(await reserveProductSlot(T, 'p1', ON)).toBe('already');
+  });
+
+  it('a bulk import creates what fits this month and reports PLAN_LIMIT_REACHED for the rest', async () => {
+    get.mockResolvedValue(paid({ monthlyProductLimit: 2 }));
+    put.mockResolvedValue({});
+    transactWrite
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(cancelled('ConditionalCheckFailed', 'None'));
+    expect(await reserveProductSlots(T, ['a', 'b', 'c', 'd'], ON)).toEqual({
+      allowed: ['a', 'b'], blocked: ['c', 'd'], reason: 'PLAN_LIMIT_REACHED',
+    });
+  });
+
+  it('a custom plan without a monthly limit stays unlimited (one read for a bulk import)', async () => {
+    get.mockResolvedValue(paid({ monthlyProductLimit: undefined }));
+    expect((await reserveProductSlots(T, ['a', 'b', 'c'], ON)).allowed).toHaveLength(3);
+    expect(transactWrite).not.toHaveBeenCalled();
+  });
+
+  it('markSubscribed records the plan allowance', async () => {
+    put.mockRejectedValue(Object.assign(new Error('exists'), { name: 'ConditionalCheckFailedException' }));
+    update.mockResolvedValue({});
+    await markSubscribed(T, future, { tableName: 'products-test', monthlyProductLimit: 1000 });
+    const call = update.mock.calls[0]![0];
+    expect(call.UpdateExpression).toBe('SET #status = :subscribed, #until = :until, #mpl = :mpl');
+    expect(call.ExpressionAttributeValues[':mpl']).toBe(1000);
+  });
+
+  it("usage reports this month's count for a paid plan", async () => {
+    get
+      .mockResolvedValueOnce(paid())
+      .mockResolvedValueOnce({ Item: { productsUsed: 120 } });
+    expect(await getTrialUsage(T, ON)).toMatchObject({
+      status: 'subscribed', period: 'month', productsUsed: 120, productLimit: 500, remaining: 380,
+    });
+  });
+
+  it('a failed create gives the monthly slot back when there was no trial slot', async () => {
+    transactWrite
+      .mockRejectedValueOnce(cancelled('ConditionalCheckFailed', 'None')) // no trial marker
+      .mockResolvedValueOnce({});
+    await releaseProductSlot(T, 'p1', ON);
+    const [del] = transactWrite.mock.calls[1]![0].TransactItems;
+    expect(del.Delete.Key.SK).toBe(monthProductSK(monthKey(), 'p1'));
   });
 });

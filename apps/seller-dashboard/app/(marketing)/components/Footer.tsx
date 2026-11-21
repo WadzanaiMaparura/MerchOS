@@ -21,10 +21,10 @@ export default function Footer() {
               </svg>
             </a>
             <a
-              href="#demo"
+              href="/contact?reason=training#training"
               className="inline-flex items-center rounded-full border border-white/30 px-6 py-3 text-base font-semibold text-white hover:bg-white/10 transition-all"
             >
-              Watch Demo
+              Book free training
             </a>
           </div>
         </div>
@@ -49,7 +49,7 @@ export default function Footer() {
             <ul className="mt-4 space-y-2.5 text-sm">
               <li><a href="#how-it-works" className="hover:text-white transition-colors">How it Works</a></li>
               <li><a href="#pricing" className="hover:text-white transition-colors">Pricing</a></li>
-              <li><a href="#demo" className="hover:text-white transition-colors">Watch Demo</a></li>
+              <li><a href="/pricing#training" className="hover:text-white transition-colors">Free Training</a></li>
             </ul>
           </div>
 

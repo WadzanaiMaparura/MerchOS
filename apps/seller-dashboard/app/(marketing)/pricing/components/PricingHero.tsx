@@ -7,7 +7,7 @@ export function PricingHero() {
             Pricing
           </h1>
           <p className="mt-4 text-lg text-gray-600">
-            Start with a free trial, then choose the plan that fits your business. Professional tools, professional pricing.
+            Create your first 15 products free, AI included. No credit card. Free training, even before you subscribe.
           </p>
         </div>
       </div>

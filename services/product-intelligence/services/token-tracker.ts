@@ -9,6 +9,7 @@
  * @see Requirements 15.1, 15.2, 15.3
  */
 
+import { effectiveStatus, getEntitlement } from '../../shared/entitlements/trial-gate';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
@@ -101,7 +102,7 @@ export function setEventBridgeClient(client: EventBridgeClient): void {
  *
  * @returns The budget limit in tokens
  */
-function getMonthlyBudgetLimit(): number {
+function getDefaultBudgetLimit(): number {
   const envBudget = process.env['MONTHLY_TOKEN_BUDGET'];
   if (envBudget) {
     const parsed = parseInt(envBudget, 10);
@@ -110,6 +111,40 @@ function getMonthlyBudgetLimit(): number {
     }
   }
   return DEFAULT_MONTHLY_BUDGET;
+}
+
+/**
+ * Raw tokens allowed per included product: a full listing is ~5,600 tokens,
+ * corrections add ~1,000, and 1.5x headroom covers unusually long supplier data.
+ */
+export const TOKENS_PER_PLAN_PRODUCT = 10_000;
+/** Free trial: 15 products at the same rate (only once enforcement creates the record). */
+export const TRIAL_TOKEN_BUDGET = 15 * TOKENS_PER_PLAN_PRODUCT * 2;
+
+/**
+ * The tenant's monthly AI token ceiling, sized to what they pay for:
+ *  - paid plan (subscribed, monthly limit): monthlyProductLimit x 10,000
+ *  - free trial (entitlement exists, status active): 300,000
+ *  - otherwise (no record, exempt, custom plan, or lookup unavailable): the
+ *    MONTHLY_TOKEN_BUDGET default, i.e. today's behaviour.
+ * A hidden safeguard: sellers see products, never tokens.
+ */
+export async function getMonthlyBudgetLimit(tenantId?: string): Promise<number> {
+  const fallback = getDefaultBudgetLimit();
+  if (!tenantId) return fallback;
+  try {
+    const e = await getEntitlement(tenantId);
+    if (!e) return fallback;
+    const s = effectiveStatus(e);
+    if (s === 'subscribed' && e.monthlyProductLimit !== undefined) {
+      return Math.max(fallback, e.monthlyProductLimit * TOKENS_PER_PLAN_PRODUCT);
+    }
+    if (s === 'active') return TRIAL_TOKEN_BUDGET;
+    return fallback;
+  } catch {
+    // No products-table access in this Lambda, or a transient error: never block on it.
+    return fallback;
+  }
 }
 
 /**
@@ -174,7 +209,7 @@ export class TokenTracker {
     const { tenantId, generationType, inputTokens, outputTokens, timestamp } = usage;
     const dayPeriod = getDayPeriod(timestamp);
     const monthPeriod = getMonthPeriod(timestamp);
-    const budgetLimit = getMonthlyBudgetLimit();
+    const budgetLimit = await getMonthlyBudgetLimit(tenantId);
     const now = new Date().toISOString();
 
     const client = getDynamoDocClient();
@@ -254,7 +289,7 @@ export class TokenTracker {
     period: 'daily' | 'monthly',
   ): Promise<TokenUsageSummary> {
     const client = getDynamoDocClient();
-    const budgetLimit = getMonthlyBudgetLimit();
+    const budgetLimit = await getMonthlyBudgetLimit(tenantId);
 
     const sk =
       period === 'daily'
@@ -326,7 +361,7 @@ export class TokenTracker {
     tenantId: string,
   ): Promise<{ allowed: boolean; remaining: number }> {
     const client = getDynamoDocClient();
-    const budgetLimit = getMonthlyBudgetLimit();
+    const budgetLimit = await getMonthlyBudgetLimit(tenantId);
     const monthPeriod = getCurrentMonthPeriod();
 
     const response = await client.send(

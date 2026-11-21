@@ -11,7 +11,7 @@ const plans = [
   {
     name: 'Growth',
     description: 'For growing businesses',
-    price: 'R999',
+    price: 'R899',
     period: '/month',
     cta: 'Start Free Trial',
     ctaHref: '/register?plan=growth',
@@ -21,7 +21,7 @@ const plans = [
   {
     name: 'Pro',
     description: 'For serious sellers',
-    price: 'R1,999',
+    price: 'R1,790',
     period: '/month',
     cta: 'Start Free Trial',
     ctaHref: '/register?plan=pro',

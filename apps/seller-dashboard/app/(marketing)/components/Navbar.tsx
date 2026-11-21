@@ -34,6 +34,11 @@ export default function Navbar() {
                 Early Access
               </a>
             </li>
+            <li>
+              <a href="/pricing#training" className="hover:text-blue-600 transition-colors">
+                Free Training
+              </a>
+            </li>
           </ul>
         </div>
 
@@ -83,6 +88,9 @@ export default function Navbar() {
           </a>
           <a href="#early-access" className="block text-sm font-medium text-gray-700 hover:text-blue-600 py-2">
             Early Access
+          </a>
+          <a href="/pricing#training" className="block text-sm font-medium text-gray-700 hover:text-blue-600 py-2">
+            Free Training
           </a>
           <hr className="border-gray-100" />
           <a href="/login" className="block text-sm font-medium text-gray-700 py-2">

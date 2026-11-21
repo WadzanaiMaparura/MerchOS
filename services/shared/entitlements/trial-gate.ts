@@ -63,7 +63,17 @@ export interface Entitlement {
   cardVerifiedAt?: string;
   /** ISO end of the paid period; absent for exempt / never-paid tenants. */
   subscribedUntil?: string;
+  /** Paid plans: new products allowed per calendar month (absent = unlimited). */
+  monthlyProductLimit?: number;
 }
+
+/** Calendar month key (UTC), e.g. "202611". */
+export function monthKey(now: Date = new Date()): string {
+  return now.toISOString().slice(0, 7).replace('-', '');
+}
+export const monthCounterSK = (yyyyMM: string): string => `ENTITLEMENT#month#${yyyyMM}`;
+export const monthProductSK = (yyyyMM: string, productId: string): string =>
+  `ENTITLEMENT#month#${yyyyMM}#PRODUCT#${productId}`;
 
 /**
  * The status that applies right now: a subscription whose paid period has
@@ -101,12 +111,26 @@ export class TrialLimitReachedError extends Error {
   }
 }
 
-export type TrialError = TrialNotActivatedError | TrialLimitReachedError;
+/** A paid plan's new-product allowance for this month is used up. */
+export class PlanLimitReachedError extends Error {
+  readonly code = "PLAN_LIMIT_REACHED";
+  readonly status = 402;
+  constructor(limit: number) {
+    super(
+      `You've added all ${limit.toLocaleString("en-ZA")} new products in your plan this month. Upgrade your plan, or carry on next month.`,
+    );
+    this.name = "PlanLimitReachedError";
+  }
+}
 
+export type TrialError = TrialNotActivatedError | TrialLimitReachedError | PlanLimitReachedError;
+
+/** True for every entitlement refusal (all map to HTTP 402 with their code). */
 export function isTrialError(error: unknown): error is TrialError {
   return (
     error instanceof TrialNotActivatedError ||
-    error instanceof TrialLimitReachedError
+    error instanceof TrialLimitReachedError ||
+    error instanceof PlanLimitReachedError
   );
 }
 
@@ -166,7 +190,117 @@ export async function getEntitlement(
     ...(typeof item["subscribedUntil"] === "string"
       ? { subscribedUntil: item["subscribedUntil"] as string }
       : {}),
+    ...(typeof item["monthlyProductLimit"] === "number"
+      ? { monthlyProductLimit: item["monthlyProductLimit"] as number }
+      : {}),
   };
+}
+
+/**
+ * Paid plans: takes one of this month's new-product slots (counter + marker in
+ * one transaction, cap checked in the write, same pattern as the trial).
+ */
+async function reserveMonthlySlot(
+  tenantId: string,
+  productId: string,
+  limit: number,
+  options: GateOptions,
+): Promise<ReserveOutcome> {
+  const tableName = tableFor(options);
+  const client = createTenantDynamoClient(tenantId);
+  const pk = tenantPK(tenantId);
+  const yyyyMM = monthKey();
+  // The tenant-scoped client only updates EXISTING items, so create the month's
+  // counter first (put-if-absent; concurrent first products are fine).
+  try {
+    await client.put({
+      TableName: tableName,
+      Item: { PK: pk, SK: monthCounterSK(yyyyMM), tenantId, month: yyyyMM, productsUsed: 0 },
+      ConditionExpression: "attribute_not_exists(SK)",
+    });
+  } catch (error) {
+    if (!isConditionalFailure(error)) throw error;
+  }
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await client.transactWrite({
+        TransactItems: [
+          {
+            Update: {
+              TableName: tableName,
+              Key: { PK: pk, SK: monthCounterSK(yyyyMM) },
+              UpdateExpression: "ADD #used :one SET #limit = :limit",
+              ConditionExpression: "attribute_not_exists(#used) OR #used < :limit",
+              ExpressionAttributeNames: { "#used": "productsUsed", "#limit": "productLimit" },
+              ExpressionAttributeValues: { ":one": 1, ":limit": limit },
+            },
+          },
+          {
+            Put: {
+              TableName: tableName,
+              Item: {
+                PK: pk,
+                SK: monthProductSK(yyyyMM, productId),
+                tenantId,
+                productId,
+                reservedAt: new Date().toISOString(),
+              },
+              ConditionExpression: "attribute_not_exists(SK)",
+            },
+          },
+        ],
+      });
+      return "reserved";
+    } catch (error) {
+      if (isTransactionConflict(error) && attempt < CONFLICT_RETRIES) {
+        await backoff(attempt);
+        continue;
+      }
+      const [counterReason, markerReason] = reasonCodes(error);
+      if (markerReason === "ConditionalCheckFailed") return "already";
+      if (counterReason === "ConditionalCheckFailed") throw new PlanLimitReachedError(limit);
+      throw error;
+    }
+  }
+}
+
+/** Gives back this month's slot for a product whose creation failed. */
+async function releaseMonthlySlot(tenantId: string, productId: string, tableName: string): Promise<void> {
+  const pk = tenantPK(tenantId);
+  const yyyyMM = monthKey();
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await createTenantDynamoClient(tenantId).transactWrite({
+        TransactItems: [
+          {
+            Delete: {
+              TableName: tableName,
+              Key: { PK: pk, SK: monthProductSK(yyyyMM, productId) },
+              ConditionExpression: "attribute_exists(SK)",
+            },
+          },
+          {
+            Update: {
+              TableName: tableName,
+              Key: { PK: pk, SK: monthCounterSK(yyyyMM) },
+              UpdateExpression: "ADD #used :minusOne",
+              ConditionExpression: "#used > :zero",
+              ExpressionAttributeNames: { "#used": "productsUsed" },
+              ExpressionAttributeValues: { ":minusOne": -1, ":zero": 0 },
+            },
+          },
+        ],
+      });
+      return;
+    } catch (error) {
+      if (isTransactionConflict(error) && attempt < CONFLICT_RETRIES) {
+        await backoff(attempt);
+        continue;
+      }
+      if (reasonCodes(error).some((c) => c === "ConditionalCheckFailed")) return;
+      throw error;
+    }
+  }
 }
 
 function isConditionalFailure(error: unknown): boolean {
@@ -209,6 +343,8 @@ export interface TrialUsage {
   enforced: boolean;
   /** 'not_started' = no product created yet (the trial starts with the first one). */
   status: "not_started" | "trial" | "subscribed" | "exempt";
+  /** What productsUsed/productLimit count: the one-off trial, or this calendar month. */
+  period: "trial" | "month";
   productsUsed: number;
   productLimit: number;
   remaining: number;
@@ -222,12 +358,25 @@ export async function getTrialUsage(
 ): Promise<TrialUsage> {
   const enforced = isTrialEnforced(options);
   const e = await getEntitlement(tenantId, options);
-  const productLimit = e?.productLimit ?? TRIAL_PRODUCT_LIMIT;
-  const productsUsed = e?.productsUsed ?? 0;
   const s = e ? effectiveStatus(e) : null;
+  let productLimit = e?.productLimit ?? TRIAL_PRODUCT_LIMIT;
+  let productsUsed = e?.productsUsed ?? 0;
+  let period: "trial" | "month" = "trial";
+  if (s === "subscribed" && e?.monthlyProductLimit !== undefined) {
+    // Paid plan: report this month's new-product count.
+    const res = await createTenantDynamoClient(tenantId).get({
+      TableName: tableFor(options),
+      Key: { PK: tenantPK(tenantId), SK: monthCounterSK(monthKey()) },
+      ConsistentRead: true,
+    });
+    productLimit = e.monthlyProductLimit;
+    productsUsed = typeof res.Item?.["productsUsed"] === "number" ? (res.Item["productsUsed"] as number) : 0;
+    period = "month";
+  }
   return {
     enforced,
     status: !e ? "not_started" : s === "active" ? "trial" : s === "subscribed" ? "subscribed" : "exempt",
+    period,
     productsUsed,
     productLimit,
     remaining: Math.max(0, productLimit - productsUsed),
@@ -244,15 +393,23 @@ export async function getTrialUsage(
 export async function markSubscribed(
   tenantId: string,
   until: string,
-  options: { tableName?: string } = {},
+  options: {
+    tableName?: string;
+    /** The plan's new products per month; null/undefined = unlimited (custom plans). */
+    monthlyProductLimit?: number | null;
+  } = {},
 ): Promise<void> {
   const client = createTenantDynamoClient(tenantId);
   const TableName = tableFor(options);
   const Key = { PK: tenantPK(tenantId), SK: ENTITLEMENT_SK };
+  const limit = typeof options.monthlyProductLimit === "number" ? options.monthlyProductLimit : undefined;
   try {
     await client.put({
       TableName,
-      Item: { ...Key, tenantId, status: "subscribed", subscribedUntil: until, productsUsed: 0, productLimit: TRIAL_PRODUCT_LIMIT },
+      Item: {
+        ...Key, tenantId, status: "subscribed", subscribedUntil: until, productsUsed: 0, productLimit: TRIAL_PRODUCT_LIMIT,
+        ...(limit !== undefined ? { monthlyProductLimit: limit } : {}),
+      },
       ConditionExpression: "attribute_not_exists(SK)",
     });
     return;
@@ -263,12 +420,19 @@ export async function markSubscribed(
     await client.update({
       TableName,
       Key,
-      // exempt accounts stay exempt; a later (or equal) period wins.
-      UpdateExpression: "SET #status = :subscribed, #until = :until",
+      // exempt accounts stay exempt; a later (or equal) period wins. The plan's
+      // monthly allowance follows the latest payment (upgrades/downgrades).
+      UpdateExpression:
+        limit !== undefined
+          ? "SET #status = :subscribed, #until = :until, #mpl = :mpl"
+          : "SET #status = :subscribed, #until = :until REMOVE #mpl",
       ConditionExpression:
         "#status <> :exempt AND (attribute_not_exists(#until) OR #until <= :until OR #status <> :subscribed)",
-      ExpressionAttributeNames: { "#status": "status", "#until": "subscribedUntil" },
-      ExpressionAttributeValues: { ":subscribed": "subscribed", ":exempt": "exempt", ":until": until },
+      ExpressionAttributeNames: { "#status": "status", "#until": "subscribedUntil", "#mpl": "monthlyProductLimit" },
+      ExpressionAttributeValues: {
+        ":subscribed": "subscribed", ":exempt": "exempt", ":until": until,
+        ...(limit !== undefined ? { ":mpl": limit } : {}),
+      },
     });
   } catch (error) {
     // Exempt, or already paid for a later period: nothing to do.
@@ -336,7 +500,14 @@ export async function reserveProductSlot(
 
   const entitlement = await ensureEntitlement(tenantId, options);
   if (!entitlement) throw new TrialNotActivatedError();
-  if (effectiveStatus(entitlement) !== "active") return "unlimited";
+  const status = effectiveStatus(entitlement);
+  if (status === "subscribed") {
+    // Paid plans sell a number of NEW products per month.
+    return entitlement.monthlyProductLimit !== undefined
+      ? reserveMonthlySlot(tenantId, productId, entitlement.monthlyProductLimit, options)
+      : "unlimited";
+  }
+  if (status !== "active") return "unlimited";
 
   const client = createTenantDynamoClient(tenantId);
   const pk = tenantPK(tenantId);
@@ -394,6 +565,10 @@ export async function reserveProductSlot(
       if (counterReason === "ConditionalCheckFailed") {
         // Either the cap is full, or the tenant subscribed between our read and write.
         const fresh = await getEntitlement(tenantId, options);
+        if (fresh && effectiveStatus(fresh) === "subscribed" && fresh.monthlyProductLimit !== undefined) {
+          // Subscribed between our read and write: count against the plan instead.
+          return reserveMonthlySlot(tenantId, productId, fresh.monthlyProductLimit, options);
+        }
         if (fresh && effectiveStatus(fresh) !== "active") return "unlimited";
         throw new TrialLimitReachedError();
       }
@@ -406,7 +581,7 @@ export interface ReserveManyResult {
   allowed: string[];
   blocked: string[];
   /** Why the blocked ones were blocked (absent when none were). */
-  reason?: "TRIAL_LIMIT_REACHED" | "TRIAL_NOT_ACTIVATED";
+  reason?: "TRIAL_LIMIT_REACHED" | "TRIAL_NOT_ACTIVATED" | "PLAN_LIMIT_REACHED";
 }
 
 /**
@@ -423,10 +598,14 @@ export async function reserveProductSlots(
   if (!isTrialEnforced(options))
     return { allowed: [...productIds], blocked: [] };
 
-  // Subscribed / exempt: one read instead of one per product (large imports).
+  // Unlimited (exempt, or a plan without a monthly limit): one read instead of
+  // one per product (large imports).
   const entitlement = await ensureEntitlement(tenantId, options);
-  if (entitlement && effectiveStatus(entitlement) !== "active")
-    return { allowed: [...productIds], blocked: [] };
+  if (entitlement) {
+    const s = effectiveStatus(entitlement);
+    if (s === "exempt" || (s === "subscribed" && entitlement.monthlyProductLimit === undefined))
+      return { allowed: [...productIds], blocked: [] };
+  }
 
   const allowed: string[] = [];
   for (let i = 0; i < productIds.length; i++) {
@@ -434,18 +613,8 @@ export async function reserveProductSlots(
       await reserveProductSlot(tenantId, productIds[i]!, options);
       allowed.push(productIds[i]!);
     } catch (error) {
-      if (
-        error instanceof TrialLimitReachedError ||
-        error instanceof TrialNotActivatedError
-      ) {
-        return {
-          allowed,
-          blocked: productIds.slice(i),
-          reason:
-            error instanceof TrialLimitReachedError
-              ? "TRIAL_LIMIT_REACHED"
-              : "TRIAL_NOT_ACTIVATED",
-        };
+      if (isTrialError(error)) {
+        return { allowed, blocked: productIds.slice(i), reason: error.code };
       }
       throw error;
     }
@@ -495,9 +664,9 @@ export async function releaseProductSlot(
         await backoff(attempt);
         continue;
       }
-      // No marker (nothing was reserved, or already released): nothing to give back.
+      // No trial marker: the slot (if any) came from this month's paid allowance.
       if (reasonCodes(error).some((c) => c === "ConditionalCheckFailed"))
-        return;
+        return releaseMonthlySlot(tenantId, productId, tableName);
       throw error;
     }
   }

@@ -512,14 +512,14 @@ function BillingContent() {
                     </p>
                     <ul className="mt-3 space-y-1 text-sm text-gray-600">
                       <li>
-                        Credits:{' '}
-                        {plan.monthlyCredits === null
-                          ? 'Unlimited'
-                          : `${plan.monthlyCredits.toLocaleString('en-ZA')}/mo`}
+                        New products:{' '}
+                        {plan.monthlyProducts == null
+                          ? 'Custom'
+                          : `${plan.monthlyProducts.toLocaleString('en-ZA')}/month`}
                       </li>
-                      <li>Products: {formatLimit(plan.limits.maxProducts)}</li>
-                      <li>Users: {formatLimit(plan.limits.maxUsers)}</li>
-                      <li>Channels: {plan.limits.maxChannels >= 999 ? 'Unlimited' : plan.limits.maxChannels}</li>
+                      <li>AI listing + corrections included</li>
+                      <li>Export to every marketplace</li>
+                      <li>Unlimited team members</li>
                     </ul>
                     {isCurrent && (
                       <p className="mt-4 text-center text-sm font-medium text-blue-700">Current Plan</p>

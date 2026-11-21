@@ -76,7 +76,9 @@ export interface PlanCatalogueEntry {
   name: string;
   /** Price in integer ZAR cents. null for custom/enterprise pricing. */
   priceZARCents: number | null;
-  /** Monthly included credits. null = unmetered. */
+  /** New products per month (AI listing + corrections included). null = custom. Optional for older API responses. */
+  monthlyProducts?: number | null;
+  /** Hidden AI safeguard credits per month. null = unmetered. */
   monthlyCredits: number | null;
   limits: PlanLimits;
 }
