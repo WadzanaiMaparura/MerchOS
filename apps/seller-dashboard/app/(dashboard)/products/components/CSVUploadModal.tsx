@@ -1,13 +1,20 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
-import { useProductUpload } from '@merch-os/api-client';
-import { Modal, FileUpload, Alert } from '@merch-os/ui';
+import React, { useState, useCallback, useEffect } from 'react';
+import Link from 'next/link';
+import { useImportFiles, useSuppliers, useCreateSupplier } from '@merch-os/api-client';
+import { Modal, FileUpload, Alert, Select } from '@merch-os/ui';
+import { describeProductError } from '../../../components/TrialBanner';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 const MAX_ROWS = 10_000;
-const REQUIRED_HEADERS = ['sku', 'title', 'brand'];
+// What the import engine needs per row (services/supplier-intelligence
+// validation): a title and a SKU, plus a description or an image.
+const REQUIRED_HEADERS = ['sku', 'title'];
 const MAX_ERRORS_DISPLAYED = 50;
+/** Created on first use when the seller has no supplier yet. */
+const DEFAULT_SUPPLIER_NAME = 'My catalogue';
+const NEW_SUPPLIER = '__new__';
 
 interface CSVValidationError {
   row: number;
@@ -30,16 +37,31 @@ export function CSVUploadModal({ open, onOpenChange }: CSVUploadModalProps) {
   const [validationErrors, setValidationErrors] = useState<CSVValidationError[]>([]);
   const [isValidating, setIsValidating] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [importJobId, setImportJobId] = useState<string | null>(null);
+  const [supplierChoice, setSupplierChoice] = useState<string>('');
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
-  const uploadMutation = useProductUpload();
+  // Imports belong to a supplier (it holds the duplicate-handling rule).
+  const suppliersQuery = useSuppliers({ limit: 100 });
+  const suppliers = suppliersQuery.data?.suppliers ?? [];
+  const createSupplier = useCreateSupplier();
+  const importFiles = useImportFiles();
+  const isUploading = createSupplier.isPending || importFiles.isPending;
+
+  useEffect(() => {
+    if (supplierChoice || suppliersQuery.isLoading) return;
+    setSupplierChoice(suppliers[0]?.supplierId ?? NEW_SUPPLIER);
+  }, [suppliers, supplierChoice, suppliersQuery.isLoading]);
 
   const resetState = useCallback(() => {
     setSelectedFile(null);
     setValidationErrors([]);
     setIsValidating(false);
     setUploadSuccess(false);
-    uploadMutation.reset();
-  }, [uploadMutation]);
+    setImportJobId(null);
+    setUploadError(null);
+    importFiles.reset();
+  }, [importFiles]);
 
   const handleClose = useCallback(
     (isOpen: boolean) => {
@@ -95,7 +117,6 @@ export function CSVUploadModal({ open, onOpenChange }: CSVUploadModalProps) {
       if (missingHeaders.length === 0 && dataRows > 0) {
         const skuIndex = headers.indexOf('sku');
         const titleIndex = headers.indexOf('title');
-        const brandIndex = headers.indexOf('brand');
 
         for (let i = 1; i < lines.length && errors.length < MAX_ERRORS_DISPLAYED; i++) {
           const fields = parseCSVRow(lines[i]!);
@@ -106,9 +127,6 @@ export function CSVUploadModal({ open, onOpenChange }: CSVUploadModalProps) {
           }
           if (titleIndex >= 0 && (!fields[titleIndex] || fields[titleIndex]!.trim() === '')) {
             errors.push({ row: rowNum, message: 'Title is required' });
-          }
-          if (brandIndex >= 0 && (!fields[brandIndex] || fields[brandIndex]!.trim() === '')) {
-            errors.push({ row: rowNum, message: 'Brand is required' });
           }
 
           if (errors.length >= MAX_ERRORS_DISPLAYED) break;
@@ -128,7 +146,8 @@ export function CSVUploadModal({ open, onOpenChange }: CSVUploadModalProps) {
       setSelectedFile(file);
       setValidationErrors([]);
       setUploadSuccess(false);
-      uploadMutation.reset();
+      setUploadError(null);
+      importFiles.reset();
       setIsValidating(true);
 
       try {
@@ -140,41 +159,77 @@ export function CSVUploadModal({ open, onOpenChange }: CSVUploadModalProps) {
         setIsValidating(false);
       }
     },
-    [validateCSV, uploadMutation]
+    [validateCSV, importFiles]
   );
 
   const handleUpload = useCallback(async () => {
     if (!selectedFile || validationErrors.length > 0) return;
-
-    uploadMutation.mutate(selectedFile, {
-      onSuccess: () => {
-        setUploadSuccess(true);
-      },
-    });
-  }, [selectedFile, validationErrors, uploadMutation]);
+    setUploadError(null);
+    try {
+      let supplierId = supplierChoice;
+      if (!supplierId || supplierId === NEW_SUPPLIER) {
+        const created = (await createSupplier.mutateAsync({
+          name: DEFAULT_SUPPLIER_NAME,
+          // Re-uploading the same file must not create duplicates.
+          duplicateStrategy: 'SKIP',
+        })) as unknown as { supplierId?: string; supplier?: { supplierId?: string } };
+        supplierId = created.supplierId ?? created.supplier?.supplierId ?? '';
+        if (!supplierId) throw new Error('The supplier could not be created. Please try again.');
+        setSupplierChoice(supplierId);
+      }
+      const [started] = await importFiles.mutateAsync({ supplierId, files: [selectedFile] });
+      setImportJobId(started?.importJobId ?? null);
+      setUploadSuccess(true);
+    } catch (err) {
+      setUploadError(describeProductError(err, 'The upload failed. Please try again.'));
+    }
+  }, [selectedFile, validationErrors, supplierChoice, createSupplier, importFiles]);
 
   const canUpload =
     selectedFile !== null &&
     validationErrors.length === 0 &&
     !isValidating &&
-    !uploadMutation.isPending;
+    !isUploading &&
+    !suppliersQuery.isLoading;
+
+  const supplierOptions = [
+    ...suppliers.map((s) => ({ value: s.supplierId, label: s.name })),
+    ...(suppliers.length === 0 ? [{ value: NEW_SUPPLIER, label: `${DEFAULT_SUPPLIER_NAME} (created now)` }] : []),
+  ];
 
   return (
     <Modal
       open={open}
       onOpenChange={handleClose}
       title="Upload Products CSV"
-      description="Upload a CSV file with product data. The file must include SKU, title, and brand columns."
+      description="Upload a CSV of your products. Each row needs a SKU and a title, plus a description or an image link. Brand and price are optional."
     >
       <div className="flex flex-col gap-4">
+        {/* Supplier: imports are grouped per supplier, which sets duplicate handling */}
+        <div>
+          <Select
+            label="Supplier"
+            value={supplierChoice}
+            onValueChange={setSupplierChoice}
+            options={supplierOptions}
+            placeholder={suppliersQuery.isLoading ? 'Loading suppliers…' : 'Choose a supplier'}
+            disabled={isUploading || suppliersQuery.isLoading}
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            {suppliers.length === 0
+              ? `We'll create "${DEFAULT_SUPPLIER_NAME}" for your own products. Rows whose SKU already exists are skipped.`
+              : 'Duplicate SKUs are handled with the supplier\'s setting (skip, merge or flag).'}
+          </p>
+        </div>
+
         {/* File Upload */}
         <FileUpload
           label="CSV File"
           acceptedTypes={['text/csv', 'application/vnd.ms-excel']}
           maxSizeBytes={MAX_FILE_SIZE}
           onFilesSelected={handleFileSelected}
-          disabled={uploadMutation.isPending}
-          hint="CSV format, max 10 MB, up to 10,000 rows. Required columns: SKU, title, brand."
+          disabled={isUploading}
+          hint="CSV, max 10 MB, up to 10,000 rows. Required columns: sku, title."
           aria-label="Upload products CSV file"
         />
 
@@ -218,17 +273,26 @@ export function CSVUploadModal({ open, onOpenChange }: CSVUploadModalProps) {
         )}
 
         {/* Upload error from API */}
-        {uploadMutation.isError && (
-          <Alert variant="error" title="Upload Failed" dismissible>
-            {uploadMutation.error?.message || 'An error occurred during upload. Please try again.'}
-          </Alert>
+        {uploadError && (
+          <div aria-live="assertive">
+            <Alert variant="error" title="Upload failed" dismissible onDismiss={() => setUploadError(null)}>
+              {uploadError}
+            </Alert>
+          </div>
         )}
 
         {/* Success message */}
         {uploadSuccess && (
-          <Alert variant="success" title="Upload Successful">
-            Your CSV file has been uploaded and is being processed. Products will appear in the catalog shortly.
-          </Alert>
+          <div aria-live="polite">
+            <Alert variant="success" title="Import started">
+              Your file is uploaded and being imported. Products appear as drafts in about a minute.{' '}
+              {importJobId && (
+                <Link href={`/imports/${encodeURIComponent(importJobId)}`} className="font-medium underline">
+                  Follow the import
+                </Link>
+              )}
+            </Alert>
+          </div>
         )}
 
         {/* Actions */}
@@ -247,7 +311,7 @@ export function CSVUploadModal({ open, onOpenChange }: CSVUploadModalProps) {
               disabled={!canUpload}
               className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
             >
-              {uploadMutation.isPending ? 'Uploading…' : 'Upload'}
+              {isUploading ? 'Uploading…' : 'Upload'}
             </button>
           )}
         </div>

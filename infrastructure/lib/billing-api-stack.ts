@@ -40,6 +40,7 @@ import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations
 import { Construct } from 'constructs';
 import * as path from 'path';
 import { sellerDashboardOrigins } from './cors-origins';
+import { envFlag, envSetting } from './env-config';
 
 export interface BillingApiStackProps extends cdk.StackProps {
   environment: string;
@@ -72,17 +73,21 @@ export class BillingApiStack extends cdk.Stack {
     // Deploy-time settings (CDK context, with safe defaults)
     // -----------------------------------------------------------------------
 
-    // 'sandbox' until live PayFast credentials are deliberately switched on.
-    const payfastMode =
-      (this.node.tryGetContext('payfastMode') as string | undefined) ?? 'sandbox';
-    // Launch gate for starting checkouts. Closed unless explicitly opened with
-    // `--context checkoutEnabled=true` (prices are placeholders until finalised).
-    const checkoutEnabled =
-      String(this.node.tryGetContext('checkoutEnabled') ?? 'false') === 'true' ? 'true' : 'false';
-    // Where PayFast sends the buyer back to (the seller-dashboard origin).
-    const appBaseUrl =
-      (this.node.tryGetContext('appBaseUrl') as string | undefined) ??
-      `https://${env === 'production' ? 'app' : env}.merchos.io`;
+    // Per-environment values come from cdk.json `envConfig` (see env-config.ts);
+    // `--context key=value` still overrides them for a one-off deploy.
+
+    // 'sandbox' unless live PayFast credentials are deliberately switched on.
+    const payfastMode = envSetting(this, env, 'payfastMode', 'sandbox');
+    // Launch gate for starting checkouts. Closed unless explicitly opened
+    // (prices are placeholders until finalised).
+    const checkoutEnabled = envFlag(this, env, 'checkoutEnabled');
+    // Where PayFast sends the buyer back to when the client sends no returnUrl.
+    const appBaseUrl = envSetting(
+      this,
+      env,
+      'appBaseUrl',
+      `https://${env === 'production' ? 'app' : env}.merchos.io`,
+    );
 
     // -----------------------------------------------------------------------
     // DynamoDB — billing table
@@ -330,12 +335,39 @@ export class BillingApiStack extends cdk.Stack {
     ]);
 
     // ITN activates subscriptions, records payments and grants credits.
-    const payfastItnFn = createLambda('PayfastItn', path.join(handlersPath, 'payfast-itn.ts'), [
-      billingTableAccess,
-      kmsPolicy,
-      payfastSecretRead,
-      invoiceObjectsWrite, // issues the invoice PDF once the payment lands
-    ]);
+    // The payment alarms need metric filters on the ITN log group at deploy time.
+    // The Lambda-default group (/aws/lambda/<fn>) only appears on first invocation,
+    // so a fresh environment failed to deploy ("log group does not exist"); and in
+    // existing environments that name is already taken by the auto-created group.
+    // A dedicated, stack-owned group avoids both.
+    const payfastItnLogGroup = new logs.LogGroup(this, 'PayfastItnManagedLogGroup', {
+      logGroupName: `/merch-os/${env}/billing/payfast-itn`,
+      // Payment notifications: keep a year for disputes and reconciliation.
+      retention: logs.RetentionDays.ONE_YEAR,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+    // The free-trial entitlement lives in the products table (see
+    // services/shared/entitlements/trial-gate.ts); billing is its only writer of
+    // "subscribed". Get/Put/Update on the table only: no delete, query or scan.
+    const productsTableName = `merch-os-products-${env}`;
+    const trialEntitlementWrite = new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem'],
+      resources: [`arn:aws:dynamodb:${region}:${this.account}:table/${productsTableName}`],
+    });
+    const payfastItnFn = createLambda(
+      'PayfastItn',
+      path.join(handlersPath, 'payfast-itn.ts'),
+      [
+        billingTableAccess,
+        kmsPolicy,
+        payfastSecretRead,
+        invoiceObjectsWrite, // issues the invoice PDF once the payment lands
+        trialEntitlementWrite,
+      ],
+      payfastItnLogGroup
+    );
+    payfastItnFn.addEnvironment('PRODUCTS_TABLE', productsTableName);
 
     // Invoice PDF download: issues on demand if the webhook could not, then presigns.
     //
@@ -452,18 +484,14 @@ export class BillingApiStack extends cdk.Stack {
       topicName: `merch-os-billing-alarms-${env}`,
       displayName: `MerchOS billing alarms (${env})`,
     });
-    const alarmEmail = this.node.tryGetContext('billingAlarmEmail') as string | undefined;
+    const alarmEmail = envSetting(this, env, 'billingAlarmEmail');
     if (alarmEmail) {
       this.alarmTopic.addSubscription(new snsSubs.EmailSubscription(alarmEmail));
     }
     const notify = new cwActions.SnsAction(this.alarmTopic);
 
     const metricNamespace = `MerchOS/Billing/${env}`;
-    const itnLogGroup = logs.LogGroup.fromLogGroupName(
-      this,
-      'PayfastItnLogGroup',
-      `/aws/lambda/${payfastItnFn.functionName}`
-    );
+    const itnLogGroup: logs.ILogGroup = payfastItnLogGroup;
 
     /** Counts log lines whose JSON `message` is one of `messages`. */
     const logCountMetric = (
@@ -536,6 +564,8 @@ export class BillingApiStack extends cdk.Stack {
         'ITN amount mismatch',
         'ITN has no matching checkout intent',
         'ITN missing tenant or payment id',
+        // Paid, but the free-trial cap could not be lifted: unblock the seller by hand.
+        'ITN trial entitlement not updated',
       ]),
       1,
       'A verified ITN did not match our records (amount, checkout or tenant). Possible tampering or a bug; the payment was not applied.'

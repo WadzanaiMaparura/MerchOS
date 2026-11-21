@@ -45,6 +45,7 @@ import { promptManager } from '../services/prompt-manager';
 import { marketplaceAdapter } from '../services/marketplace-adapter';
 import type { CacheKeyInput } from '../types/cache.types';
 import type { MarketplaceId, ProductData } from '../types/generation.types';
+import { trialGateResponse } from './trial-guard';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -567,6 +568,13 @@ async function baseHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayPro
 
   // Append correlation IDs for structured logging (Requirement 11.4, 14.5)
   logger.appendKeys({ tenantId, generationType: request.type });
+
+  // 2b. Free-trial gate (no-op unless TRIAL_ENFORCEMENT is on). Payment Required.
+  const trialBlock = await trialGateResponse(tenantId, request.productId);
+  if (trialBlock) {
+    logger.info('Generation blocked by free-trial gate', { tenantId });
+    return trialBlock;
+  }
 
   // 3. Check budget
   const budgetCheck = await tokenTracker.checkBudget(tenantId);

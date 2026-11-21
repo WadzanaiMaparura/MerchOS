@@ -229,7 +229,8 @@ export class AuthApiStack extends cdk.Stack {
     const registerPendingFn = createLambda('RegisterPending', path.join(handlersPath, 'register-pending.ts'), [
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: ['dynamodb:PutItem'],
+        // GetItem: the one-trial-per-seller identity-claim check (CLAIM# items).
+        actions: ['dynamodb:PutItem', 'dynamodb:GetItem'],
         resources: [tenantsTable.tableArn],
       }),
       // The tenants table is CMK-encrypted; writing a pending record needs

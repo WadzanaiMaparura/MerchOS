@@ -24,6 +24,7 @@ import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations
 import { Construct } from 'constructs';
 import * as path from 'path';
 import { sellerDashboardOrigins } from './cors-origins';
+import { envFlag } from './env-config';
 
 export interface ProductApiStackProps extends cdk.StackProps {
   environment: string;
@@ -104,9 +105,17 @@ export class ProductApiStack extends cdk.Stack {
 
     const handlersPath = path.join(__dirname, '../../services/product/api/handlers');
 
+
+    // Free-trial enforcement switch. OFF unless explicitly enabled with
+    // cdk.json envConfig.<env>.trialEnforcement (or --context), read the SAME way by the Product API,
+    // Supplier Intelligence and Product Intelligence stacks (all three enforce the cap).
+    const trialEnforcement =
+      envFlag(this, env, 'trialEnforcement');
+
     const commonLambdaEnv: Record<string, string> = {
       PRODUCTS_TABLE: this.productsTable.tableName,
       ENVIRONMENT: env,
+      TRIAL_ENFORCEMENT: trialEnforcement,
     };
 
     const defaultLambdaProps: Partial<lambdaNodejs.NodejsFunctionProps> = {
@@ -223,6 +232,9 @@ export class ProductApiStack extends cdk.Stack {
       dynamoDbReadWritePolicy,
       kmsPolicy,
     ]);
+    // API Gateway answers the browser after 30 s regardless, but the Lambda must
+    // always get to finish so the product leaves GENERATING (REVIEW or back to DRAFT).
+    (synthesizeProductFn.node.defaultChild as lambda.CfnFunction).timeout = 90;
     synthesizeProductFn.addEnvironment('INTELLIGENCE_API_URL', intelligenceApiUrl);
 
     // Review-loop handlers.
@@ -285,6 +297,18 @@ export class ProductApiStack extends cdk.Stack {
       path: '/products/{productId}/synthesize',
       methods: [HttpMethod.POST],
       integration: new HttpLambdaIntegration('SynthesizeProductIntegration', synthesizeProductFn),
+      authorizer: jwtAuthorizer,
+    });
+
+    // Free-trial usage for the seller UI ("X of 15 free products used").
+    const getTrialUsageFn = createLambda('GetTrialUsage', path.join(handlersPath, 'get-trial-usage.ts'), [
+      dynamoDbReadWritePolicy,
+      kmsPolicy,
+    ]);
+    this.httpApi.addRoutes({
+      path: '/entitlements/trial',
+      methods: [HttpMethod.GET],
+      integration: new HttpLambdaIntegration('GetTrialUsageIntegration', getTrialUsageFn),
       authorizer: jwtAuthorizer,
     });
 

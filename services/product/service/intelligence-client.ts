@@ -16,6 +16,8 @@ export interface GenerateCall {
   productData: Record<string, unknown>;
   marketplace?: string;
   options?: Record<string, unknown>;
+  /** Lets the intelligence API apply the free-trial gate to the right product. */
+  productId?: string;
 }
 
 /** A single generation request + its result (or null if the call failed). */

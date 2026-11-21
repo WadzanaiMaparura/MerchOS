@@ -62,7 +62,10 @@ import { Logger } from '@aws-lambda-powertools/logger';
 import { PendingRegistrationRepository } from '../registration/pending-registration-repository';
 import { RegistrationCompletionRepository } from '../registration/registration-completion-repository';
 import { findGenuineInvitationByEmail } from '../registration/invitation-lookup';
+import { recordClaims } from '../registration/identity-claims';
 import { emitAuthEvent } from '../utils/event-emitter';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import type { PendingRegistrationRecord } from '../registration/types';
 
 const logger = new Logger({ serviceName: 'merch-os-post-confirmation' });
@@ -104,6 +107,17 @@ export function __setRegistrationCompletionRepositoryForTesting(
 
 function getCompletionRepository(): RegistrationCompletionRepository {
   return completionRepositoryOverride ?? new RegistrationCompletionRepository();
+}
+
+let claimsClientOverride: DynamoDBDocumentClient | undefined;
+/** Test seam for the identity-claim writes. */
+export function setClaimsClient(client: DynamoDBDocumentClient | undefined): void {
+  claimsClientOverride = client;
+}
+function getClaimsClient(): DynamoDBDocumentClient {
+  return (claimsClientOverride ??= DynamoDBDocumentClient.from(
+    new DynamoDBClient({ region: process.env['AWS_REGION'] ?? 'eu-west-1' }),
+  ));
 }
 
 // ---------------------------------------------------------------------------
@@ -371,6 +385,28 @@ export async function handler(
       // Idempotent retry: records already existed. Still proceed to ensure the
       // event/cleanup happen (they are themselves idempotent / safe).
       logger.info('Durable registration already complete; ensuring event + cleanup', { userId });
+    }
+
+    // 1b) Claim this seller's email / phone / business name (one free trial per
+    // seller; checked again at the next sign-up). Best effort, AFTER the commit:
+    // throwing here would leave a verified user without their tenant.
+    const tenantsTable = process.env['TENANTS_TABLE'];
+    if (tenantsTable) {
+      try {
+        const { conflicts } = await recordClaims(getClaimsClient(), tenantsTable, pending.tenantId, {
+          email,
+          phoneNumber: pending.phoneNumber,
+          organisationName: pending.organisationName,
+        });
+        if (conflicts.length) {
+          logger.warn('Identity already claimed by another tenant (concurrent sign-up)', { userId, kinds: conflicts });
+        }
+      } catch (error) {
+        logger.error('Identity claims not recorded', {
+          userId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     // 2) Emit the registration event — strictly AFTER the durable commit, so it

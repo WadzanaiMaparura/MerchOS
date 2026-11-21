@@ -1,8 +1,18 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { useParams } from 'next/navigation';
-import { useProduct, useUpdateProduct, useApproveAttribute, useOverrideAttribute } from '@merch-os/api-client';
+import { useParams, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
+import {
+  useProduct,
+  useUpdateProduct,
+  useApproveAttribute,
+  useOverrideAttribute,
+  useSynthesizeProduct,
+  useRegenerateAttribute,
+  isTrialErrorCode,
+} from '@merch-os/api-client';
+import { describeProductError } from '../../../components/TrialBanner';
 import { useRole, useAuth } from '@merch-os/auth';
 import {
   Card,
@@ -49,10 +59,60 @@ export default function ProductDetailPage() {
   const role = useRole();
   const { user } = useAuth();
 
-  const { data: product, isLoading, error } = useProduct(productId);
+  const { data: product, isLoading, error, refetch } = useProduct(productId);
   const updateProduct = useUpdateProduct();
   const approveAttribute = useApproveAttribute();
   const overrideAttribute = useOverrideAttribute();
+  const synthesize = useSynthesizeProduct();
+  const regenerate = useRegenerateAttribute();
+  const searchParams = useSearchParams();
+
+  // AI generation feedback. `?ai=<reason>` arrives from the create page when the
+  // product was saved but generation did not finish.
+  const [aiError, setAiError] = useState<{ message: string; trial: boolean } | null>(() => {
+    const reason = searchParams?.get('ai');
+    return reason ? { message: reason, trial: /trial/i.test(reason) } : null;
+  });
+  const [aiNotice, setAiNotice] = useState<string | null>(null);
+  const [regeneratingName, setRegeneratingName] = useState<string | null>(null);
+
+  const handleGenerate = useCallback(async () => {
+    setAiError(null);
+    setAiNotice(null);
+    try {
+      const result = await synthesize.mutateAsync({ productId });
+      if (result.partial) {
+        setAiNotice('Some fields could not be generated. Review what was written, then regenerate the rest.');
+      }
+    } catch (err) {
+      const e = err as { code?: string; statusCode?: number };
+      // API Gateway answers after 30 s while generation finishes in the background.
+      if (e?.statusCode === 503 || e?.statusCode === 504 || e?.code === 'ECONNABORTED') {
+        setAiNotice('Still generating. This page will update in a moment.');
+        setTimeout(() => void refetch(), 20_000);
+        return;
+      }
+      setAiError({
+        message: describeProductError(err, 'AI generation failed. Please try again.'),
+        trial: isTrialErrorCode(e?.code),
+      });
+    }
+  }, [productId, synthesize, refetch]);
+
+  const handleRegenerate = useCallback(async (attributeName: string) => {
+    setAiError(null);
+    setRegeneratingName(attributeName);
+    try {
+      await regenerate.mutateAsync({ productId, attributeName });
+    } catch (err) {
+      setAiError({
+        message: describeProductError(err, `Could not regenerate ${attributeName}. Please try again.`),
+        trial: isTrialErrorCode((err as { code?: string })?.code),
+      });
+    } finally {
+      setRegeneratingName(null);
+    }
+  }, [productId, regenerate]);
 
   // Track inline editing state
   const [editingField, setEditingField] = useState<EditingField | null>(null);
@@ -161,27 +221,21 @@ export default function ProductDetailPage() {
     );
   }
 
-  // No backend yet: instead of a red error card, show a neutral placeholder so
-  // the page renders cleanly. The full product detail populates once the
-  // products backend is connected.
   if (error || !product) {
+    const notFound = (error as { statusCode?: number } | null)?.statusCode === 404 || (!error && !product);
     return (
       <div className="flex flex-col gap-4">
-        <h1 className="text-2xl font-semibold text-gray-900">Product detail</h1>
-        <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-          <p className="text-sm font-medium text-gray-900">Product preview</p>
-          <p className="mt-1 text-sm text-gray-500">
-            The full product view (generated title, description, images, attributes, and the
-            per-marketplace readiness) appears here once the products backend is connected.
-          </p>
-          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {['Title', 'Description', 'Images', 'Attributes', 'Category', 'Video URL'].map((f) => (
-              <div key={f} className="rounded-md border border-dashed border-gray-200 bg-gray-50 px-3 py-3 text-xs text-gray-400">
-                {f}
-              </div>
-            ))}
-          </div>
-        </div>
+        <Link href="/products" className="text-sm text-blue-600 hover:underline">← Products</Link>
+        <Alert variant={notFound ? 'warning' : 'error'} title={notFound ? 'Product not found' : 'Could not load this product'}>
+          {notFound
+            ? 'This product does not exist or was archived.'
+            : `${describeProductError(error, 'Something went wrong.')} `}
+          {!notFound && (
+            <button type="button" onClick={() => void refetch()} className="font-medium underline">
+              Try again
+            </button>
+          )}
+        </Alert>
       </div>
     );
   }
@@ -194,8 +248,54 @@ export default function ProductDetailPage() {
           <h1 className="text-2xl font-semibold text-gray-900">{product.title}</h1>
           <p className="mt-1 text-sm text-gray-500">SKU: {product.sku}</p>
         </div>
-        <LifecycleBadge state={product.lifecycleState} />
+        <div className="flex items-center gap-3">
+          <LifecycleBadge state={product.lifecycleState} />
+          {canEdit && product.lifecycleState === 'DRAFT' && (
+            <button
+              type="button"
+              onClick={handleGenerate}
+              disabled={synthesize.isPending}
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            >
+              {synthesize.isPending ? 'Generating…' : 'Generate with AI'}
+            </button>
+          )}
+        </div>
       </header>
+
+      {product.lifecycleState === 'GENERATING' && !synthesize.isPending && (
+        <Alert variant="info" title="Generating">
+          AI is writing this listing. Refresh in a moment to see the result.{' '}
+          <button type="button" onClick={() => void refetch()} className="font-medium underline">
+            Refresh now
+          </button>
+        </Alert>
+      )}
+      {synthesize.isPending && (
+        <p className="text-sm text-gray-600" aria-live="polite">
+          Writing the title, description, bullet points, attributes and category. This can take up to a minute.
+        </p>
+      )}
+      {aiNotice && (
+        <div aria-live="polite">
+          <Alert variant="info" dismissible onDismiss={() => setAiNotice(null)}>{aiNotice}</Alert>
+        </div>
+      )}
+      {aiError && (
+        <div aria-live="assertive">
+          <Alert
+            variant={aiError.trial ? 'warning' : 'error'}
+            title={aiError.trial ? 'Free trial limit' : 'AI generation failed'}
+            dismissible
+            onDismiss={() => setAiError(null)}
+          >
+            {aiError.message}{' '}
+            {aiError.trial && (
+              <Link href="/billing" className="font-medium underline">See plans</Link>
+            )}
+          </Alert>
+        </div>
+      )}
 
       {/* Edit Error Alert */}
       {editError && (
@@ -236,6 +336,9 @@ export default function ProductDetailPage() {
               isApproving={approveAttribute.isPending}
               isOverriding={overrideAttribute.isPending}
               userId={user?.userId}
+              // Regenerating a field is a REVIEW-stage action (API enforces it too).
+              onRegenerate={canEdit && product.lifecycleState === 'REVIEW' ? handleRegenerate : undefined}
+              regeneratingName={regeneratingName}
             />
           )}
         </div>
@@ -476,9 +579,12 @@ interface EnrichmentSectionProps {
   isApproving: boolean;
   isOverriding: boolean;
   userId?: string;
+  /** Present only when fields can be regenerated (product in REVIEW). */
+  onRegenerate?: (attributeName: string) => void;
+  regeneratingName?: string | null;
 }
 
-function EnrichmentSection({ enrichmentLayer, canEdit, onApprove, onOverride, isApproving, isOverriding, userId }: EnrichmentSectionProps) {
+function EnrichmentSection({ enrichmentLayer, canEdit, onApprove, onOverride, isApproving, isOverriding, userId, onRegenerate, regeneratingName }: EnrichmentSectionProps) {
   const attributes = enrichmentLayer?.attributes ?? {};
   const attributeEntries = Object.entries(attributes);
 
@@ -503,6 +609,9 @@ function EnrichmentSection({ enrichmentLayer, canEdit, onApprove, onOverride, is
               isApproving={isApproving}
               isOverriding={isOverriding}
               userId={userId}
+              onRegenerate={onRegenerate ? () => onRegenerate(name) : undefined}
+              isRegenerating={regeneratingName === name}
+              regenerateBusy={!!regeneratingName}
             />
           ))}
         </div>
@@ -520,9 +629,13 @@ interface EnrichedAttributeRowProps {
   isApproving: boolean;
   isOverriding: boolean;
   userId?: string;
+  onRegenerate?: () => void;
+  isRegenerating?: boolean;
+  /** Another field is regenerating: one at a time keeps the AI budget predictable. */
+  regenerateBusy?: boolean;
 }
 
-function EnrichedAttributeRow({ name, attribute, canEdit, onApprove, onOverride, isApproving, isOverriding, userId }: EnrichedAttributeRowProps) {
+function EnrichedAttributeRow({ name, attribute, canEdit, onApprove, onOverride, isApproving, isOverriding, userId, onRegenerate, isRegenerating, regenerateBusy }: EnrichedAttributeRowProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(String(attribute.value));
   const [overrideError, setOverrideError] = useState<string | null>(null);
@@ -620,6 +733,16 @@ function EnrichedAttributeRow({ name, attribute, canEdit, onApprove, onOverride,
               aria-label={`Override ${name} attribute`}
             >
               Override
+            </button>
+          )}
+          {canEdit && onRegenerate && !isEditing && (
+            <button
+              onClick={onRegenerate}
+              disabled={regenerateBusy}
+              className="rounded px-2 py-0.5 text-xs font-medium text-purple-700 hover:bg-purple-50 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:ring-offset-2"
+              aria-label={`Regenerate ${name} with AI`}
+            >
+              {isRegenerating ? 'Regenerating…' : 'Regenerate'}
             </button>
           )}
           {canEdit && attribute.flaggedForReview && !isEditing && (

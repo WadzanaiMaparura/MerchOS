@@ -35,6 +35,7 @@ import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations
 import { Construct } from 'constructs';
 import * as path from 'path';
 import { sellerDashboardOrigins } from './cors-origins';
+import { envFlag } from './env-config';
 
 export interface SupplierIntelligenceStackProps extends cdk.StackProps {
   environment: string;
@@ -610,9 +611,17 @@ export class SupplierIntelligenceStack extends cdk.Stack {
       importJobsTableReadWrite,
       eventBusPutEvents,
       // Write access to the Products table (batch-writes imported products).
+      // GetItem + DeleteItem are for the free-trial gate: it reads the seller's
+      // entitlement and reserves/releases one allow-list marker per product.
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: ['dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:BatchWriteItem'],
+        actions: [
+          'dynamodb:PutItem',
+          'dynamodb:UpdateItem',
+          'dynamodb:BatchWriteItem',
+          'dynamodb:GetItem',
+          'dynamodb:DeleteItem',
+        ],
         resources: [productsTableArn],
       }),
     ], { timeout: cdk.Duration.seconds(120), memorySize: 512 });
@@ -635,6 +644,13 @@ export class SupplierIntelligenceStack extends cdk.Stack {
     );
 
     productPersisterFn.addEnvironment('PRODUCTS_TABLE_NAME', productsTableName);
+
+    // Free-trial enforcement switch. OFF unless explicitly enabled with
+    // cdk.json envConfig.<env>.trialEnforcement (or --context), read the SAME way by the Product API,
+    // Supplier Intelligence and Product Intelligence stacks (all three enforce the cap).
+    const trialEnforcement =
+      envFlag(this, env, 'trialEnforcement');
+    productPersisterFn.addEnvironment('TRIAL_ENFORCEMENT', trialEnforcement);
     duplicateDetectorFn.addEnvironment('PRODUCTS_TABLE_NAME', productsTableName);
 
     // -----------------------------------------------------------------------

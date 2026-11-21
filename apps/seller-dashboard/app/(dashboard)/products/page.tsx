@@ -7,7 +7,9 @@ import { useRole } from '@merch-os/auth';
 import { DataTable, Select, Input, LifecycleBadge } from '@merch-os/ui';
 import type { ColumnDef } from '@merch-os/ui';
 import type { ProductSummary, LifecycleState } from '@merch-os/types';
+import Link from 'next/link';
 import { CSVUploadModal } from './components/CSVUploadModal';
+import { TrialBanner } from '../../components/TrialBanner';
 import { ProductExportPanel } from './components/ProductExportPanel';
 
 /**
@@ -211,14 +213,22 @@ export default function ProductsPage() {
           <div className="flex gap-2">
             {/* Create/edit/delete controls hidden for viewer role */}
             <button
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+              className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
               onClick={() => setIsUploadModalOpen(true)}
             >
               Upload CSV
             </button>
+            <Link
+              href="/products/new"
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            >
+              New product
+            </Link>
           </div>
         )}
       </div>
+
+      <TrialBanner />
 
       {/* Export Panel - shown when products are selected (editor+ only) */}
       {!isViewer && selectedProductIds.length > 0 && (
@@ -320,7 +330,11 @@ export default function ProductsPage() {
         pageSize={PAGE_SIZE}
         totalItems={totalItems}
         onPageChange={handlePageChange}
-        emptyMessage="No products found."
+        emptyMessage={
+          isSearching || lifecycleFilter
+            ? 'No products match your search or filter.'
+            : 'No products yet. Create one, or upload a CSV of your catalogue.'
+        }
         caption="Product catalog"
       />
 

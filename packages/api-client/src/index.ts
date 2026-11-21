@@ -110,14 +110,29 @@ export {
   useTransitionLifecycle,
   useProductSearch,
   useProductExport,
-  useProductUpload,
   useCanonicalProduct,
+  useCreateProduct,
+  useSynthesizeProduct,
+  useRegenerateAttribute,
+  useTrialUsage,
+  trialKeys,
+  applyListParams,
+  MAX_LISTED_PRODUCTS,
+} from './hooks/useProducts';
+export type {
+  CreateProductPayload,
+  SynthesisType,
+  SynthesizeResult,
+  TrialUsage,
 } from './hooks/useProducts';
 
 // Product Intelligence (AI synthesis) hooks
 export {
   useGenerateContent,
   GENERATION_LIMIT_REACHED,
+  TRIAL_LIMIT_REACHED,
+  TRIAL_NOT_ACTIVATED,
+  isTrialErrorCode,
 } from './hooks/useGenerateContent';
 export type {
   GenerationType,
@@ -240,7 +255,7 @@ export type {
 } from './hooks/useImportJobs';
 
 // Supplier import triggers (direct-to-S3 uploads)
-export { useStartFileImport, useStartImageImport, useStartUrlImport, importContentType } from './hooks/useImportUpload';
+export { useStartFileImport, useImportFiles, useStartImageImport, useStartUrlImport, importContentType } from './hooks/useImportUpload';
 export type { StartedImport } from './hooks/useImportUpload';
 
 // Supplier hooks

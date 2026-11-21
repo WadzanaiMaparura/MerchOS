@@ -14,6 +14,15 @@
     ]
   },
   "context": {
-    "env": "dev"
+    "env": "dev",
+    "envConfig": {
+      "dev": {
+        "payfastMode": "live",
+        "billingAlarmEmail": "admin@merchos.co.za",
+        "appBaseUrl": "https://merchos.co.za",
+        "checkoutEnabled": "false",
+        "trialEnforcement": "false"
+      }
+    }
   }
 }

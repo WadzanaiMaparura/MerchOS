@@ -115,14 +115,23 @@ async function persist(input: WorkflowInput) {
   });
 
   const fields: Record<string, unknown> = { results: outcome.jobResults };
+  const errors: ImportJobError[] = [...(job.errors ?? [])];
   if (outcome.failureError) {
-    const errors: ImportJobError[] = [...(job.errors ?? []), {
+    errors.push({
       code: 'PARTIAL_WRITE',
       message: `${outcome.failed} product(s) could not be saved. Re-run the import to retry them.`,
-    }];
-    fields['errors'] = errors;
+    });
     logger.error('Partial product write', { importJobId: input.importJobId, error: outcome.failureError });
   }
+  const blocked = outcome.jobResults.blockedByTrial ?? 0;
+  if (blocked > 0) {
+    // Not a failure: the import created what the free trial allows.
+    errors.push({
+      code: 'TRIAL_LIMIT_REACHED',
+      message: `${blocked} product(s) were not imported because your free trial limit was reached. Subscribe to import the rest.`,
+    });
+  }
+  if (errors.length > (job.errors?.length ?? 0)) fields['errors'] = errors;
   await setJobFields(input, fields);
   recordImportCompleted({ tenantId: input.tenantId, sourceType: input.sourceType });
 
