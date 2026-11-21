@@ -33,6 +33,8 @@ export interface ProductSummary {
   tenantId: string;
   sku: string;
   title: string;
+  /** Optional for back-compat with older API responses. */
+  brand?: string;
   thumbnailUrl: string | null;
   lifecycleState: LifecycleState;
   updatedAt: string; // ISO 8601

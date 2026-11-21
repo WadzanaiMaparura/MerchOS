@@ -42,6 +42,37 @@ async function resolveProvider(notifyUrl?: string): Promise<PaymentProvider> {
   return new PayFastProvider(config);
 }
 
+/**
+ * Origins PayFast may send the buyer back to: ALLOWED_RETURN_ORIGINS (set by the
+ * stack from the seller-dashboard origins) plus APP_BASE_URL's origin.
+ */
+export function allowedReturnOrigins(): Set<string> {
+  const origins = new Set<string>();
+  for (const raw of (process.env['ALLOWED_RETURN_ORIGINS'] ?? '').split(',')) {
+    const v = raw.trim();
+    if (v) origins.add(v.replace(/\/+$/, ''));
+  }
+  try {
+    if (process.env['APP_BASE_URL']) origins.add(new URL(process.env['APP_BASE_URL']).origin);
+  } catch {
+    // An invalid APP_BASE_URL simply adds nothing.
+  }
+  return origins;
+}
+
+/** True only for absolute http(s) URLs on an allowed origin (no userinfo tricks). */
+export function isAllowedReturnUrl(url: string, allowed: Set<string>): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false;
+  if (parsed.username || parsed.password) return false;
+  return allowed.has(parsed.origin);
+}
+
 /** Reads the seller's email from the JWT authorizer claims, if present. */
 function extractEmail(event: APIGatewayProxyEventV2): string | undefined {
   const authorizer = (event.requestContext as unknown as Record<string, unknown>)?.['authorizer'] as
@@ -98,9 +129,23 @@ async function baseHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayPro
   const email = extractEmail(event);
 
   // Default return/cancel URLs point at the seller-dashboard billing page.
-  const appBase = process.env['APP_BASE_URL'] ?? ''; // PLACEHOLDER — set to the deployed seller-dashboard origin
+  const appBase = process.env['APP_BASE_URL'] ?? '';
   const returnUrl = parsed.data.returnUrl ?? `${appBase}/billing?checkout=success`;
   const cancelUrl = parsed.data.cancelUrl ?? `${appBase}/billing?checkout=cancelled`;
+
+  // PayFast sends the buyer to these URLs after paying. Without this check any
+  // caller could make a genuine PayFast payment page bounce to a site of their
+  // choosing (open redirect / phishing). Only our own dashboard origins pass.
+  const allowed = allowedReturnOrigins();
+  for (const [field, url] of [['returnUrl', returnUrl], ['cancelUrl', cancelUrl]] as const) {
+    if (!isAllowedReturnUrl(url, allowed)) {
+      logger.warn('Checkout refused: return URL outside the allowed origins', { field });
+      return ApiErrors.validation(
+        `${field} must point to the MerchOS dashboard`,
+        field,
+      ) as APIGatewayProxyResultV2;
+    }
+  }
 
   try {
     // Price the checkout on the server. A voucher (if any) is validated and

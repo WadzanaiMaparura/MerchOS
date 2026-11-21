@@ -147,6 +147,8 @@ export function assembleProductSummary(
     tenantId: product.tenantId,
     sku: product.content.sku,
     title: product.content.title,
+    // The list view shows (and searches) brand.
+    brand: product.content.brand ?? '',
     thumbnailUrl: heroRef ? heroRef.s3Key : null,
     lifecycleState: resolveUiLifecycleState(product, enrichment),
     updatedAt: product.updatedAt,

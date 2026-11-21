@@ -20,6 +20,8 @@
 import * as cdk from 'aws-cdk-lib';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as events from 'aws-cdk-lib/aws-events';
+import * as eventsTargets from 'aws-cdk-lib/aws-events-targets';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as kms from 'aws-cdk-lib/aws-kms';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
@@ -35,6 +37,7 @@ import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations
 import { Construct } from 'constructs';
 import * as path from 'path';
 import { sellerDashboardOrigins } from './cors-origins';
+import { enableRateLimiting } from './rate-limits';
 import { envFlag } from './env-config';
 
 export interface SupplierIntelligenceStackProps extends cdk.StackProps {
@@ -519,6 +522,35 @@ export class SupplierIntelligenceStack extends cdk.Stack {
     // The stateMachineArn env var is injected after the state machine is created.
     // -----------------------------------------------------------------------
 
+    // Every 10 min: fail import jobs abandoned mid-way (an Express workflow that
+    // times out runs no Catch and emits no event, so they stayed PROCESSING).
+    const sweepStuckImportsFn = createFn('SweepStuckImports', path.join(handlersPath, 'sweep-stuck-imports.ts'), [
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['dynamodb:Scan', 'dynamodb:UpdateItem'],
+        resources: [this.importJobsTable.tableArn],
+      }),
+      eventBusPutEvents,
+      // Removes the abandoned job's intermediate work files.
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['s3:ListBucket'],
+        resources: [`arn:aws:s3:::${rawUploadsBucketName}`],
+      }),
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['s3:DeleteObject'],
+        resources: [`arn:aws:s3:::${rawUploadsBucketName}/suppliers/*/work/*`],
+      }),
+    ], { timeout: cdk.Duration.minutes(2) });
+    sweepStuckImportsFn.addEnvironment('EVENT_BUS_NAME', eventBusArn);
+    new events.Rule(this, 'SweepStuckImportsSchedule', {
+      ruleName: `merch-os-si-sweep-stuck-imports-${env}`,
+      description: 'Fails supplier import jobs abandoned mid-way (Express workflow timeouts)',
+      schedule: events.Schedule.rate(cdk.Duration.minutes(10)),
+      targets: [new eventsTargets.LambdaFunction(sweepStuckImportsFn, { retryAttempts: 0 })],
+    });
+
     const importQueueConsumerFn = createFn('ImportQueueConsumer', path.join(handlersPath, 'import-queue-consumer.ts') as string, [
       importJobsTableReadWrite,
       new iam.PolicyStatement({
@@ -682,6 +714,13 @@ export class SupplierIntelligenceStack extends cdk.Stack {
       duplicateDetector: duplicateDetectorFn,
       productPersister: productPersisterFn,
     };
+
+    // Per-user, per-route request limits (rateLimitMiddleware in each handler).
+    enableRateLimiting(this, env, platformKeyArn, [
+      createSupplierFn, listSuppliersFn, getSupplierFn, updateSupplierFn, getSupplierVersionsFn,
+      triggerFileImportFn, triggerImageImportFn, triggerUrlImportFn, startImportFn,
+      listImportJobsFn, getImportJobFn, getSupplierImportsFn,
+    ]);
 
     // -----------------------------------------------------------------------
     // Step Functions — Retry configurations (Req 5.3, 14.1, 14.2)

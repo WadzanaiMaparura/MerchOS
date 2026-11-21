@@ -231,3 +231,19 @@ describe('import workflow (Step Functions task handlers)', () => {
     expect(describeFailure({ Error: 'UNSUPPORTED_SOURCE_TYPE', Cause: 'x' }).code).toBe('UNSUPPORTED_SOURCE_TYPE');
   });
 });
+
+describe('imported images are kept on the product', () => {
+  it('stores CSV image URLs (in order, de-duplicated) and drops non-images', async () => {
+    objects.set(base.sourceReference,
+      'title,sku,price,description,image_url\n' +
+      '"Kettle",K-9,10,Steel,"https://cdn.example.com/k1.jpg;https://cdn.example.com/k2.png;https://cdn.example.com/k1.jpg;kettle.jpg"\n');
+    await runAll();
+    const kettle = newProducts().find((p) => (p['content'] as { sku: string }).sku === 'K-9')!;
+    const refs = (kettle['content'] as { imageRefs: Array<{ s3Key: string; position: number; mimeType: string; imageId: string }> }).imageRefs;
+    expect(refs.map((r) => r.s3Key)).toEqual(['https://cdn.example.com/k1.jpg', 'https://cdn.example.com/k2.png']);
+    expect(refs.map((r) => r.position)).toEqual([0, 1]);
+    expect(refs[1]!.mimeType).toBe('image/png');
+    // Deterministic ids, so a retried import writes the same refs.
+    expect(refs[0]!.imageId).toBe(`${kettle['productId']}-img-0`);
+  });
+});
