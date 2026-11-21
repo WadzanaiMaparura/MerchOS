@@ -58,6 +58,8 @@ const call = async (body: unknown) => {
 beforeEach(() => {
   vi.clearAllMocks();
   process.env['CHECKOUT_ENABLED'] = 'true';
+  process.env['APP_BASE_URL'] = 'https://merchos.co.za';
+  process.env['ALLOWED_RETURN_ORIGINS'] = 'https://merchos.co.za,http://localhost:3000';
   setPaymentProvider(provider as never);
   initiateCheckout.mockResolvedValue({ redirectUrl: 'https://pay.example/x', mPaymentId: 'pay-1' });
 });
@@ -123,5 +125,47 @@ describe('POST /billing/plan launch gate', () => {
     expect(initiateCheckout).not.toHaveBeenCalled();
     expect(store.createCheckoutIntent).not.toHaveBeenCalled();
     expect(vouchers.resolveVoucher).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /billing/plan return URLs (no open redirect via PayFast)', () => {
+  it('accepts return/cancel URLs on the dashboard origin', async () => {
+    const { status } = await call({
+      planId: 'starter',
+      returnUrl: 'https://merchos.co.za/billing?checkout=success',
+      cancelUrl: 'http://localhost:3000/billing?checkout=cancelled',
+    });
+    expect(status).toBe(200);
+    expect(initiateCheckout).toHaveBeenCalledWith(expect.objectContaining({
+      returnUrl: 'https://merchos.co.za/billing?checkout=success',
+    }));
+  });
+
+  it('defaults to the dashboard billing page when none are sent', async () => {
+    await call({ planId: 'starter' });
+    expect(initiateCheckout).toHaveBeenCalledWith(expect.objectContaining({
+      returnUrl: 'https://merchos.co.za/billing?checkout=success',
+      cancelUrl: 'https://merchos.co.za/billing?checkout=cancelled',
+    }));
+  });
+
+  it.each([
+    ['another site', 'https://evil.example/phish'],
+    ['a look-alike subdomain', 'https://merchos.co.za.evil.example/x'],
+    ['userinfo trickery', 'https://merchos.co.za@evil.example/x'],
+    ['a javascript: URL', 'javascript:alert(1)'],
+    ['the right host over another port', 'https://merchos.co.za:8443/billing'],
+  ])('refuses %s and starts no checkout', async (_label, url) => {
+    const { status, json } = await call({ planId: 'starter', returnUrl: url });
+    expect(status).toBe(400);
+    expect(json.error.code).toBe('VALIDATION_ERROR');
+    expect(initiateCheckout).not.toHaveBeenCalled();
+    expect(store.createCheckoutIntent).not.toHaveBeenCalled();
+  });
+
+  it('also checks the cancel URL', async () => {
+    const { status } = await call({ planId: 'starter', cancelUrl: 'https://evil.example/' });
+    expect(status).toBe(400);
+    expect(initiateCheckout).not.toHaveBeenCalled();
   });
 });

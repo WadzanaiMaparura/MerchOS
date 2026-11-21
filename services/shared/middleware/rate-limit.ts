@@ -30,6 +30,12 @@ export interface RateLimitOptions {
    * Default: extract userId from authorizer context, fallback to source IP.
    */
   identifierFn?: (event: Record<string, unknown>) => string;
+  /**
+   * Which counter this limit uses. Each scope counts separately, so a seller's
+   * page loads do not use up a stricter limit such as 10 imports/minute.
+   * Default: the Lambda function name (one function serves one route).
+   */
+  scope?: string;
 }
 
 /**
@@ -157,6 +163,7 @@ function getWindowId(nowSeconds: number, windowSeconds: number): string {
 async function incrementCounter(
   tableName: string,
   identifier: string,
+  scope: string,
   windowId: string,
   windowSeconds: number,
   nowSeconds: number,
@@ -172,7 +179,9 @@ async function incrementCounter(
       TableName: tableName,
       Key: {
         PK: identifier,
-        SK: `WINDOW#${windowId}`,
+        // Scoped per endpoint: one shared counter made every route share the
+        // strictest limit (browsing would trip the 10/min import limit).
+        SK: `WINDOW#${scope}#${windowId}`,
       },
       UpdateExpression:
         'ADD #count :inc SET #windowStart = if_not_exists(#windowStart, :ws), #expiresAt = :ttl',
@@ -216,6 +225,7 @@ export function rateLimitMiddleware(options: RateLimitOptions = {}): middy.Middl
     windowSeconds = 60,
     identifierFn = defaultIdentifierFn,
   } = options;
+  const scope = options.scope ?? process.env['AWS_LAMBDA_FUNCTION_NAME'] ?? 'default';
 
   const before: middy.MiddlewareFn = async (request) => {
     const tableName = process.env['RATE_LIMITS_TABLE'];
@@ -235,6 +245,7 @@ export function rateLimitMiddleware(options: RateLimitOptions = {}): middy.Middl
       currentCount = await incrementCounter(
         tableName,
         identifier,
+        scope,
         windowId,
         windowSeconds,
         nowSeconds,

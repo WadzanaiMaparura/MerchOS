@@ -35,6 +35,7 @@ import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations
 import { Construct } from 'constructs';
 import * as path from 'path';
 import { sellerDashboardOrigins } from './cors-origins';
+import { enableRateLimiting } from './rate-limits';
 
 export interface ImageIntelligenceStackProps extends cdk.StackProps {
   environment: string;
@@ -677,6 +678,9 @@ export class ImageIntelligenceStack extends cdk.Stack {
       'CLOUDFRONT_PRIVATE_KEY_SECRET_ID',
       signingPrivateKeySecret.secretArn,
     );
+
+    // Per-user, per-route request limits (rateLimitMiddleware in each handler).
+    enableRateLimiting(this, env, platformKeyArn, [uploadUrlFn, startProcessFn, getImageFn, signedUrlFn]);
 
     this.lambdaFunctions = {
       uploadUrl: uploadUrlFn,

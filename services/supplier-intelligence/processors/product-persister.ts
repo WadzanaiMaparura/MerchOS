@@ -215,7 +215,9 @@ function buildProductItem(
       materials: [],
       // importMetadata is stored inside attributes per the ImportMetadata contract.
       attributes: attributes as Record<string, string | number | boolean>,
-      imageRefs: [],
+      // Was always []: every imported image (CSV image URLs, OCR'd photos,
+      // crawled images) was dropped.
+      imageRefs: toImportedImageRefs(productId, flat['images'], title),
       variants: [],
     },
     commercial: {
@@ -254,6 +256,61 @@ function buildProductItem(
     // commercial, platformSpecific, lifecycleState, createdAt/updatedAt).
     ...product,
   };
+}
+
+/** Marketplaces accept at most ~10 images per listing. */
+export const MAX_IMPORTED_IMAGES = 10;
+
+const MIME_BY_EXT: Record<string, string> = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp',
+  gif: 'image/gif', avif: 'image/avif', tif: 'image/tiff', tiff: 'image/tiff',
+};
+
+/**
+ * Turns the importer's image list into canonical image refs.
+ *
+ * Kept: absolute http(s) URLs (from CSV image columns or crawled pages: used
+ * as-is in marketplace exports) and our own `assets/` S3 keys (OCR'd photos,
+ * downloaded crawl images). Dropped: anything else, e.g. bare file names, which
+ * point at nothing. De-duplicated, in source order, capped at 10.
+ *
+ * imageIds are derived from the product id + position so a retried import
+ * writes identical refs.
+ */
+export function toImportedImageRefs(
+  productId: string,
+  images: unknown,
+  title: string,
+): CanonicalProduct['content']['imageRefs'] {
+  if (!Array.isArray(images)) return [];
+  const seen = new Set<string>();
+  const kept: string[] = [];
+  for (const raw of images) {
+    if (typeof raw !== 'string') continue;
+    const v = raw.trim();
+    if (!v || seen.has(v)) continue;
+    const isUrl = /^https?:\/\/[^\s]+$/i.test(v);
+    const isAssetKey = /^assets\/[^\s]+$/.test(v) && !v.includes('..');
+    if (!isUrl && !isAssetKey) continue;
+    seen.add(v);
+    kept.push(v);
+    if (kept.length >= MAX_IMPORTED_IMAGES) break;
+  }
+  return kept.map((s3Key, position) => {
+    const ext = /\.([a-z0-9]{2,5})(?:[?#].*)?$/i.exec(s3Key)?.[1]?.toLowerCase() ?? '';
+    return {
+      imageId: `${productId}-img-${position}`,
+      s3Key,
+      position,
+      altText: title || null,
+      mimeType: MIME_BY_EXT[ext] ?? 'image/jpeg',
+      // Unknown until the image is processed by the image pipeline.
+      width: 0,
+      height: 0,
+      fileSize: 0,
+      variantId: null,
+    };
+  });
 }
 
 /**

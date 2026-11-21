@@ -28,6 +28,7 @@ import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations
 import { Construct } from 'constructs';
 import * as path from 'path';
 import { sellerDashboardOrigins } from './cors-origins';
+import { enableRateLimiting } from './rate-limits';
 import { envFlag } from './env-config';
 
 export interface ProductIntelligenceStackProps extends cdk.StackProps {
@@ -358,6 +359,9 @@ export class ProductIntelligenceStack extends cdk.Stack {
       path.join(handlersPath, 'usage.ts'),
       [dynamoReadOnlyPolicy, kmsPolicy],
     );
+
+    // Per-user, per-route request limits (rateLimitMiddleware in each handler).
+    enableRateLimiting(this, env, platformKeyArn, [generateFn, batchFn, getResultFn, historyFn, usageFn]);
 
     // -----------------------------------------------------------------------
     // Free-trial gate: /generate and /batch must check the seller's entitlement,

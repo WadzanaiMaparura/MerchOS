@@ -72,7 +72,9 @@ export function resetMetricsForTesting(): void {
  */
 export function recordImportInitiated(dimensions: MetricDimensions): void {
   const m = getMetricsInstance();
-  m.addDimension('tenantId', dimensions.tenantId);
+  // Metadata, not a dimension: a per-tenant dimension creates (and bills) one
+  // CloudWatch metric per tenant. It stays searchable in the EMF log record.
+  m.addMetadata('tenantId', dimensions.tenantId);
   m.addDimension('sourceType', dimensions.sourceType);
   m.addMetric('ImportsInitiated', MetricUnit.Count, 1);
   m.publishStoredMetrics();
@@ -87,7 +89,9 @@ export function recordImportInitiated(dimensions: MetricDimensions): void {
  */
 export function recordImportCompleted(dimensions: MetricDimensions): void {
   const m = getMetricsInstance();
-  m.addDimension('tenantId', dimensions.tenantId);
+  // Metadata, not a dimension: a per-tenant dimension creates (and bills) one
+  // CloudWatch metric per tenant. It stays searchable in the EMF log record.
+  m.addMetadata('tenantId', dimensions.tenantId);
   m.addDimension('sourceType', dimensions.sourceType);
   m.addMetric('ImportsCompleted', MetricUnit.Count, 1);
   m.publishStoredMetrics();
@@ -102,7 +106,9 @@ export function recordImportCompleted(dimensions: MetricDimensions): void {
  */
 export function recordImportFailed(dimensions: MetricDimensions): void {
   const m = getMetricsInstance();
-  m.addDimension('tenantId', dimensions.tenantId);
+  // Metadata, not a dimension: a per-tenant dimension creates (and bills) one
+  // CloudWatch metric per tenant. It stays searchable in the EMF log record.
+  m.addMetadata('tenantId', dimensions.tenantId);
   m.addDimension('sourceType', dimensions.sourceType);
   m.addMetric('ImportsFailed', MetricUnit.Count, 1);
   m.publishStoredMetrics();
@@ -118,7 +124,9 @@ export function recordImportFailed(dimensions: MetricDimensions): void {
  */
 export function recordImportDuration(dimensions: MetricDimensions, durationMs: number): void {
   const m = getMetricsInstance();
-  m.addDimension('tenantId', dimensions.tenantId);
+  // Metadata, not a dimension: a per-tenant dimension creates (and bills) one
+  // CloudWatch metric per tenant. It stays searchable in the EMF log record.
+  m.addMetadata('tenantId', dimensions.tenantId);
   m.addDimension('sourceType', dimensions.sourceType);
   m.addMetric('ImportDuration', MetricUnit.Milliseconds, durationMs);
   m.publishStoredMetrics();
@@ -134,7 +142,9 @@ export function recordImportDuration(dimensions: MetricDimensions, durationMs: n
  */
 export function recordProductsExtracted(dimensions: MetricDimensions, count: number): void {
   const m = getMetricsInstance();
-  m.addDimension('tenantId', dimensions.tenantId);
+  // Metadata, not a dimension: a per-tenant dimension creates (and bills) one
+  // CloudWatch metric per tenant. It stays searchable in the EMF log record.
+  m.addMetadata('tenantId', dimensions.tenantId);
   m.addDimension('sourceType', dimensions.sourceType);
   m.addMetric('ProductsExtracted', MetricUnit.Count, count);
   m.publishStoredMetrics();

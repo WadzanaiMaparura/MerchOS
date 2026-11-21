@@ -13,6 +13,7 @@ import { MetricUnit } from '@aws-lambda-powertools/metrics';
 // Mock the Metrics class before importing the module under test
 const mockAddMetric = vi.fn();
 const mockAddDimension = vi.fn();
+const mockAddMetadata = vi.fn();
 const mockPublishStoredMetrics = vi.fn();
 
 vi.mock('@aws-lambda-powertools/metrics', () => {
@@ -20,6 +21,7 @@ vi.mock('@aws-lambda-powertools/metrics', () => {
     Metrics: vi.fn().mockImplementation(() => ({
       addMetric: mockAddMetric,
       addDimension: mockAddDimension,
+      addMetadata: mockAddMetadata,
       publishStoredMetrics: mockPublishStoredMetrics,
     })),
     MetricUnit: {
@@ -66,7 +68,8 @@ describe('Metrics Utility', () => {
     it('emits ImportsInitiated counter with correct dimensions', () => {
       recordImportInitiated(dimensions);
 
-      expect(mockAddDimension).toHaveBeenCalledWith('tenantId', 'tenant-123');
+      expect(mockAddMetadata).toHaveBeenCalledWith('tenantId', 'tenant-123');
+    expect(mockAddDimension).not.toHaveBeenCalledWith('tenantId', expect.anything());
       expect(mockAddDimension).toHaveBeenCalledWith('sourceType', 'FILE_CSV');
       expect(mockAddMetric).toHaveBeenCalledWith('ImportsInitiated', MetricUnit.Count, 1);
       expect(mockPublishStoredMetrics).toHaveBeenCalledTimes(1);
@@ -77,7 +80,8 @@ describe('Metrics Utility', () => {
     it('emits ImportsCompleted counter with correct dimensions', () => {
       recordImportCompleted(dimensions);
 
-      expect(mockAddDimension).toHaveBeenCalledWith('tenantId', 'tenant-123');
+      expect(mockAddMetadata).toHaveBeenCalledWith('tenantId', 'tenant-123');
+    expect(mockAddDimension).not.toHaveBeenCalledWith('tenantId', expect.anything());
       expect(mockAddDimension).toHaveBeenCalledWith('sourceType', 'FILE_CSV');
       expect(mockAddMetric).toHaveBeenCalledWith('ImportsCompleted', MetricUnit.Count, 1);
       expect(mockPublishStoredMetrics).toHaveBeenCalledTimes(1);
@@ -88,7 +92,8 @@ describe('Metrics Utility', () => {
     it('emits ImportsFailed counter with correct dimensions', () => {
       recordImportFailed(dimensions);
 
-      expect(mockAddDimension).toHaveBeenCalledWith('tenantId', 'tenant-123');
+      expect(mockAddMetadata).toHaveBeenCalledWith('tenantId', 'tenant-123');
+    expect(mockAddDimension).not.toHaveBeenCalledWith('tenantId', expect.anything());
       expect(mockAddDimension).toHaveBeenCalledWith('sourceType', 'FILE_CSV');
       expect(mockAddMetric).toHaveBeenCalledWith('ImportsFailed', MetricUnit.Count, 1);
       expect(mockPublishStoredMetrics).toHaveBeenCalledTimes(1);
@@ -99,7 +104,8 @@ describe('Metrics Utility', () => {
     it('emits ImportDuration in milliseconds with correct dimensions', () => {
       recordImportDuration(dimensions, 4500);
 
-      expect(mockAddDimension).toHaveBeenCalledWith('tenantId', 'tenant-123');
+      expect(mockAddMetadata).toHaveBeenCalledWith('tenantId', 'tenant-123');
+    expect(mockAddDimension).not.toHaveBeenCalledWith('tenantId', expect.anything());
       expect(mockAddDimension).toHaveBeenCalledWith('sourceType', 'FILE_CSV');
       expect(mockAddMetric).toHaveBeenCalledWith('ImportDuration', MetricUnit.Milliseconds, 4500);
       expect(mockPublishStoredMetrics).toHaveBeenCalledTimes(1);
@@ -122,7 +128,8 @@ describe('Metrics Utility', () => {
     it('emits ProductsExtracted counter with correct dimensions and count', () => {
       recordProductsExtracted(dimensions, 42);
 
-      expect(mockAddDimension).toHaveBeenCalledWith('tenantId', 'tenant-123');
+      expect(mockAddMetadata).toHaveBeenCalledWith('tenantId', 'tenant-123');
+    expect(mockAddDimension).not.toHaveBeenCalledWith('tenantId', expect.anything());
       expect(mockAddDimension).toHaveBeenCalledWith('sourceType', 'FILE_CSV');
       expect(mockAddMetric).toHaveBeenCalledWith('ProductsExtracted', MetricUnit.Count, 42);
       expect(mockPublishStoredMetrics).toHaveBeenCalledTimes(1);
@@ -139,21 +146,24 @@ describe('Metrics Utility', () => {
     it('works with IMAGE source type', () => {
       recordImportInitiated({ tenantId: 'tenant-xyz', sourceType: 'IMAGE' });
 
-      expect(mockAddDimension).toHaveBeenCalledWith('tenantId', 'tenant-xyz');
+      expect(mockAddMetadata).toHaveBeenCalledWith('tenantId', 'tenant-xyz');
+    expect(mockAddDimension).not.toHaveBeenCalledWith('tenantId', expect.anything());
       expect(mockAddDimension).toHaveBeenCalledWith('sourceType', 'IMAGE');
     });
 
     it('works with URL source type', () => {
       recordImportCompleted({ tenantId: 'tenant-abc', sourceType: 'URL' });
 
-      expect(mockAddDimension).toHaveBeenCalledWith('tenantId', 'tenant-abc');
+      expect(mockAddMetadata).toHaveBeenCalledWith('tenantId', 'tenant-abc');
+    expect(mockAddDimension).not.toHaveBeenCalledWith('tenantId', expect.anything());
       expect(mockAddDimension).toHaveBeenCalledWith('sourceType', 'URL');
     });
 
     it('works with FILE_EXCEL source type', () => {
       recordImportFailed({ tenantId: 'tenant-001', sourceType: 'FILE_EXCEL' });
 
-      expect(mockAddDimension).toHaveBeenCalledWith('tenantId', 'tenant-001');
+      expect(mockAddMetadata).toHaveBeenCalledWith('tenantId', 'tenant-001');
+    expect(mockAddDimension).not.toHaveBeenCalledWith('tenantId', expect.anything());
       expect(mockAddDimension).toHaveBeenCalledWith('sourceType', 'FILE_EXCEL');
     });
   });

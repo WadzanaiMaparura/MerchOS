@@ -216,6 +216,8 @@ export class BillingApiStack extends cdk.Stack {
       PAYFAST_MODE: payfastMode,
       CHECKOUT_ENABLED: checkoutEnabled,
       APP_BASE_URL: appBaseUrl,
+      // Where PayFast may return the buyer (change-plan refuses anything else).
+      ALLOWED_RETURN_ORIGINS: sellerDashboardOrigins(env).join(','),
       POWERTOOLS_SERVICE_NAME: 'billing',
       LOG_LEVEL: env === 'production' ? 'WARN' : 'DEBUG',
     };

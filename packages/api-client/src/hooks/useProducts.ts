@@ -85,7 +85,7 @@ export function applyListParams(
   const q = params.search?.trim().toLowerCase();
   if (q) {
     rows = rows.filter((p) =>
-      [p.sku, p.title, (p as ProductSummary & { brand?: string }).brand]
+      [p.sku, p.title, p.brand]
         .some((v) => typeof v === 'string' && v.toLowerCase().includes(q))
     );
   }
