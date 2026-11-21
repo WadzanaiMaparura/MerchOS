@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 
 /** model-config reads env at import time, so load a fresh copy per test. */
 async function load(env: Record<string, string | undefined>) {
@@ -21,7 +21,8 @@ describe('model-config', () => {
     expect(m.DEFAULT_HAIKU_MODEL_ID).toBe('eu.anthropic.claude-haiku-4-5-20251001-v1:0');
     expect(m.DEFAULT_SONNET_MODEL_ID).toBe('eu.anthropic.claude-sonnet-4-5-20250929-v1:0');
     expect(m.getModelConfig('title').modelId).toBe(m.DEFAULT_HAIKU_MODEL_ID);
-    expect(m.getModelConfig('description').modelId).toBe(m.DEFAULT_SONNET_MODEL_ID);
+    // Descriptions run on Haiku: the launch pricing depends on the lower cost.
+    expect(m.getModelConfig('description').modelId).toBe(m.DEFAULT_HAIKU_MODEL_ID);
     expect(m.getModelConfig('compliance').modelId).toBe(m.DEFAULT_SONNET_MODEL_ID);
   });
 

@@ -205,7 +205,9 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
   // so this must not fail or retry the payment. Logged as an anomaly so the
   // billing alarm fires and the seller can be unblocked by hand.
   try {
-    await markSubscribed(tenantId, periodEnd.toISOString());
+    await markSubscribed(tenantId, periodEnd.toISOString(), {
+      monthlyProductLimit: plan.monthlyProducts,
+    });
   } catch (error) {
     logger.error('ITN trial entitlement not updated', {
       tenantId,

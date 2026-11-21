@@ -7,8 +7,8 @@
  * The `limits` shape mirrors the frontend `PlanLimits` DTO (@merch-os/types)
  * so `GET /billing` can return a `BillingOverview` directly.
  *
- * PLACEHOLDER — every price, credit allowance and limit below is a provisional
- * value and MUST be refined against real COGS before launch.
+ * Agreed launch prices (see the block comment above PLAN_CATALOGUE). Re-check
+ * the margins against measured AI cost once Bedrock is live.
  */
 
 import type { PlanId, PlanLimits } from '@merch-os/types';
@@ -19,82 +19,104 @@ export interface PlanCatalogueEntry {
   name: string;
   /** Price in integer ZAR cents. null = custom/enterprise (quote-based). */
   priceZARCents: number | null;
-  /** Monthly included credits. null = unmetered (no cap). */
+  /** New products the seller may create per month (AI listing + corrections included). null = custom. */
+  monthlyProducts: number | null;
+  /**
+   * Hidden AI safeguard: credits per month (1 credit = 4,000 cost-weighted tokens).
+   * 6 per product (5 for the listing + 1 for corrections). Sellers see products, not credits.
+   */
   monthlyCredits: number | null;
   limits: PlanLimits;
 }
 
 /**
- * Overage price per credit consumed beyond the monthly allowance, in ZAR cents.
- * PLACEHOLDER — R3.50/credit, provisional retail price pending pricing review.
+ * Launch pricing (agreed Nov 2026). A plan sells NEW PRODUCTS PER MONTH: each
+ * includes its AI-written listing, the corrections the seller needs, and export
+ * to every marketplace. Exports and catalogue storage are not limited, and
+ * team members are unlimited on every plan (they cost nothing to serve).
+ *
+ *   Starter  R499   500 products/mo   (R1.00 per product)
+ *   Growth   R899   1,000 products/mo (R0.90, 10% off)
+ *   Pro      R1,790 2,000 products/mo (R0.895)
+ *
+ * Margins assume descriptions on Haiku (~R0.20 AI per product, estimated):
+ * ~71-73% if every product is used, ~27-33% even at 3x that AI cost. Re-check
+ * against measured token usage once Bedrock is live.
  */
-export const OVERAGE_PRICE_ZAR_CENTS = 350;
+
+/** AI safeguard credits per included product (5 listing + 1 corrections). */
+export const CREDITS_PER_PRODUCT = 6;
+
+/** Overage price per extra credit, in ZAR cents (opt-in; not offered at launch). */
+export const OVERAGE_PRICE_ZAR_CENTS = 100;
 
 /**
- * Estimated cost of goods sold per credit, in ZAR cents.
- * PLACEHOLDER — R1.25/credit, for margin reference only (never billed directly).
+ * Estimated AI cost per credit, in ZAR cents (4,000 cost-weighted tokens at
+ * ~R17.50/USD). For margin reference only; never billed.
  */
-export const CREDIT_COGS_ZAR_CENTS = 125;
+export const CREDIT_COGS_ZAR_CENTS = 7;
 
-/**
- * The plan catalogue keyed by PlanId.
- * PLACEHOLDER — prices, credits and limits are provisional (refine vs COGS).
- */
+const UNLIMITED_TEAM = null;
+
 export const PLAN_CATALOGUE: Record<PlanId, PlanCatalogueEntry> = {
   starter: {
     planId: 'starter',
     name: 'Starter',
-    priceZARCents: 49900, // PLACEHOLDER — R499/mo, provisional entry-tier price
-    monthlyCredits: 150, // PLACEHOLDER — 150 credits/mo, provisional allowance
+    priceZARCents: 49900,
+    monthlyProducts: 500,
+    monthlyCredits: 500 * CREDITS_PER_PRODUCT,
     limits: {
-      maxProducts: 500, // PLACEHOLDER — provisional product cap
-      maxChannels: 1, // PLACEHOLDER — single sales channel on entry tier
-      maxUsers: 2, // PLACEHOLDER — provisional seat cap
-      maxAiCallsPerMonth: 150, // PLACEHOLDER — aligns to monthlyCredits
-      maxImageCallsPerMonth: 150, // PLACEHOLDER — aligns to monthlyCredits
-      maxCsvExportsPerMonth: 20, // PLACEHOLDER — provisional export cap
+      maxProducts: null, // no catalogue cap: the monthly new-product count is the limit
+      maxChannels: 999, // all marketplaces
+      maxUsers: UNLIMITED_TEAM,
+      maxAiCallsPerMonth: 500,
+      maxImageCallsPerMonth: 500,
+      maxCsvExportsPerMonth: null,
     },
   },
   growth: {
     planId: 'growth',
     name: 'Growth',
-    priceZARCents: 99900, // PLACEHOLDER — R999/mo, provisional mid-tier price
-    monthlyCredits: 400, // PLACEHOLDER — 400 credits/mo, provisional allowance
+    priceZARCents: 89900,
+    monthlyProducts: 1000,
+    monthlyCredits: 1000 * CREDITS_PER_PRODUCT,
     limits: {
-      maxProducts: 2500, // PLACEHOLDER — provisional product cap
-      maxChannels: 3, // PLACEHOLDER — provisional channel cap
-      maxUsers: 5, // PLACEHOLDER — provisional seat cap
-      maxAiCallsPerMonth: 400, // PLACEHOLDER — aligns to monthlyCredits
-      maxImageCallsPerMonth: 400, // PLACEHOLDER — aligns to monthlyCredits
-      maxCsvExportsPerMonth: 100, // PLACEHOLDER — provisional export cap
+      maxProducts: null,
+      maxChannels: 999,
+      maxUsers: UNLIMITED_TEAM,
+      maxAiCallsPerMonth: 1000,
+      maxImageCallsPerMonth: 1000,
+      maxCsvExportsPerMonth: null,
     },
   },
   professional: {
     planId: 'professional',
-    name: 'Professional',
-    priceZARCents: 199900, // PLACEHOLDER — R1999/mo, provisional pro-tier price
-    monthlyCredits: 1000, // PLACEHOLDER — 1000 credits/mo, provisional allowance
+    name: 'Pro',
+    priceZARCents: 179000,
+    monthlyProducts: 2000,
+    monthlyCredits: 2000 * CREDITS_PER_PRODUCT,
     limits: {
-      maxProducts: 10000, // PLACEHOLDER — provisional product cap
-      maxChannels: 6, // PLACEHOLDER — provisional channel cap
-      maxUsers: 15, // PLACEHOLDER — provisional seat cap
-      maxAiCallsPerMonth: 1000, // PLACEHOLDER — aligns to monthlyCredits
-      maxImageCallsPerMonth: 1000, // PLACEHOLDER — aligns to monthlyCredits
-      maxCsvExportsPerMonth: 500, // PLACEHOLDER — provisional export cap
+      maxProducts: null,
+      maxChannels: 999,
+      maxUsers: UNLIMITED_TEAM,
+      maxAiCallsPerMonth: 2000,
+      maxImageCallsPerMonth: 2000,
+      maxCsvExportsPerMonth: null,
     },
   },
   enterprise: {
     planId: 'enterprise',
     name: 'Enterprise',
-    priceZARCents: null, // PLACEHOLDER — custom/quote-based pricing
-    monthlyCredits: null, // PLACEHOLDER — unmetered (no monthly credit cap)
+    priceZARCents: null, // quote-based
+    monthlyProducts: null,
+    monthlyCredits: null,
     limits: {
-      maxProducts: null, // unlimited
-      maxChannels: 999, // PLACEHOLDER — effectively unlimited channels
-      maxUsers: null, // unlimited
-      maxAiCallsPerMonth: null, // unmetered
-      maxImageCallsPerMonth: null, // unmetered
-      maxCsvExportsPerMonth: null, // unmetered
+      maxProducts: null,
+      maxChannels: 999,
+      maxUsers: null,
+      maxAiCallsPerMonth: null,
+      maxImageCallsPerMonth: null,
+      maxCsvExportsPerMonth: null,
     },
   },
 };

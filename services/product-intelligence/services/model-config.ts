@@ -51,7 +51,7 @@ const CLAUDE_SONNET = modelIdFromEnv('BEDROCK_SONNET_MODEL_ID', DEFAULT_SONNET_M
  *
  * Model selection rationale:
  * - title: Haiku — short output, low complexity
- * - description: Sonnet — longer creative output, medium complexity
+ * - description: Haiku — 4.5 handles long-form well; keeps the per-product cost low
  * - bullets: Haiku — short structured output
  * - seo: Sonnet — analysis requires reasoning
  * - category: Haiku — classification task, low token cost
@@ -69,7 +69,7 @@ const MODEL_CONFIG_MAP: Record<GenerationType, ModelConfig> = {
   },
   description: {
     generationType: 'description',
-    modelId: CLAUDE_SONNET,
+    modelId: CLAUDE_HAIKU, // Haiku 4.5 writes good descriptions at ~1/3 of Sonnet's cost (launch pricing depends on it)
     maxTokens: 2048,
     temperature: 0.7,
   },

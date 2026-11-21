@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import TrainingSection, { TRAINING_HREF } from './components/TrainingSection';
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 
@@ -71,6 +72,7 @@ const plans = [
     description: 'Perfect for new sellers',
     price: 'R499',
     period: '/month',
+    products: '500 new products / month',
     cta: 'Start Free Trial',
     ctaHref: '/register?plan=starter',
     highlighted: false,
@@ -78,8 +80,9 @@ const plans = [
   {
     name: 'Growth',
     description: 'For growing businesses',
-    price: 'R999',
+    price: 'R899',
     period: '/month',
+    products: '1,000 new products / month',
     cta: 'Start Free Trial',
     ctaHref: '/register?plan=growth',
     highlighted: true,
@@ -87,18 +90,20 @@ const plans = [
   },
   {
     name: 'Pro',
-    description: 'For serious sellers',
-    price: 'R1,999',
+    description: 'For high-volume sellers and agencies',
+    price: 'R1,790',
     period: '/month',
+    products: '2,000 new products / month',
     cta: 'Start Free Trial',
     ctaHref: '/register?plan=pro',
     highlighted: false,
   },
   {
     name: 'Enterprise',
-    description: 'For large businesses',
+    description: 'For large catalogues',
     price: 'Custom',
     period: '',
+    products: 'Custom volume',
     cta: 'Contact Sales',
     ctaHref: '/contact?reason=enterprise',
     highlighted: false,
@@ -106,10 +111,11 @@ const plans = [
 ];
 
 const includedFeatures = [
-  'Product Studio',
-  'Marketplace Validation',
-  'Exports & Integrations',
-  'Email & Chat Support',
+  'AI-written listings, corrections included',
+  'Export to every marketplace',
+  'Unlimited team members',
+  'Free training',
+  'No card needed for the free trial',
 ];
 
 // ─── Icons ───────────────────────────────────────────────────────────────────
@@ -199,6 +205,7 @@ export default function MarketingPage() {
       <HeroSection />
       <WorkflowSection />
       <FeaturesSection />
+      <TrainingSection variant="strip" />
       <TestimonialsSection />
       <PricingSection />
     </>
@@ -289,14 +296,10 @@ function HeroSection() {
                 <ArrowRightIcon />
               </a>
               <a
-                href="#demo"
-                className="inline-flex items-center rounded-xl border border-gray-200 bg-white px-6 py-3.5 text-[15px] font-semibold text-gray-700 shadow-sm hover:bg-gray-50 hover:scale-[1.02] transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                href={TRAINING_HREF}
+                className="inline-flex items-center rounded-xl border-2 border-blue-600 bg-white px-6 py-3.5 text-[15px] font-semibold text-blue-700 shadow-sm hover:bg-blue-50 hover:scale-[1.02] transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
               >
-                Watch Demo
-                <svg className="ml-2 w-5 h-5 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
+                Book free training
               </a>
             </div>
 
@@ -896,8 +899,11 @@ function PricingSection() {
             Simple, Transparent Pricing
           </span>
           <h2 className="text-3xl sm:text-4xl font-bold text-gray-900">
-            Choose the plan that grows with you
+            Simple pricing. Free to start.
           </h2>
+          <p className="mt-3 text-base text-gray-600">
+            Create your first 15 products free, AI included. No credit card. Free training, even before you subscribe.
+          </p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-12 items-start">
@@ -927,6 +933,11 @@ function PricingSection() {
                     <span className="text-sm text-gray-500 ml-1">{plan.period}</span>
                   )}
                 </div>
+
+                <ul className="mt-4 space-y-2 text-sm text-gray-600">
+                  <li className="flex items-center gap-2"><CheckIcon />{plan.products}</li>
+                  <li className="flex items-center gap-2"><CheckIcon />Free training</li>
+                </ul>
 
                 <a
                   href={plan.ctaHref}

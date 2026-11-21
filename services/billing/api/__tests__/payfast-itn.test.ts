@@ -182,14 +182,14 @@ describe('PayFast ITN ? transient verification failure', () => {
 });
 
 describe('PayFast ITN — happy path', () => {
-  it('activates the plan, grants 400 credits, then marks the payment applied (in that order)', async () => {
+  it('activates the plan, grants 6,000 safeguard credits, then marks the payment applied (in that order)', async () => {
     expect(await body()).toBe('ok');
 
     expect(store.upsertSubscription).toHaveBeenCalledWith(
       'tenant-1',
       expect.objectContaining({ planId: 'growth', status: 'active', provider: 'payfast', mPaymentId: 'pay-1' })
     );
-    expect(ledger.grantCredits).toHaveBeenCalledWith('tenant-1', expect.stringMatching(/^\d{6}$/), 400);
+    expect(ledger.grantCredits).toHaveBeenCalledWith('tenant-1', expect.stringMatching(/^\d{6}$/), 6000);
     expect(store.upsertInvoice).toHaveBeenCalledWith(
       'tenant-1',
       expect.objectContaining({ invoiceId: 'pay-1', amountCents: 99900, planId: 'growth' })
@@ -272,7 +272,7 @@ describe('PayFast ITN — idempotency and recovery', () => {
     vi.mocked(store.getPayment).mockResolvedValue({ mPaymentId: 'pay-1', applied: false });
 
     expect(await body()).toBe('ok');
-    expect(ledger.grantCredits).toHaveBeenCalledWith('tenant-1', expect.any(String), 400);
+    expect(ledger.grantCredits).toHaveBeenCalledWith('tenant-1', expect.any(String), 6000);
     expect(store.markPaymentApplied).toHaveBeenCalledWith('tenant-1', 'pay-1');
   });
 

@@ -62,46 +62,80 @@ export function formatPrice(priceInCents: number): string {
 export const pricingConfig: PricingConfig = {
   tiers: [
     {
-      id: 'professional',
-      name: 'Professional',
-      priceMonthly: 49900,
-      currency: 'ZAR',
-      badge: 'Recommended',
-      highlighted: true,
-      description: 'For independent sellers managing multi-channel e-commerce',
-      features: [
-        '10,000 products',
-        '4 channels',
-        '5 team members',
-        '10,000 AI enrichment calls/mo',
-        '5,000 image processing calls/mo',
-        '100 CSV exports/mo',
-        '99.9% SLA guarantee',
-      ],
-      ctaLabel: 'Start Free Trial',
-      ctaHref: '/register?plan=professional',
-    },
-    {
-      id: 'business',
-      name: 'Business',
-      priceMonthly: 99900,
+      id: 'trial',
+      name: 'Free trial',
+      priceMonthly: 0,
       currency: 'ZAR',
       badge: null,
       highlighted: false,
-      description: 'For teams, agencies, and high-volume sellers',
+      description: 'Try MerchOS on your own products',
       features: [
-        '50,000 products',
-        '6 channels',
-        '25 team members',
-        '100,000 AI enrichment calls/mo',
-        '50,000 image processing calls/mo',
-        '500 CSV exports/mo',
-        'Priority support',
-        'SAML SSO',
-        '99.9% SLA guarantee',
+        '15 products, AI included',
+        'Corrections included',
+        'Export to every marketplace',
+        'Unlimited team members',
+        'No credit card, no time limit',
+        'Free training',
       ],
-      ctaLabel: 'Start Free Trial',
-      ctaHref: '/register?plan=business',
+      ctaLabel: 'Start free',
+      ctaHref: '/register',
+    },
+    {
+      id: 'starter',
+      name: 'Starter',
+      priceMonthly: 49900,
+      currency: 'ZAR',
+      badge: null,
+      highlighted: false,
+      description: 'For new sellers',
+      features: [
+        '500 new products / month',
+        'AI-written listings, corrections included',
+        'Export to every marketplace',
+        'Unlimited team members',
+        'Free training',
+        'Email support',
+      ],
+      ctaLabel: 'Start free',
+      ctaHref: '/register?plan=starter',
+    },
+    {
+      id: 'growth',
+      name: 'Growth',
+      priceMonthly: 89900,
+      currency: 'ZAR',
+      badge: 'Most popular',
+      highlighted: true,
+      description: 'For growing businesses',
+      features: [
+        '1,000 new products / month',
+        'AI-written listings, corrections included',
+        'Export to every marketplace',
+        'Unlimited team members',
+        'Free training',
+        'Priority email support',
+      ],
+      ctaLabel: 'Start free',
+      ctaHref: '/register?plan=growth',
+    },
+    {
+      id: 'pro',
+      name: 'Pro',
+      priceMonthly: 179000,
+      currency: 'ZAR',
+      badge: null,
+      highlighted: false,
+      description: 'For high-volume sellers and agencies',
+      features: [
+        '2,000 new products / month',
+        'AI-written listings, corrections included',
+        'Export to every marketplace',
+        'Unlimited team members',
+        'Free training + a dedicated session',
+        'Priority email support',
+      ],
+      ctaLabel: 'Start free',
+      ctaHref: '/register?plan=pro',
     },
     {
       id: 'enterprise',
@@ -110,113 +144,75 @@ export const pricingConfig: PricingConfig = {
       currency: 'ZAR',
       badge: null,
       highlighted: false,
-      description: 'For large retailers, manufacturers, and distributors',
+      description: 'For large catalogues',
       features: [
-        'Unlimited products',
-        '6 channels',
-        'Unlimited team members',
-        'Custom AI enrichment limits',
-        'Custom image processing limits',
-        'Custom CSV export limits',
-        'Dedicated account manager',
-        'Custom integrations',
-        'SAML SSO',
-        'SLA up to 99.99%',
+        'Custom product volume',
+        'Everything in Pro',
+        'Dedicated onboarding',
+        'Account manager',
       ],
-      ctaLabel: 'Contact Sales',
+      ctaLabel: 'Contact us',
       ctaHref: '/contact?reason=enterprise',
     },
   ],
 
   comparison: [
     {
-      name: 'Usage Limits',
+      name: 'What you get',
       features: [
         {
-          name: 'Products',
-          tiers: { professional: '10,000', business: '50,000', enterprise: 'Unlimited' },
+          name: 'New products per month',
+          tiers: { trial: '15 (once)', starter: '500', growth: '1,000', pro: '2,000', enterprise: 'Custom' },
         },
         {
-          name: 'Channels',
-          tiers: { professional: '4', business: '6', enterprise: '6' },
+          name: 'AI-written listings',
+          tiers: { trial: true, starter: true, growth: true, pro: true, enterprise: true },
+        },
+        {
+          name: 'Corrections',
+          tiers: { trial: 'Included', starter: 'Included', growth: 'Included', pro: 'Included', enterprise: 'Included' },
+        },
+        {
+          name: 'Products kept in your catalogue',
+          tiers: { trial: '15', starter: 'All', growth: 'All', pro: 'All', enterprise: 'All' },
         },
         {
           name: 'Team members',
-          tiers: { professional: '5', business: '25', enterprise: 'Unlimited' },
-        },
-        {
-          name: 'AI enrichment calls/mo',
-          tiers: { professional: '10,000', business: '100,000', enterprise: 'Custom' },
-        },
-        {
-          name: 'Image processing calls/mo',
-          tiers: { professional: '5,000', business: '50,000', enterprise: 'Custom' },
-        },
-        {
-          name: 'CSV exports/mo',
-          tiers: { professional: '100', business: '500', enterprise: 'Custom' },
+          tiers: { trial: 'Unlimited', starter: 'Unlimited', growth: 'Unlimited', pro: 'Unlimited', enterprise: 'Unlimited' },
         },
       ],
     },
     {
-      name: 'Platform Features',
+      name: 'Import and export',
       features: [
         {
-          name: 'AI product enrichment',
-          tiers: { professional: true, business: true, enterprise: true },
+          name: 'Import from CSV, Excel, PDF or product photos',
+          tiers: { trial: true, starter: true, growth: true, pro: true, enterprise: true },
         },
         {
-          name: 'Multi-channel publishing',
-          tiers: { professional: true, business: true, enterprise: true },
+          name: 'Export to every marketplace',
+          tiers: { trial: true, starter: true, growth: true, pro: true, enterprise: true },
         },
         {
-          name: 'Bulk import/export',
-          tiers: { professional: true, business: true, enterprise: true },
-        },
-        {
-          name: 'Marketplace validation',
-          tiers: { professional: true, business: true, enterprise: true },
-        },
-        {
-          name: 'Inventory management',
-          tiers: { professional: true, business: true, enterprise: true },
-        },
-        {
-          name: 'Role-based access control',
-          tiers: { professional: true, business: true, enterprise: true },
-        },
-        {
-          name: 'Audit log',
-          tiers: { professional: true, business: true, enterprise: true },
+          name: 'Duplicate detection on import',
+          tiers: { trial: true, starter: true, growth: true, pro: true, enterprise: true },
         },
       ],
     },
     {
-      name: 'Support & Security',
+      name: 'Training and support',
       features: [
         {
-          name: 'Email support',
-          tiers: { professional: true, business: true, enterprise: true },
+          name: 'Free training',
+          tiers: { trial: true, starter: true, growth: true, pro: true, enterprise: true },
         },
         {
-          name: 'Priority support',
-          tiers: { professional: false, business: true, enterprise: true },
+          name: 'Dedicated training session',
+          tiers: { trial: false, starter: false, growth: false, pro: true, enterprise: true },
         },
         {
-          name: 'Dedicated account manager',
-          tiers: { professional: false, business: false, enterprise: true },
-        },
-        {
-          name: 'SAML SSO',
-          tiers: { professional: false, business: true, enterprise: true },
-        },
-        {
-          name: 'Custom integrations',
-          tiers: { professional: false, business: false, enterprise: true },
-        },
-        {
-          name: 'SLA guarantee',
-          tiers: { professional: '99.9%', business: '99.9%', enterprise: 'Up to 99.99%' },
+          name: 'Support',
+          tiers: { trial: 'Email', starter: 'Email', growth: 'Priority email', pro: 'Priority email', enterprise: 'Account manager' },
         },
       ],
     },
@@ -226,37 +222,54 @@ export const pricingConfig: PricingConfig = {
     {
       question: 'Is there a free trial?',
       answer:
-        'Yes! Every new account starts with a 14-day free trial that gives you access to all Professional plan features with reduced usage limits. No credit card required to start. When your trial ends, you can subscribe to continue or your access will be paused until you choose a plan.',
+        'Yes. Create your first 15 products free, including AI-written content and corrections. No credit card is needed, and there is no time limit.',
     },
     {
-      question: 'Can I upgrade later?',
+      question: 'What happens when my 15 free products are used?',
       answer:
-        'Yes, you can upgrade your plan at any time. When you upgrade, your current billing period is prorated (credit for unused time) and the new plan entitlements unlock immediately.',
+        'You keep them, and you can still edit and correct them. To add new products or generate new content, choose a plan. We never charge you automatically.',
     },
     {
-      question: 'Can I downgrade?',
+      question: 'What counts as a new product?',
       answer:
-        'Yes, self-service downgrade between Professional and Business is available at any time. The downgrade takes effect at the end of your current billing period. Downgrading from Enterprise requires coordination with our sales team.',
+        'Each product you add in a month, whether from a photo, a spreadsheet row or typed in. Its AI-written listing and the corrections you need are included. You can add them any day: one today, twenty tomorrow, until your monthly number is reached.',
     },
     {
-      question: 'What happens if I exceed my usage limits?',
+      question: 'Do I pay extra to export to more marketplaces?',
       answer:
-        'You will receive alerts at 80% and 100% of your limits. Once you reach 100%, the relevant operation is paused until your next billing cycle or you upgrade to a higher plan with more capacity.',
+        'No. Once a product is finished, MerchOS fills in the upload file for every marketplace you sell on at no extra cost.',
     },
     {
-      question: 'What happens when my free trial ends?',
+      question: 'What happens at the end of the month?',
       answer:
-        'If you have a payment method on file, your account automatically converts to a paid Professional plan. If not, your access is paused until you add a payment method. No data is deleted during the pause.',
+        'Your count of new products resets for the next month. Products you have already created stay in your catalogue.',
     },
     {
-      question: 'Which marketplaces are supported?',
-      answer:
-        'MerchOS currently supports Takealot, Amazon South Africa, Makro Marketplace, Shopify, and WooCommerce. We are continuously adding new marketplace integrations based on seller demand.',
+      question: 'Do you limit team members?',
+      answer: 'No. Invite your whole team on any plan, free.',
     },
     {
-      question: 'Can I cancel anytime?',
+      question: 'Is there a setup fee?',
+      answer: 'No. Setup and training are free, even before you subscribe.',
+    },
+    {
+      question: 'Is training really free?',
       answer:
-        'Yes, you can cancel your subscription at any time with no cancellation fees. Your account will remain active until the end of your current billing period.',
+        'Yes. Join a weekly online session, or book a one-on-one session online or in person, arranged with you on a call. We show you how to upload your products to every platform you sell on.',
+    },
+    {
+      question: 'Can I change or cancel my plan?',
+      answer:
+        'Yes. Upgrade any time and the new limit applies straight away. Cancel any time; you keep access until the end of the month you have paid for.',
+    },
+    {
+      question: 'Which marketplaces do you support?',
+      answer:
+        'Takealot first, with Makro, Amazon South Africa, Shopify and WooCommerce following.',
+    },
+    {
+      question: 'Are prices in Rand?',
+      answer: 'Yes. All prices are in South African Rand, with no hidden fees.',
     },
   ],
 };

@@ -378,7 +378,8 @@ export class ProductIntelligenceStack extends cdk.Stack {
       `${ssmPrefix}/product-api/table-name`,
     );
     const trialProductsTableArn = `arn:aws:dynamodb:${this.region}:${this.account}:table/merch-os-products-${env}`;
-    for (const fn of [generateFn, batchFn]) {
+    // usageFn too: the token budget is sized from the seller's plan (entitlement).
+    for (const fn of [generateFn, batchFn, usageFn]) {
       fn.addEnvironment('PRODUCTS_TABLE', trialProductsTableName);
       fn.addEnvironment('TRIAL_ENFORCEMENT', trialEnforcement);
       fn.addToRolePolicy(
