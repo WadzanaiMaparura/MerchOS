@@ -45,7 +45,9 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        // DM Sans is loaded in app/layout.tsx (next/font). "Inter" was listed
+        // here before but never loaded, so Windows fell back to Segoe UI.
+        sans: ['var(--font-dm-sans)', 'DM Sans', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
       },
       spacing: {
         'sidebar-collapsed': '4rem',

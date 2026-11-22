@@ -1,8 +1,13 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
+import { DM_Sans } from 'next/font/google';
 import { Providers } from './providers';
 import { ChatWidget } from './components/chat/ChatWidget';
 import './globals.css';
+
+// Brand font. next/font downloads it at build time and serves it from our own
+// domain (no request to Google from the visitor's browser).
+const dmSans = DM_Sans({ subsets: ['latin'], display: 'swap', variable: '--font-dm-sans' });
 
 export const metadata: Metadata = {
   title: 'MerchOS | Multi-tenant Marketplace Product Management',
@@ -16,7 +21,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className={dmSans.variable}>
       <head>
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
       </head>
