@@ -261,6 +261,16 @@ function CustomerReviewStack({ reviews }: { reviews: CustomerReview[] }) {
 
 // ─── Hero Section ────────────────────────────────────────────────────────────
 
+/** "Works with" row. Heights balance each logo's proportions visually. */
+const WORKS_WITH: Array<{ name: string; src?: string; h: string }> = [
+  { name: 'Takealot', src: '/logos/takealot.svg', h: 'h-5' },
+  { name: 'Amazon', src: '/logos/amazon.svg', h: 'h-6 pt-1' },
+  // Makro SA and WooCommerce: waiting for the exact current logo files.
+  { name: 'Makro', h: 'h-5' },
+  { name: 'Shopify', src: '/logos/shopify.svg', h: 'h-6' },
+  { name: 'WooCommerce', h: 'h-5' },
+];
+
 function HeroSection() {
   return (
     <section className="relative overflow-x-clip pt-12 pb-10 sm:pt-16 sm:pb-14 lg:pt-16 lg:pb-16 bg-white">
@@ -324,15 +334,19 @@ function HeroSection() {
             <div className="mt-4 pt-4 border-t border-gray-100">
               <p className="text-[9px] text-gray-400 uppercase tracking-[0.15em] font-medium mb-2">Works with</p>
               {/*
-                Marketplace names as plain text in one matching style. We do not
-                redraw other companies' logos (trademarks); official logo files
-                can replace these once each brand's usage terms are confirmed.
+                Official logo files only (public/logos, from Wikimedia Commons),
+                never redrawn. A marketplace without an exact file yet shows its
+                name instead; drop the file in public/logos and set `src`.
               */}
-              <ul className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[14px] font-semibold text-gray-600" aria-label="Marketplaces MerchOS works with">
-                {['Takealot', 'Amazon', 'Makro', 'Shopify', 'WooCommerce'].map((name, i) => (
-                  <li key={name} className="flex items-center gap-2">
-                    {i > 0 && <span className="text-gray-300" aria-hidden="true">·</span>}
-                    {name}
+              <ul className="flex flex-wrap items-center gap-x-5 gap-y-2" aria-label="Marketplaces MerchOS works with">
+                {WORKS_WITH.map((m) => (
+                  <li key={m.name} className="flex items-center">
+                    {m.src ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={m.src} alt={m.name} className={`${m.h} w-auto`} loading="lazy" />
+                    ) : (
+                      <span className="text-[14px] font-semibold text-gray-600">{m.name}</span>
+                    )}
                   </li>
                 ))}
               </ul>
