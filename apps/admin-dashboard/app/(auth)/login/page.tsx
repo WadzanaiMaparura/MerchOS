@@ -284,6 +284,15 @@ export default function AdminLoginPage() {
           )}
         </FormField>
 
+        <div className="-mt-2 text-right">
+          <a
+            href="/reset-password"
+            className="text-sm font-medium text-blue-600 hover:text-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 rounded"
+          >
+            Forgot your password?
+          </a>
+        </div>
+
         <button
           type="submit"
           disabled={isSubmitting || isLocked}
