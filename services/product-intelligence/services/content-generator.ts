@@ -35,6 +35,7 @@ import { calculate, shouldRecommendReview } from './confidence-scorer';
 import { getModelConfig } from './model-config';
 import { promptManager, PromptManager } from './prompt-manager';
 import { responseCache, ResponseCache } from './response-cache';
+import { stableStringify } from './stable-json';
 
 // ---------------------------------------------------------------------------
 // Input Interfaces
@@ -150,10 +151,11 @@ function normalizeInput(productData: ProductData, options?: Record<string, unkno
       images: productData.images ?? null,
       price: productData.price ?? null,
       existingContent: productData.existingContent ?? null,
+      barcode: productData.barcode ?? null,
     },
     ...(options ? { options } : {}),
   };
-  return JSON.stringify(payload, Object.keys(payload).sort());
+  return stableStringify(payload);
 }
 
 /**
@@ -223,6 +225,34 @@ function buildPromptVariables(
   }
 
   return variables;
+}
+
+/** Display names used in prompts ("Write for Takealot"). */
+const MARKETPLACE_NAMES: Record<string, string> = {
+  takealot: 'Takealot',
+  makro: 'Makro',
+  amazon: 'Amazon',
+  shopify: 'Shopify',
+  woocommerce: 'WooCommerce',
+};
+
+export function marketplaceName(marketplace?: string): string {
+  return (marketplace && MARKETPLACE_NAMES[marketplace]) || 'online marketplaces';
+}
+
+/**
+ * Marketplaces show plain text, so strip Markdown the model may add
+ * (**bold**, __bold__, `code`, # headings) while keeping the words.
+ */
+export function toPlainText(text: string): string {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^["']|["']$/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .trim();
 }
 
 /**
@@ -343,7 +373,10 @@ export class ContentGenerator {
       }
 
       // 3. Build prompt and invoke Bedrock
-      const variables = buildPromptVariables(request.productData, request.attributes);
+      const variables = buildPromptVariables(request.productData, {
+        ...(request.attributes ?? {}),
+        marketplace: marketplaceName(request.marketplace),
+      });
       const prompt = this.promptMgr.interpolate(template.content, variables);
       const modelConfig = getModelConfig(generationType);
 
@@ -354,8 +387,8 @@ export class ContentGenerator {
         temperature: modelConfig.temperature,
       });
 
-      // 4. Process the generated title
-      let generatedTitle = bedrockResult.content.trim();
+      // 4. Process the generated title (one line, plain text)
+      let generatedTitle = toPlainText(bedrockResult.content).split('\n')[0]!.trim();
       let truncated = false;
 
       // Apply marketplace character limits
@@ -434,7 +467,7 @@ export class ContentGenerator {
       }
 
       // 3. Build prompt with tone and word count instructions
-      const extras: Record<string, string> = {};
+      const extras: Record<string, string> = { marketplace: marketplaceName(request.marketplace) };
       if (request.tone) {
         extras['tone'] = request.tone;
       }
@@ -463,8 +496,8 @@ export class ContentGenerator {
         temperature: modelConfig.temperature,
       });
 
-      // 4. Process the generated description
-      let generatedDescription = bedrockResult.content.trim();
+      // 4. Process the generated description (plain text for marketplaces)
+      let generatedDescription = toPlainText(bedrockResult.content);
       let truncated = false;
 
       // Validate word count against range with 10% tolerance
@@ -579,6 +612,7 @@ export class ContentGenerator {
       const extras: Record<string, string> = {
         bullet_count: String(bulletCount),
         ...(request.attributes ?? {}),
+        marketplace: marketplaceName(request.marketplace),
       };
 
       const variables = buildPromptVariables(request.productData, extras);
@@ -599,7 +633,7 @@ export class ContentGenerator {
       });
 
       // 4. Parse bullets from Bedrock response
-      const bullets = this.parseBullets(bedrockResult.content, bulletCount);
+      const bullets = this.parseBullets(toPlainText(bedrockResult.content), bulletCount);
 
       // 5. Calculate confidence score
       const inputCompleteness = calculateInputCompleteness(request.productData);
@@ -637,14 +671,14 @@ export class ContentGenerator {
   /**
    * Parses bullet points from Bedrock's text response.
    * Handles various list formats (numbered, dashed, bulleted).
-   * Ensures exactly the requested count is returned by padding or trimming.
+   * Trims to the requested count; never pads with repeats.
    *
    * @param rawContent - The raw text response from Bedrock
    * @param targetCount - The desired number of bullets
-   * @returns An array of exactly targetCount bullet strings
+   * @returns Up to targetCount distinct bullet strings
    */
   private parseBullets(rawContent: string, targetCount: number): string[] {
-    const lines = rawContent
+    let lines = rawContent
       .split('\n')
       .map((line) => line.trim())
       .filter((line) => line.length > 0)
@@ -652,18 +686,18 @@ export class ContentGenerator {
       .map((line) => line.replace(/^(\d+[\.\)]\s*|[-•*]\s*)/, '').trim())
       .filter((line) => line.length > 0);
 
-    // If we have too many, take the first targetCount
-    if (lines.length >= targetCount) {
-      return lines.slice(0, targetCount);
+    // A model sometimes answers with one paragraph: use its sentences instead.
+    if (lines.length < targetCount) {
+      const sentences = lines
+        .flatMap((line) => line.split(/(?<=[.!?])\s+(?=[A-Z0-9])/))
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+      if (sentences.length > lines.length) lines = sentences;
     }
 
-    // If we have too few, pad with the last available or generic bullets
-    const result = [...lines];
-    while (result.length < targetCount) {
-      result.push(result[result.length - 1] ?? 'Key product feature');
-    }
-
-    return result;
+    // Never repeat a bullet to fill the count: fewer, distinct bullets read
+    // better than duplicates (the old padding copied the last one).
+    return [...new Set(lines)].slice(0, targetCount);
   }
 
   /**

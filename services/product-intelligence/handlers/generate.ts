@@ -41,6 +41,7 @@ import { attributeExtractor } from '../services/attribute-extractor';
 import { keywordGenerator } from '../services/keyword-generator';
 import { complianceValidator } from '../services/compliance-validator';
 import { responseCache } from '../services/response-cache';
+import { stableStringify } from '../services/stable-json';
 import { promptManager } from '../services/prompt-manager';
 import { marketplaceAdapter } from '../services/marketplace-adapter';
 import type { CacheKeyInput } from '../types/cache.types';
@@ -267,11 +268,12 @@ function normalizeRequestInput(
       images: productData.images ?? null,
       price: productData.price ?? null,
       existingContent: productData.existingContent ?? null,
+      barcode: productData.barcode ?? null,
     },
     marketplace: marketplace ?? null,
     options: options ?? null,
   };
-  return JSON.stringify(payload, Object.keys(payload).sort());
+  return stableStringify(payload);
 }
 
 /**
