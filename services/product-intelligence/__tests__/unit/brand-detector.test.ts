@@ -9,7 +9,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mockClient } from 'aws-sdk-client-mock';
-import { InvokeModelCommand, BedrockRuntimeClient } from '@aws-sdk/client-bedrock-runtime';
+import { ConverseCommand, BedrockRuntimeClient } from '@aws-sdk/client-bedrock-runtime';
 
 import { BrandDetector, type BrandDetectionInput } from '../../services/brand-detector';
 import { resetClientsForTesting } from '../../services/bedrock-client';
@@ -22,13 +22,12 @@ import { getModelConfig } from '../../services/model-config';
 const bedrockMock = mockClient(BedrockRuntimeClient);
 
 function buildBedrockResponse(content: string) {
+  // Converse API response shape.
   return {
-    body: new TextEncoder().encode(
-      JSON.stringify({
-        content: [{ text: content }],
-        usage: { input_tokens: 100, output_tokens: 50 },
-      }),
-    ),
+    output: { message: { role: 'assistant' as const, content: [{ text: content }] } },
+    usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
+    stopReason: 'end_turn' as const,
+    metrics: { latencyMs: 1 },
   };
 }
 
@@ -64,7 +63,7 @@ describe('BrandDetector', () => {
         { name: 'Air Max', type: 'sub-brand', confidenceScore: 0.88 },
       ]);
 
-      bedrockMock.on(InvokeModelCommand).resolves(buildBedrockResponse(responseContent));
+      bedrockMock.on(ConverseCommand).resolves(buildBedrockResponse(responseContent));
 
       const detector = new BrandDetector();
       const result = await detector.detect(buildInput());
@@ -91,7 +90,7 @@ describe('BrandDetector', () => {
         { name: 'SubBrand', type: 'sub-brand', confidenceScore: 0.2 },
       ]);
 
-      bedrockMock.on(InvokeModelCommand).resolves(buildBedrockResponse(responseContent));
+      bedrockMock.on(ConverseCommand).resolves(buildBedrockResponse(responseContent));
 
       const detector = new BrandDetector();
       const result = await detector.detect(buildInput());
@@ -102,7 +101,7 @@ describe('BrandDetector', () => {
     });
 
     it('should set unidentified=true when empty array is returned', async () => {
-      bedrockMock.on(InvokeModelCommand).resolves(buildBedrockResponse('[]'));
+      bedrockMock.on(ConverseCommand).resolves(buildBedrockResponse('[]'));
 
       const detector = new BrandDetector();
       const result = await detector.detect(buildInput());
@@ -117,7 +116,7 @@ describe('BrandDetector', () => {
         { name: 'FakeBrand', type: 'sub-brand', confidenceScore: 0.8 },
       ]);
 
-      bedrockMock.on(InvokeModelCommand).resolves(buildBedrockResponse(responseContent));
+      bedrockMock.on(ConverseCommand).resolves(buildBedrockResponse(responseContent));
 
       const detector = new BrandDetector();
       const result = await detector.detect(
@@ -145,7 +144,7 @@ describe('BrandDetector', () => {
         { name: 'nike', type: 'primary', confidenceScore: 0.9 },
       ]);
 
-      bedrockMock.on(InvokeModelCommand).resolves(buildBedrockResponse(responseContent));
+      bedrockMock.on(ConverseCommand).resolves(buildBedrockResponse(responseContent));
 
       const detector = new BrandDetector();
       const result = await detector.detect(
@@ -157,7 +156,7 @@ describe('BrandDetector', () => {
     });
 
     it('should handle malformed model response gracefully', async () => {
-      bedrockMock.on(InvokeModelCommand).resolves(
+      bedrockMock.on(ConverseCommand).resolves(
         buildBedrockResponse('This is not JSON at all'),
       );
 
@@ -173,7 +172,7 @@ describe('BrandDetector', () => {
         { name: 'Samsung', type: 'primary', confidenceScore: 0.92 },
       ])}\nThat's all.`;
 
-      bedrockMock.on(InvokeModelCommand).resolves(buildBedrockResponse(responseContent));
+      bedrockMock.on(ConverseCommand).resolves(buildBedrockResponse(responseContent));
 
       const detector = new BrandDetector();
       const result = await detector.detect(
@@ -190,7 +189,7 @@ describe('BrandDetector', () => {
         { name: 'LowBrand', type: 'sub-brand', confidenceScore: -0.3 },
       ]);
 
-      bedrockMock.on(InvokeModelCommand).resolves(buildBedrockResponse(responseContent));
+      bedrockMock.on(ConverseCommand).resolves(buildBedrockResponse(responseContent));
 
       const detector = new BrandDetector();
       const result = await detector.detect(buildInput());
@@ -207,7 +206,7 @@ describe('BrandDetector', () => {
         { name: 'Puma', type: 'primary' },  // missing confidence
       ]);
 
-      bedrockMock.on(InvokeModelCommand).resolves(buildBedrockResponse(responseContent));
+      bedrockMock.on(ConverseCommand).resolves(buildBedrockResponse(responseContent));
 
       const detector = new BrandDetector();
       const result = await detector.detect(buildInput());
@@ -221,12 +220,12 @@ describe('BrandDetector', () => {
         { name: 'Nike', type: 'primary', confidenceScore: 0.9 },
       ]);
 
-      bedrockMock.on(InvokeModelCommand).resolves(buildBedrockResponse(responseContent));
+      bedrockMock.on(ConverseCommand).resolves(buildBedrockResponse(responseContent));
 
       const detector = new BrandDetector();
       await detector.detect(buildInput());
 
-      const calls = bedrockMock.commandCalls(InvokeModelCommand);
+      const calls = bedrockMock.commandCalls(ConverseCommand);
       expect(calls).toHaveLength(1);
       // Assert against the configured brand model rather than a literal id: the
       // model is pinned in model-config.ts and changes with each model upgrade

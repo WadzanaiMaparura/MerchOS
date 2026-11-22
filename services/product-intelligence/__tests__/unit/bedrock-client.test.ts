@@ -9,7 +9,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mockClient } from 'aws-sdk-client-mock';
-import { InvokeModelCommand, BedrockRuntimeClient } from '@aws-sdk/client-bedrock-runtime';
+import { ConverseCommand, BedrockRuntimeClient } from '@aws-sdk/client-bedrock-runtime';
 import { PutEventsCommand, EventBridgeClient } from '@aws-sdk/client-eventbridge';
 
 import {
@@ -30,13 +30,12 @@ const bedrockMock = mockClient(BedrockRuntimeClient);
 const eventBridgeMock = mockClient(EventBridgeClient);
 
 function buildSuccessResponse(content = 'Generated content', inputTokens = 50, outputTokens = 20) {
+  // Converse API response shape.
   return {
-    body: new TextEncoder().encode(
-      JSON.stringify({
-        content: [{ text: content }],
-        usage: { input_tokens: inputTokens, output_tokens: outputTokens },
-      }),
-    ),
+    output: { message: { role: 'assistant' as const, content: [{ text: content }] } },
+    usage: { inputTokens, outputTokens, totalTokens: inputTokens + outputTokens },
+    stopReason: 'end_turn' as const,
+    metrics: { latencyMs: 1 },
   };
 }
 
@@ -181,7 +180,7 @@ describe('isRetryableError', () => {
 
 describe('BedrockClient.invoke - success', () => {
   it('should return content, token counts, model ID, and latency on success', async () => {
-    bedrockMock.on(InvokeModelCommand).resolves(buildSuccessResponse('Great Title', 75, 15));
+    bedrockMock.on(ConverseCommand).resolves(buildSuccessResponse('Great Title', 75, 15));
 
     const client = new BedrockClient({ sleepFn: async () => {} });
     const result = await client.invoke(buildParams());
@@ -194,33 +193,33 @@ describe('BedrockClient.invoke - success', () => {
   });
 
   it('should pass temperature, topP, and stopSequences to the model', async () => {
-    bedrockMock.on(InvokeModelCommand).resolves(buildSuccessResponse());
+    bedrockMock.on(ConverseCommand).resolves(buildSuccessResponse());
 
     const client = new BedrockClient({ sleepFn: async () => {} });
     await client.invoke(
       buildParams({ temperature: 0.7, topP: 0.9, stopSequences: ['\n'] }),
     );
 
-    const call = bedrockMock.calls()[0];
-    const body = JSON.parse(new TextDecoder().decode(call.args[0].input.body));
+    const input = bedrockMock.commandCalls(ConverseCommand)[0]!.args[0].input;
 
-    expect(body.temperature).toBe(0.7);
-    expect(body.top_p).toBe(0.9);
-    expect(body.stop_sequences).toEqual(['\n']);
+    expect(input.inferenceConfig?.temperature).toBe(0.7);
+    expect(input.inferenceConfig?.topP).toBe(0.9);
+    expect(input.inferenceConfig?.stopSequences).toEqual(['\n']);
+    expect(input.inferenceConfig?.maxTokens).toBe(100);
+    expect(input.messages).toEqual([{ role: 'user', content: [{ text: 'Generate a title for a blue widget' }] }]);
   });
 
   it('should not include optional params when not provided', async () => {
-    bedrockMock.on(InvokeModelCommand).resolves(buildSuccessResponse());
+    bedrockMock.on(ConverseCommand).resolves(buildSuccessResponse());
 
     const client = new BedrockClient({ sleepFn: async () => {} });
     await client.invoke(buildParams());
 
-    const call = bedrockMock.calls()[0];
-    const body = JSON.parse(new TextDecoder().decode(call.args[0].input.body));
+    const input = bedrockMock.commandCalls(ConverseCommand)[0]!.args[0].input;
 
-    expect(body.temperature).toBeUndefined();
-    expect(body.top_p).toBeUndefined();
-    expect(body.stop_sequences).toBeUndefined();
+    expect(input.inferenceConfig?.temperature).toBeUndefined();
+    expect(input.inferenceConfig?.topP).toBeUndefined();
+    expect(input.inferenceConfig?.stopSequences).toBeUndefined();
   });
 });
 
@@ -231,7 +230,7 @@ describe('BedrockClient.invoke - success', () => {
 describe('BedrockClient.invoke - retry behavior', () => {
   it('should retry on ThrottlingException and succeed', async () => {
     bedrockMock
-      .on(InvokeModelCommand)
+      .on(ConverseCommand)
       .rejectsOnce(createThrottlingError())
       .resolves(buildSuccessResponse('Retried content'));
 
@@ -244,7 +243,7 @@ describe('BedrockClient.invoke - retry behavior', () => {
 
   it('should retry on ServiceUnavailableException and succeed', async () => {
     bedrockMock
-      .on(InvokeModelCommand)
+      .on(ConverseCommand)
       .rejectsOnce(createServiceUnavailableError())
       .resolves(buildSuccessResponse('Recovered'));
 
@@ -256,7 +255,7 @@ describe('BedrockClient.invoke - retry behavior', () => {
 
   it('should retry on InternalServerError and succeed', async () => {
     bedrockMock
-      .on(InvokeModelCommand)
+      .on(ConverseCommand)
       .rejectsOnce(createInternalServerError())
       .resolves(buildSuccessResponse('OK'));
 
@@ -267,7 +266,7 @@ describe('BedrockClient.invoke - retry behavior', () => {
   });
 
   it('should retry up to 3 times (4 total attempts) before failing', async () => {
-    bedrockMock.on(InvokeModelCommand).rejects(createThrottlingError());
+    bedrockMock.on(ConverseCommand).rejects(createThrottlingError());
     eventBridgeMock.on(PutEventsCommand).resolves({});
 
     const client = new BedrockClient({ sleepFn: async () => {} });
@@ -281,7 +280,7 @@ describe('BedrockClient.invoke - retry behavior', () => {
   });
 
   it('should NOT retry on non-retryable errors', async () => {
-    bedrockMock.on(InvokeModelCommand).rejects(createNonRetryableError());
+    bedrockMock.on(ConverseCommand).rejects(createNonRetryableError());
     eventBridgeMock.on(PutEventsCommand).resolves({});
 
     const client = new BedrockClient({ sleepFn: async () => {} });
@@ -296,7 +295,7 @@ describe('BedrockClient.invoke - retry behavior', () => {
 
   it('should call sleepFn with jittered delay between retries', async () => {
     bedrockMock
-      .on(InvokeModelCommand)
+      .on(ConverseCommand)
       .rejectsOnce(createThrottlingError())
       .rejectsOnce(createThrottlingError())
       .resolves(buildSuccessResponse());
@@ -320,7 +319,7 @@ describe('BedrockClient.invoke - retry behavior', () => {
 
 describe('BedrockClient.invoke - failure event', () => {
   it('should emit bedrock-failure event when all retries exhausted', async () => {
-    bedrockMock.on(InvokeModelCommand).rejects(createThrottlingError());
+    bedrockMock.on(ConverseCommand).rejects(createThrottlingError());
     eventBridgeMock.on(PutEventsCommand).resolves({});
 
     const client = new BedrockClient({ sleepFn: async () => {} });
@@ -348,7 +347,7 @@ describe('BedrockClient.invoke - failure event', () => {
 
   it('should not emit event when EVENT_BUS_NAME is not set', async () => {
     delete process.env['EVENT_BUS_NAME'];
-    bedrockMock.on(InvokeModelCommand).rejects(createThrottlingError());
+    bedrockMock.on(ConverseCommand).rejects(createThrottlingError());
 
     const client = new BedrockClient({ sleepFn: async () => {} });
 
@@ -362,7 +361,7 @@ describe('BedrockClient.invoke - failure event', () => {
   });
 
   it('should include proper error details in the thrown error', async () => {
-    bedrockMock.on(InvokeModelCommand).rejects(createThrottlingError());
+    bedrockMock.on(ConverseCommand).rejects(createThrottlingError());
     eventBridgeMock.on(PutEventsCommand).resolves({});
 
     const client = new BedrockClient({ sleepFn: async () => {} });
