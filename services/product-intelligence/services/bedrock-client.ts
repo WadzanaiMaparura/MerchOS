@@ -11,7 +11,7 @@
 import {
   BedrockRuntimeClient,
   BedrockRuntimeClientConfig,
-  InvokeModelCommand,
+  ConverseCommand,
 } from '@aws-sdk/client-bedrock-runtime';
 import {
   EventBridgeClient,
@@ -340,20 +340,18 @@ export class BedrockClient {
       const startTime = Date.now();
 
       try {
-        const body = JSON.stringify({
-          anthropic_version: 'bedrock-2023-05-31',
-          max_tokens: maxTokens,
-          messages: [{ role: 'user', content: prompt }],
-          ...(temperature !== undefined && { temperature }),
-          ...(topP !== undefined && { top_p: topP }),
-          ...(stopSequences?.length && { stop_sequences: stopSequences }),
-        });
-
-        const command = new InvokeModelCommand({
+        // Converse is Bedrock's model-neutral API: the same request works for
+        // Amazon Nova, Anthropic Claude and others, so changing model is a
+        // configuration change (model-config.ts), never a code change.
+        const command = new ConverseCommand({
           modelId,
-          contentType: 'application/json',
-          accept: 'application/json',
-          body: new TextEncoder().encode(body),
+          messages: [{ role: 'user', content: [{ text: prompt }] }],
+          inferenceConfig: {
+            maxTokens,
+            ...(temperature !== undefined && { temperature }),
+            ...(topP !== undefined && { topP }),
+            ...(stopSequences?.length ? { stopSequences } : {}),
+          },
         });
 
         const client = getBedrockClient();
@@ -361,14 +359,11 @@ export class BedrockClient {
 
         const latencyMs = Date.now() - startTime;
 
-        // Parse the response body
-        const responseBody = JSON.parse(
-          new TextDecoder().decode(response.body),
-        );
-
-        const content = responseBody.content?.[0]?.text ?? '';
-        const inputTokens = responseBody.usage?.input_tokens ?? 0;
-        const outputTokens = responseBody.usage?.output_tokens ?? 0;
+        const content = (response.output?.message?.content ?? [])
+          .map((block) => ('text' in block && block.text ? block.text : ''))
+          .join('');
+        const inputTokens = response.usage?.inputTokens ?? 0;
+        const outputTokens = response.usage?.outputTokens ?? 0;
 
         return {
           content,
