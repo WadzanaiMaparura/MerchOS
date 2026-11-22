@@ -1,9 +1,9 @@
 export default function Footer() {
   return (
     <footer className="bg-gray-900 text-gray-300">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-16">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 sm:py-12">
         {/* CTA band */}
-        <div className="rounded-2xl bg-blue-600 p-8 sm:p-12 text-center mb-16">
+        <div className="rounded-2xl bg-blue-600 p-8 sm:p-10 text-center mb-10">
           <h2 className="text-2xl sm:text-3xl font-bold text-white">
             Ready to automate your marketplace listings?
           </h2>
