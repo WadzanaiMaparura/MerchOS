@@ -1,7 +1,11 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
+import { DM_Sans } from 'next/font/google';
 import { Providers } from './providers';
 import './globals.css';
+
+// Brand font, self-hosted by next/font (same as the seller app).
+const dmSans = DM_Sans({ subsets: ['latin'], display: 'swap', variable: '--font-dm-sans' });
 
 export const metadata: Metadata = {
   title: 'MerchOS - Admin Dashboard',
@@ -14,8 +18,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body>
+    <html lang="en" className={dmSans.variable}>
+      <body className="antialiased">
         {/*
           Amazon Cognito advanced-security (Threat Protection) data collection.
           Amplify JS does NOT collect device-fingerprint UserContextData on its

@@ -68,8 +68,10 @@ export function brandedEmailTemplate(title: string, bodyContent: string, prehead
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light">
   <title>${title}</title>
+  <!-- Brand font. Apple Mail / iOS load it; Gmail and Outlook use the fallbacks. -->
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
-<body style="margin: 0; padding: 0; background-color: #eef2f7; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+<body style="margin: 0; padding: 0; background-color: #eef2f7; font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
   <div style="display: none; max-height: 0; overflow: hidden; opacity: 0;">${preheader}</div>
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #eef2f7;">
     <tr>
@@ -126,7 +128,7 @@ function codeBox(label: string, expiry: string): string {
       <tr>
         <td style="background-color: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; text-align: center;">
           <p style="margin: 0 0 8px; color: #64748b; font-size: 12px; text-transform: uppercase; letter-spacing: 1px;">${label}</p>
-          <p style="margin: 0; color: ${INK}; font-size: 34px; font-weight: 700; letter-spacing: 8px; font-family: 'SFMono-Regular', Consolas, 'Courier New', monospace;">{####}</p>
+          <p style="margin: 0; color: ${INK}; font-size: 34px; font-weight: 700; letter-spacing: 8px; font-family: 'DM Sans', -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;">{####}</p>
           <p style="margin: 8px 0 0; color: #64748b; font-size: 12px;">${expiry}</p>
         </td>
       </tr>

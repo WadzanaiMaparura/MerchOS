@@ -46,7 +46,8 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        // DM Sans is loaded in app/layout.tsx (next/font).
+        sans: ['var(--font-dm-sans)', 'DM Sans', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
       },
       spacing: {
         'sidebar-collapsed': '4rem',

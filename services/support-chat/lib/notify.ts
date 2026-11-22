@@ -95,7 +95,7 @@ export async function emailSupport(input: {
     '',
     `Open in the Support inbox: ${link}`,
   ].join('\n');
-  const html = `<div style="font-family:Arial,sans-serif;font-size:14px;color:#1f2937">
+  const html = `<div style="font-family:'DM Sans',-apple-system,'Segoe UI',Roboto,Arial,sans-serif;font-size:14px;color:#1f2937">
 <p>${escapeHtml(input.intro)}</p>
 <table style="border-collapse:collapse">${rows
     .map(
