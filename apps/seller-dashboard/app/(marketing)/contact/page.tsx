@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Contact Us — MerchOS',
+  title: 'Contact Us | MerchOS',
   description: 'Get in touch with the MerchOS team for general enquiries, support, or partnerships.',
 };
 
@@ -70,8 +70,8 @@ export default function ContactPage() {
 
       <div className="rounded-2xl border border-gray-200 bg-gray-50/50 p-8">
         <h2 className="text-lg font-semibold text-[#111827] mb-3">Business Hours</h2>
-        <p className="text-[#4B5563]">Monday – Friday</p>
-        <p className="text-[#4B5563] font-medium">08:00 – 17:00 SAST</p>
+        <p className="text-[#4B5563]">Monday to Friday</p>
+        <p className="text-[#4B5563] font-medium">08:00 to 17:00 SAST</p>
         <p className="text-sm text-[#6B7280] mt-4">
           Or simply send us a message and our team will get back to you.
         </p>

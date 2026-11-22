@@ -48,7 +48,7 @@ function titleCase(s: string): string {
 }
 
 function formatDate(iso: string): string {
-  if (!iso) return '—';
+  if (!iso) return 'Never';
   try {
     return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
   } catch {

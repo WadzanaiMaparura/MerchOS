@@ -53,7 +53,7 @@ const columns: ColumnDef<ProductListItem>[] = [
   {
     id: 'brand',
     header: 'Brand',
-    cell: (row) => row.brand ?? '—',
+    cell: (row) => row.brand ?? 'None',
     sortable: true,
     width: 'w-[160px]',
   },

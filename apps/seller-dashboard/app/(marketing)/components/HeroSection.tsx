@@ -16,7 +16,7 @@ export default function HeroSection() {
             </h1>
 
             <p className="mt-6 text-lg text-gray-600 leading-relaxed max-w-xl">
-              Transform supplier catalogues into marketplace-ready listings through an
+              Transform supplier catalogues into marketplace ready listings through an
               intelligent automated workflow.
             </p>
 

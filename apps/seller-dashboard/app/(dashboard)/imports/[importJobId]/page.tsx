@@ -62,7 +62,7 @@ function getStatusBadgeVariant(status: string): BadgeVariant {
 }
 
 function formatDuration(startedAt?: string, completedAt?: string): string {
-  if (!startedAt) return '—';
+  if (!startedAt) return 'Not started';
   const start = new Date(startedAt).getTime();
   const end = completedAt ? new Date(completedAt).getTime() : Date.now();
   const durationMs = end - start;

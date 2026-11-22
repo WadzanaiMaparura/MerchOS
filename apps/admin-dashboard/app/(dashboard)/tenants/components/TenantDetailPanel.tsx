@@ -526,7 +526,7 @@ function SuspendReasonModal({
               </p>
             ) : (
               <p id="suspend-reason-hint" className="text-xs text-gray-400">
-                1–500 characters required
+                1 to 500 characters required
               </p>
             )}
             <p className="text-xs text-gray-400 ml-2 flex-shrink-0">

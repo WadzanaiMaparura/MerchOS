@@ -103,7 +103,7 @@ export function AlertResolutionForm({
             </p>
           ) : (
             <p id="resolution-note-hint" className="text-xs text-gray-400">
-              1–1000 characters required
+              1 to 1000 characters required
             </p>
           )}
           <p className="ml-2 flex-shrink-0 text-xs text-gray-400">

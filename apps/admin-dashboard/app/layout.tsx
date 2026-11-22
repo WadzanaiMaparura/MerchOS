@@ -8,8 +8,9 @@ import './globals.css';
 const dmSans = DM_Sans({ subsets: ['latin'], display: 'swap', variable: '--font-dm-sans' });
 
 export const metadata: Metadata = {
-  title: 'MerchOS - Admin Dashboard',
+  title: 'MerchOS Admin',
   description: 'Platform administration and monitoring dashboard',
+  icons: { icon: '/favicon.svg' },
 };
 
 export default function RootLayout({

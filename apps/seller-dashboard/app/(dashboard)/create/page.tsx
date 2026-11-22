@@ -57,7 +57,7 @@ export default function CreateListingsPage() {
       <div>
         <h1 className="text-xl font-semibold tracking-tight text-gray-900">Create listings</h1>
         <p className="text-sm text-gray-500">
-          Upload your product information and MerchOS builds marketplace-ready listings for review.
+          Upload your product information and MerchOS builds marketplace ready listings for review.
         </p>
       </div>
 

@@ -140,7 +140,7 @@ export function ValidationErrorReport({ errors, importJobId }: ValidationErrorRe
                   {error.message}
                 </td>
                 <td className="max-w-[200px] truncate px-3 py-2 text-gray-500">
-                  {error.value ?? '—'}
+                  {error.value ?? '(empty)'}
                 </td>
               </tr>
             ))}

@@ -236,7 +236,7 @@ export function CSVUploadModal({ open, onOpenChange }: CSVUploadModalProps) {
         {/* Selected file info */}
         {selectedFile && !isValidating && validationErrors.length === 0 && (
           <Alert variant="success" title="File ready">
-            <span className="font-medium">{selectedFile.name}</span> ({formatFileSize(selectedFile.size)}) — ready to upload.
+            <span className="font-medium">{selectedFile.name}</span> ({formatFileSize(selectedFile.size)}) is ready to upload.
           </Alert>
         )}
 

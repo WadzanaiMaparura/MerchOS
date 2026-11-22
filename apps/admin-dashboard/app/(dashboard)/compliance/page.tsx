@@ -362,7 +362,7 @@ export default function CompliancePage() {
             <Card
               title={
                 loadedRuleSet
-                  ? `${loadedRuleSet.channelName} — v${loadedRuleSet.version}`
+                  ? `${loadedRuleSet.channelName} (v${loadedRuleSet.version})`
                   : undefined
               }
               padding="lg"

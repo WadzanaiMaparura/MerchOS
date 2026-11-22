@@ -1,13 +1,13 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Help Centre — MerchOS',
+  title: 'Help Centre | MerchOS',
   description: 'Find answers to common questions about using MerchOS for marketplace automation.',
 };
 
 const topics = [
   { title: 'Getting Started', description: 'Create your account and connect your marketplace.' },
-  { title: 'Importing Supplier Catalogues', description: 'Learn how MerchOS converts supplier catalogues into marketplace-ready listings.' },
+  { title: 'Importing Supplier Catalogues', description: 'Learn how MerchOS converts supplier catalogues into marketplace ready listings.' },
   { title: 'Product Enhancement', description: 'Understand how MerchOS improves titles, descriptions, categories and images before export.' },
   { title: 'Marketplace Publishing', description: 'Publish products to supported marketplaces with confidence.' },
   { title: 'Account & Billing', description: 'Manage your subscription and account settings.' },

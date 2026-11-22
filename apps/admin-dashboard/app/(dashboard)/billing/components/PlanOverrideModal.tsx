@@ -190,7 +190,7 @@ export function PlanOverrideModal({
                 </p>
               ) : (
                 <p id="override-reason-hint" className="text-xs text-gray-400">
-                  1–500 characters required
+                  1 to 500 characters required
                 </p>
               )}
               <p className="ml-2 flex-shrink-0 text-xs text-gray-400">

@@ -15,6 +15,7 @@
 import React from 'react';
 import { AdminRouteGuard } from '../../components/AdminRouteGuard';
 import { AdminAppShell } from '../../components/AdminAppShell';
+import { StaffGate } from '../../components/StaffGate';
 import { InactivityTimer } from '../../components/InactivityTimer';
 import { OfflineIndicator } from '../../components/OfflineIndicator';
 
@@ -25,11 +26,13 @@ export default function DashboardLayout({
 }) {
   return (
     <AdminRouteGuard>
-      <AdminAppShell>
-        {/* Offline banner appears above page content */}
-        <OfflineIndicator />
-        {children}
-      </AdminAppShell>
+      <StaffGate>
+        <AdminAppShell>
+          {/* Offline banner appears above page content */}
+          <OfflineIndicator />
+          {children}
+        </AdminAppShell>
+      </StaffGate>
       {/* Inactivity timer renders nothing — just mounts the hook */}
       <InactivityTimer />
     </AdminRouteGuard>

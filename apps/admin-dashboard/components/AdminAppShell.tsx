@@ -115,7 +115,7 @@ const registry = new PermissionRegistry(defaultPermissionConfig);
  * Each item maps to a resource in the permission registry.
  * Requirements: 8.1, 8.2, 8.3
  */
-const ADMIN_NAV_ITEMS: NavigationItem[] = [
+export const ADMIN_NAV_ITEMS: NavigationItem[] = [
   { id: 'health', label: 'Health', href: '/health', requiredResource: 'infrastructure' },
   { id: 'tenants', label: 'Tenants', href: '/tenants', requiredResource: 'tenants' },
   { id: 'users', label: 'Users', href: '/users', requiredResource: 'users' },
@@ -299,7 +299,12 @@ export function AdminAppShell({ children }: AdminAppShellProps) {
       >
         <div className="flex h-full flex-col bg-sidebar-bg">
           {/* MerchOS brand block (top-left) — the product brand. */}
-          <div className="flex items-center border-b border-gray-300 px-4 py-4">
+          <div className="flex items-center gap-2 border-b border-gray-300 px-4 py-4">
+            {/* Same mark as the browser tab icon (public/favicon.svg). */}
+            <svg viewBox="0 0 32 32" className="h-7 w-7 shrink-0" aria-hidden="true">
+              <circle cx="16" cy="16" r="16" fill="#2563EB" />
+              <path d="M8 23V9h2.4l5.6 9.2L21.6 9H24v14h-2.2V13.1L16.6 21h-1.2L10.2 13.1V23H8z" fill="white" />
+            </svg>
             {!sidebarCollapsed && (
               <span className="truncate text-base font-bold tracking-tight text-primary-600">
                 MerchOS

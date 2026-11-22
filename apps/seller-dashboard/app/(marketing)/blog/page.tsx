@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Blog — MerchOS',
+  title: 'Blog | MerchOS',
   description: 'Product updates, marketplace insights, automation best practices, and practical guides for online sellers.',
 };
 

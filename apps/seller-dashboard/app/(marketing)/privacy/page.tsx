@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy — MerchOS',
+  title: 'Privacy Policy | MerchOS',
   description: 'How MerchOS collects, uses, and protects your personal information.',
 };
 

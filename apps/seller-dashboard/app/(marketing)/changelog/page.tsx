@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Changelog — MerchOS',
+  title: 'Changelog | MerchOS',
   description: 'Track the latest updates and improvements to the MerchOS platform.',
 };
 
@@ -22,7 +22,7 @@ export default function ChangelogPage() {
             <span className="w-3 h-3 rounded-full bg-blue-600 -ml-[1.9rem]" />
             <span className="text-xs font-semibold text-blue-600 uppercase tracking-wider">July 2026</span>
           </div>
-          <h2 className="text-xl font-semibold text-[#111827] mb-3">Version 1.0 — Initial Public Release</h2>
+          <h2 className="text-xl font-semibold text-[#111827] mb-3">Version 1.0: Initial Public Release</h2>
           <ul className="space-y-2">
             {[
               'Seller Dashboard',
