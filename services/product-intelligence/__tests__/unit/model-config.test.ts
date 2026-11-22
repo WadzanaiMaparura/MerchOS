@@ -16,10 +16,11 @@ afterEach(() => {
 });
 
 describe('model-config', () => {
-  it('defaults to Amazon Nova EU inference profiles (the models this account can use)', async () => {
+  it('defaults to Claude Haiku 4.5 (EU) with Nova Pro as the backup', async () => {
     const m = await load({});
-    expect(m.DEFAULT_FAST_MODEL_ID).toBe('eu.amazon.nova-lite-v1:0');
-    expect(m.DEFAULT_STRONG_MODEL_ID).toBe('eu.amazon.nova-pro-v1:0');
+    expect(m.DEFAULT_FAST_MODEL_ID).toBe('eu.anthropic.claude-haiku-4-5-20251001-v1:0');
+    expect(m.DEFAULT_STRONG_MODEL_ID).toBe('eu.anthropic.claude-haiku-4-5-20251001-v1:0');
+    expect(m.DEFAULT_FALLBACK_MODEL_ID).toBe('eu.amazon.nova-pro-v1:0');
     expect(m.getModelConfig('title').modelId).toBe(m.DEFAULT_FAST_MODEL_ID);
     expect(m.getModelConfig('description').modelId).toBe(m.DEFAULT_STRONG_MODEL_ID);
     expect(m.getModelConfig('compliance').modelId).toBe(m.DEFAULT_STRONG_MODEL_ID);
@@ -41,7 +42,7 @@ describe('model-config', () => {
     expect(m.getModelConfig('title').modelId).toBe('eu.amazon.nova-micro-v1:0');
   });
 
-  it.each(['', '   ', 'amazon.nova-lite-v1:0', 'us.amazon.nova-lite-v1:0', 'eu.bad model', 'eu.x;rm'])(
+  it.each(['', '   ', 'amazon.nova-lite-v1:0', 'us.amazon.nova-lite-v1:0', 'eu.bad model', 'eu.x;rm'] as const)(
     'ignores an invalid override (%j) and keeps the safe default',
     async (bad) => {
       const m = await load({ BEDROCK_FAST_MODEL_ID: bad });
@@ -52,7 +53,7 @@ describe('model-config', () => {
   it('every generation type has an EU model configured', async () => {
     const m = await load({});
     for (const t of ['title', 'description', 'bullets', 'seo', 'category', 'brand', 'attributes', 'keywords', 'compliance'] as const) {
-      expect(m.getModelConfig(t).modelId).toMatch(/^eu\.amazon\.nova-(lite|pro)-v1:0$/);
+      expect(m.getModelConfig(t).modelId).toBe('eu.anthropic.claude-haiku-4-5-20251001-v1:0');
     }
   });
 });

@@ -159,6 +159,30 @@ const TEMPLATES_V2 = {
   },
 };
 
+/**
+ * v3 bullets: v2 said "no numbers or symbols at the start", which Claude Haiku
+ * read literally and wrote "Two thousand two hundred watts". The rule is about
+ * list markers only; figures like 2200W must stay as digits.
+ */
+const TEMPLATES_V3 = {
+  bullets: {
+    variables: [...V2_VARS, 'bullet_count'],
+    content:
+      'Write exactly {{bullet_count}} feature bullets for a {{marketplace}} listing for ' +
+      'South African shoppers, in South African English.\n\n' +
+      'Rules:\n' +
+      '- Each bullet names one feature from the details, then its benefit to the buyer, ' +
+      'in one sentence of 10 to 25 words.\n' +
+      '- Most important first. Include safety features and the warranty when they are given.\n' +
+      '- Write figures and units as digits, exactly as in the details (for example 2200W, 1.7L).\n' +
+      '- Benefits and expected results are welcome; never invent a specification.\n' +
+      '- Plain text only: no bold, and do not start a bullet with a list marker such as ' +
+      '"1." or "-". One bullet per line.\n\n' +
+      PRODUCT_BLOCK +
+      '\n\nReturn only the bullets, one per line.',
+  },
+};
+
 async function hasVersion(generationType, version) {
   const res = await doc.send(
     new QueryCommand({
@@ -249,6 +273,9 @@ async function main() {
   }
   for (const [type, def] of Object.entries(TEMPLATES_V2)) {
     if (await seedVersion(type, 2, def)) seeded++;
+  }
+  for (const [type, def] of Object.entries(TEMPLATES_V3)) {
+    if (await seedVersion(type, 3, def)) seeded++;
   }
   console.log(`\nDone. Seeded ${seeded} new template(s); ${Object.keys(TEMPLATES).length - seeded} already present.`);
 }

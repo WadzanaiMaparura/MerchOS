@@ -176,6 +176,8 @@ export class ProductIntelligenceStack extends cdk.Stack {
       ...(this.node.tryGetContext('bedrockStrongModelId')
         ? { BEDROCK_STRONG_MODEL_ID: String(this.node.tryGetContext('bedrockStrongModelId')) }
         : {}),
+      // Used automatically if the main model is refused or overloaded.
+      BEDROCK_FALLBACK_MODEL_ID: String(this.node.tryGetContext('bedrockFallbackModelId') ?? 'eu.amazon.nova-pro-v1:0'),
       LOG_LEVEL: env === 'production' ? 'WARN' : 'DEBUG',
     };
 

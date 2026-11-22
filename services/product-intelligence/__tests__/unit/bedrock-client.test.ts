@@ -317,6 +317,37 @@ describe('BedrockClient.invoke - retry behavior', () => {
 // BedrockClient.invoke - EventBridge failure emission
 // ---------------------------------------------------------------------------
 
+describe('BedrockClient.invoke - backup model', () => {
+  it('writes with the backup model when the main model is refused', async () => {
+    process.env['BEDROCK_FALLBACK_MODEL_ID'] = 'eu.amazon.nova-pro-v1:0';
+    try {
+      const denied = Object.assign(new Error('not available for this account'), { name: 'AccessDeniedException' });
+      bedrockMock
+        .on(ConverseCommand, { modelId: 'anthropic.claude-3-haiku-20240307-v1:0' })
+        .rejects(denied)
+        .on(ConverseCommand, { modelId: 'eu.amazon.nova-pro-v1:0' })
+        .resolves(buildSuccessResponse('From the backup'));
+      eventBridgeMock.on(PutEventsCommand).resolves({});
+
+      const result = await new BedrockClient({ sleepFn: async () => {} }).invoke(buildParams());
+      expect(result.content).toBe('From the backup');
+      expect(result.modelId).toBe('eu.amazon.nova-pro-v1:0');
+    } finally {
+      delete process.env['BEDROCK_FALLBACK_MODEL_ID'];
+    }
+  });
+
+  it('does not loop when no backup is configured', async () => {
+    delete process.env['BEDROCK_FALLBACK_MODEL_ID'];
+    bedrockMock.on(ConverseCommand).rejects(Object.assign(new Error('denied'), { name: 'AccessDeniedException' }));
+    eventBridgeMock.on(PutEventsCommand).resolves({});
+    await expect(new BedrockClient({ sleepFn: async () => {} }).invoke(buildParams())).rejects.toMatchObject({
+      code: 'BEDROCK_UNAVAILABLE',
+    });
+    expect(bedrockMock.commandCalls(ConverseCommand)).toHaveLength(1);
+  });
+});
+
 describe('BedrockClient.invoke - failure event', () => {
   it('should emit bedrock-failure event when all retries exhausted', async () => {
     bedrockMock.on(ConverseCommand).rejects(createThrottlingError());
