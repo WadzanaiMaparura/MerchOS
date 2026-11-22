@@ -282,7 +282,7 @@ function HeroSection() {
             </h1>
 
             <p className="mt-6 text-[15px] sm:text-[17px] font-normal text-[#4B5563] leading-[1.7] max-w-[520px]">
-              Transform supplier catalogues into marketplace-ready listings
+              Transform supplier catalogues into marketplace ready listings
               through an intelligent automated workflow.
             </p>
 
@@ -380,7 +380,7 @@ function HeroSection() {
             >
               <img
                 src="/dashboard-hero.png"
-                alt="MerchOS Dashboard — Products processed, listings created, success rate, listing performance chart, top categories, recent imports, processing overview"
+                alt="MerchOS Dashboard: Products processed, listings created, success rate, listing performance chart, top categories, recent imports, processing overview"
                 className="w-full h-auto drop-shadow-[0_20px_60px_rgba(37,99,235,0.12)]"
                 width={900}
                 height={620}
@@ -594,7 +594,7 @@ function DashboardMockup() {
                     icon: <svg className="w-5 h-5 text-green-600 shrink-0" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM7 13h2v2H7v-2zm0-3h10v1H7v-1zm0 6h10v1H7v-1z" /></svg>,
                   },
                   {
-                    name: 'supplier_prices.xlsx', count: '—', status: 'Processing', time: '—',
+                    name: 'supplier_prices.xlsx', count: '…', status: 'Processing', time: 'now',
                     statusBg: 'bg-blue-50 text-blue-700',
                     icon: <svg className="w-5 h-5 text-blue-500 shrink-0" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM8 17v-1.5l3-1.5-3-1.5V11l5 2.5-5 2.5z" /></svg>,
                   },

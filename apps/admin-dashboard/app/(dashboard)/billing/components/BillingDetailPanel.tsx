@@ -223,7 +223,7 @@ function BillingDetailContent({ billing, onOverrideOpen }: BillingDetailContentP
                 className="flex items-center justify-between rounded-md border border-gray-100 bg-gray-50 px-3 py-2 text-sm"
               >
                 <span className="text-gray-700">
-                  {formatDate(invoice.billingPeriodStart)} – {formatDate(invoice.billingPeriodEnd)}
+                  {formatDate(invoice.billingPeriodStart)} to {formatDate(invoice.billingPeriodEnd)}
                 </span>
                 <span className="font-medium text-gray-900">
                   ${(invoice.amount / 100).toFixed(2)}

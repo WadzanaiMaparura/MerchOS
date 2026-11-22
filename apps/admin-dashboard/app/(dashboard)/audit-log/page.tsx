@@ -23,7 +23,7 @@ const ACTION_TYPE_OPTIONS = [
 
 function detailsSummary(details: Record<string, unknown>): string {
   const keys = Object.keys(details);
-  if (keys.length === 0) return '—';
+  if (keys.length === 0) return 'None';
   // Show the first 2 key=value pairs as a brief summary
   return keys
     .slice(0, 2)
@@ -77,7 +77,7 @@ function AuditRow({ event, isExpanded, onToggle, colSpan }: AuditRowProps) {
           {event.resource}
         </td>
         <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">
-          {event.tenantId ?? '—'}
+          {event.tenantId ?? 'None'}
         </td>
         <td className="max-w-xs truncate px-4 py-3 text-sm text-gray-500">
           {detailsSummary(event.details)}

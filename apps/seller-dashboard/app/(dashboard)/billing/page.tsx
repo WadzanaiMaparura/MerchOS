@@ -63,7 +63,7 @@ function formatLimit(n: number | null): string {
 }
 
 function formatDate(iso: string): string {
-  if (!iso) return '—';
+  if (!iso) return 'Not set';
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
     ? iso
@@ -143,7 +143,7 @@ function AccessDenied() {
 // but with no fabricated figures — blank values (em dash) and zero usage.
 const EMPTY_BILLING = {
   planId: undefined as unknown as PlanId,
-  planName: '—',
+  planName: 'No plan',
   billingCycle: 'monthly' as const,
   subscriptionStatus: 'unknown',
   currentPeriodStart: '',
@@ -298,7 +298,7 @@ function BillingContent() {
     {
       id: 'billingPeriod',
       header: 'Billing Period',
-      cell: (row) => `${formatDate(row.billingPeriodStart)} — ${formatDate(row.billingPeriodEnd)}`,
+      cell: (row) => `${formatDate(row.billingPeriodStart)} to ${formatDate(row.billingPeriodEnd)}`,
     },
     {
       id: 'pdf',

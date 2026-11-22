@@ -581,7 +581,7 @@ function ChatWidgetInner() {
                 </p>
                 <p className="mt-1 text-xs text-gray-600">
                   {showOfflineForm
-                    ? `We're online ${availability?.hoursLabel || 'Mon–Fri, 9am–4pm (SAST)'}. Leave a message and we'll email you back.`
+                    ? `We're online ${availability?.hoursLabel || 'Monday to Friday, 9am to 4pm (SAST)'}. Leave a message and we'll email you back.`
                     : "No problem. Leave your details and we'll email you back, usually the same working day."}
                 </p>
               </div>

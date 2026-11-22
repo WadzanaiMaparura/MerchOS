@@ -72,7 +72,7 @@ function formatResultSummary(job: ImportJobSummary): string {
     if (job.status === 'QUEUED') return 'Waiting…';
     if (job.status === 'FAILED') return 'Failed';
     if (job.progress) return `${job.progress.percentage}%`;
-    return '—';
+    return 'In progress';
   }
 
   const { totalExtracted, created, updated, duplicates, validationFailed } = job.results;

@@ -47,7 +47,7 @@ const columns: ColumnDef<SupplierSummary>[] = [
   {
     id: 'contactEmail',
     header: 'Email',
-    cell: (row) => row.contactEmail ?? '—',
+    cell: (row) => row.contactEmail ?? 'None',
     sortable: false,
   },
   {
@@ -57,7 +57,7 @@ const columns: ColumnDef<SupplierSummary>[] = [
       row.website ? (
         <span className="truncate text-sm text-blue-600">{row.website}</span>
       ) : (
-        '—'
+        'None'
       ),
     sortable: false,
   },

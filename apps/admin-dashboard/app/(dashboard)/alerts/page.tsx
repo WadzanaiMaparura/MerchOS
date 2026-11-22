@@ -58,7 +58,7 @@ function AlertCard({
           : 'border-red-200 bg-red-50',
       ].join(' ')}
       role="article"
-      aria-label={`Alert: ${alert.functionName} — ${isResolved ? 'resolved' : 'unresolved'}`}
+      aria-label={`Alert: ${alert.functionName}, ${isResolved ? 'resolved' : 'unresolved'}`}
     >
       {/* Header row */}
       <div className="flex items-start justify-between gap-3">

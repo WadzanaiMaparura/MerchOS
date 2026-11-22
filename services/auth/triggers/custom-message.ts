@@ -80,7 +80,7 @@ export function brandedEmailTemplate(title: string, bodyContent: string, prehead
           <tr>
             <td style="background-color: ${BLUE}; padding: 24px 32px;">
               <p style="margin: 0; color: #ffffff; font-size: 26px; font-weight: 800; letter-spacing: -0.5px;">MerchOS</p>
-              <p style="margin: 4px 0 0; color: #dbeafe; font-size: 13px;">Marketplace-ready listings for Takealot &amp; more</p>
+              <p style="margin: 4px 0 0; color: #dbeafe; font-size: 13px;">Marketplace ready listings for Takealot &amp; more</p>
             </td>
           </tr>
           <tr>
@@ -162,7 +162,7 @@ export function signInCodeEmailTemplate(): string {
     ${heading('Your sign-in code')}
     ${para('Hello,')}
     ${para('Use the code below to finish signing in to MerchOS.')}
-    ${codeBox('Sign-in code', 'This code expires in a few minutes.')}
+    ${codeBox('Sign-in code', 'This code expires in 3 minutes.')}
     ${securityNote('sign in to your account')}`;
   return brandedEmailTemplate('Your MerchOS sign-in code', body, 'Your MerchOS sign-in code is inside.');
 }

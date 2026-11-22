@@ -19,7 +19,7 @@ export const CLOSING_HOUR = 16;
 /** An agent counts as present if their inbox checked in this recently. */
 export const HEARTBEAT_FRESH_MS = 3 * 60 * 1000;
 
-export const HOURS_LABEL = 'Mon–Fri, 9am–4pm (SAST), closed on public holidays';
+export const HOURS_LABEL = 'Monday to Friday, 9am to 4pm (SAST), closed on public holidays';
 
 /**
  * South African public holidays (Public Holidays Act 36 of 1994), including the

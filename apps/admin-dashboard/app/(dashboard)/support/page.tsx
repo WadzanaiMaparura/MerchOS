@@ -136,7 +136,7 @@ function SupportInbox() {
 
   // Tab title shows waiting chats, so a background tab still draws attention.
   useEffect(() => {
-    const base = 'Support inbox — MerchOS Admin';
+    const base = 'Support inbox | MerchOS Admin';
     document.title = waitingCount > 0 ? `(${waitingCount}) ${base}` : base;
     return () => {
       document.title = 'MerchOS Admin';

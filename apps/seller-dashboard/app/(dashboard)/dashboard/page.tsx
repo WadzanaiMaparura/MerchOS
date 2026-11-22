@@ -76,7 +76,7 @@ const CREDITS = {
   used: 0,
   overage: 0,
   overageUnitPriceMinor: 0,
-  planName: '—',
+  planName: 'No plan',
   planCurrency: 'ZAR',
   cycleResetsAt: '',
   breakdown: [
@@ -295,7 +295,7 @@ export default function DashboardPage() {
               <span>
                 {c.cycleResetsAt
                   ? `Resets in ${resetDays} day${resetDays === 1 ? '' : 's'} (${formatDate(c.cycleResetsAt)})`
-                  : 'Resets —'}
+                  : 'Resets monthly'}
               </span>
               <span aria-hidden="true">·</span>
               <span>Overage: {c.planCurrency} {(c.overageUnitPriceMinor / 100).toFixed(2)} per credit</span>

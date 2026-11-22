@@ -108,7 +108,7 @@ const importColumns: ColumnDef<ImportJobSummary>[] = [
     id: 'results',
     header: 'Results',
     cell: (row) => {
-      if (!row.results) return '—';
+      if (!row.results) return 'In progress';
       return `${row.results.totalExtracted} extracted, ${row.results.created} created`;
     },
     sortable: false,

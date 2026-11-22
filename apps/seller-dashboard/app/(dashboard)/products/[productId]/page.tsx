@@ -863,7 +863,7 @@ function ComplianceReportsSection({ complianceReports }: ComplianceReportsSectio
 // ─── Utility ─────────────────────────────────────────────────────────────────
 
 function formatDateTime(dateStr: string): string {
-  if (!dateStr) return '—';
+  if (!dateStr) return 'Not set';
   try {
     return new Intl.DateTimeFormat(undefined, {
       dateStyle: 'medium',

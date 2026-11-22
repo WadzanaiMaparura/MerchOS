@@ -80,7 +80,7 @@ function Findings({ result }: { result: ValidationResult }) {
               <p className="text-sm text-gray-900">{f.message}</p>
               <p className="text-xs text-gray-500">
                 {f.platformField} ({f.code})
-                {f.suggestion ? ` — ${f.suggestion}` : ''}
+                {f.suggestion ? `. ${f.suggestion}` : ''}
               </p>
             </div>
           </li>

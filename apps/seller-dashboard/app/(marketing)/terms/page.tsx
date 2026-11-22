@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Terms of Service — MerchOS',
+  title: 'Terms of Service | MerchOS',
   description: 'Terms and conditions for using the MerchOS platform.',
 };
 

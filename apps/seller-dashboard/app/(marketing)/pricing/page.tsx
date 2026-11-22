@@ -9,7 +9,7 @@ import { FAQSection } from './components/FAQSection';
 import TrainingSection from '../components/TrainingSection';
 
 export const metadata: Metadata = {
-  title: 'Pricing — MerchOS',
+  title: 'Pricing | MerchOS',
   description:
     'MerchOS plans from R499 a month: ready-written marketplace listings, corrections included, export to every marketplace, unlimited team members and free training. Start free, no card.',
 };

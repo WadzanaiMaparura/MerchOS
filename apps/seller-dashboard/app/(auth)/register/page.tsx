@@ -164,7 +164,7 @@ export default function RegisterPage() {
       const message =
         err instanceof Error ? err.message : 'Account creation failed. Please try again.';
       setError(
-        `${message} Your details are held for about an hour — please retry shortly to finish creating your account.`,
+        `${message} Your details are held for about an hour. Please retry shortly to finish creating your account.`,
       );
       setIsSubmitting(false);
       return;
