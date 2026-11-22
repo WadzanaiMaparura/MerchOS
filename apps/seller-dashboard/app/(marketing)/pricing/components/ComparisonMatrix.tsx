@@ -51,6 +51,8 @@ export function ComparisonMatrix({ categories, tiers }: ComparisonMatrixProps) {
           Compare Plans
         </h2>
 
+        <p className="mb-2 text-center text-xs text-gray-500 sm:hidden">Swipe sideways to compare all plans →</p>
+
         {/* Horizontal scroll wrapper for mobile */}
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-sm">
@@ -58,7 +60,7 @@ export function ComparisonMatrix({ categories, tiers }: ComparisonMatrixProps) {
               <tr>
                 <th
                   scope="col"
-                  className="sticky left-0 z-10 bg-white px-4 py-3 text-left text-sm font-semibold text-gray-900"
+                  className="sticky left-0 z-10 w-32 min-w-[8rem] bg-white px-3 py-3 text-left text-sm font-semibold text-gray-900 sm:w-auto sm:px-4"
                 >
                   <span className="sr-only">Feature</span>
                 </th>
@@ -66,7 +68,7 @@ export function ComparisonMatrix({ categories, tiers }: ComparisonMatrixProps) {
                   <th
                     key={tier.id}
                     scope="col"
-                    className="px-4 py-3 text-center text-sm font-semibold text-gray-900"
+                    className="min-w-[5.5rem] px-2 py-3 text-center text-sm font-semibold text-gray-900 sm:px-4"
                   >
                     {tier.name}
                   </th>
@@ -92,7 +94,7 @@ export function ComparisonMatrix({ categories, tiers }: ComparisonMatrixProps) {
                     <tr key={`feature-${category.name}-${feature.name}`} className="border-t border-gray-100">
                       <th
                         scope="row"
-                        className="sticky left-0 z-10 bg-white px-4 py-3 text-left text-sm font-normal text-gray-700 whitespace-nowrap"
+                        className="sticky left-0 z-10 w-32 min-w-[8rem] bg-white px-3 py-3 text-left text-xs font-normal text-gray-700 shadow-[1px_0_0_#f3f4f6] sm:w-auto sm:px-4 sm:text-sm sm:whitespace-nowrap"
                       >
                         {feature.name}
                       </th>
@@ -102,7 +104,7 @@ export function ComparisonMatrix({ categories, tiers }: ComparisonMatrixProps) {
                         return (
                           <td
                             key={`${feature.name}-${tier.id}`}
-                            className="px-4 py-3 text-center text-sm text-gray-600"
+                            className="px-2 py-3 text-center text-xs text-gray-600 sm:px-4 sm:text-sm"
                           >
                             {value === true ? (
                               <span className="inline-flex justify-center">
