@@ -91,6 +91,12 @@ const CreditCardIcon = (
   </svg>
 );
 
+const ChatIcon = (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5" aria-hidden="true">
+    <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+  </svg>
+);
+
 const LogOutIcon = (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4" aria-hidden="true">
     <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
@@ -118,6 +124,7 @@ const ADMIN_NAV_ITEMS: NavigationItem[] = [
   { id: 'audit-log', label: 'Audit Log', href: '/audit-log', requiredResource: 'audit-log' },
   { id: 'alerts', label: 'Alerts', href: '/alerts', requiredResource: 'alerts' },
   { id: 'billing', label: 'Billing', href: '/billing', requiredResource: 'billing' },
+  { id: 'support', label: 'Support inbox', href: '/support', requiredResource: 'support-inbox' },
 ];
 
 /** Icon map for admin nav items */
@@ -130,6 +137,7 @@ const NAV_ICONS: Record<string, React.ReactNode> = {
   'audit-log': FileTextIcon,
   alerts: AlertIcon,
   billing: CreditCardIcon,
+  support: ChatIcon,
 };
 
 /**
@@ -231,8 +239,11 @@ export function AdminAppShell({ children }: AdminAppShellProps) {
   const mobileSidebarOpen = useAdminUIStore((s) => s.mobileSidebarOpen);
   const setMobileSidebarOpen = useAdminUIStore((s) => s.setMobileSidebarOpen);
 
-  // Unresolved alert count for badge on Alerts nav item (Requirement 8.6)
-  const { data: unresolvedCount = 0 } = useUnresolvedAlertCount();
+  // Unresolved alert count for badge on Alerts nav item (Requirement 8.6).
+  // Only fetched for roles that can see alerts (Support cannot).
+  const canSeeAlerts =
+    isResolved && !!platformRole && registry.hasPermission(platformRole, 'alerts', 'read').granted;
+  const { data: unresolvedCount = 0 } = useUnresolvedAlertCount({ enabled: canSeeAlerts });
 
   // Filter nav items based on the user's platform role (Requirements 8.1, 8.2, 8.3)
   const permittedNavItems = useMemo<NavigationItem[]>(() => {

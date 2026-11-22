@@ -49,8 +49,9 @@ export default function AdminMfaPage() {
 
       try {
         await completeMfa(data.code);
-        // MFA complete — session is now established. Redirect to health page.
-        router.replace('/health');
+        // MFA complete — session is now established. The landing route picks
+        // the first page this role can use (Support → inbox, others → health).
+        router.replace('/');
       } catch {
         setError('Invalid verification code. Please try again.');
         form.setValue('code', '');

@@ -3,8 +3,7 @@
  *
  * PayFast POSTs this server-to-server when a payment's state changes. There is
  * NO JWT authorizer on this route (PayFast cannot present one); instead the
- * handler verifies authenticity itself, mirroring the WhatsApp HMAC webhook
- * pattern used by the Supplier service.
+ * handler verifies authenticity itself.
  *
  * Security controls, in order:
  *   1. Signature verification (provider.verifyItn) — proves PayFast origin.

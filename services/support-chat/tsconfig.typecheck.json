@@ -1,0 +1,14 @@
+{
+  // Used ONLY by `npm run typecheck`. Services are bundled by esbuild, so check
+  // with Bundler resolution (see services/billing/tsconfig.typecheck.json).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "rootDir": "../..",
+    "jsx": "react-jsx",
+    "composite": false,
+    "noEmit": true
+  },
+  "include": ["handlers/**/*.ts", "lib/**/*.ts", "__tests__/**/*.ts"]
+}

@@ -28,3 +28,22 @@ export function sellerDashboardOrigins(env: string): string[] {
     'http://localhost:3000',
   ];
 }
+
+/**
+ * Admin dashboard origins (operators and the Support inbox). Kept separate from
+ * the seller list so seller-facing APIs never accept the admin origin and the
+ * chat can tell visitor sockets from agent sockets by origin.
+ */
+export function adminDashboardOrigins(env: string): string[] {
+  const customDomainOrigin = `https://admin-${env}.merchos.io`;
+  if (env !== 'dev') return [customDomainOrigin];
+  return [
+    customDomainOrigin,
+    // Live admin frontend (Amplify custom domain).
+    'https://admin.merchos.co.za',
+    // Raw Amplify branch origin.
+    'https://main.d3katl1796jtte.amplifyapp.com',
+    // Local development (admin runs on :3001).
+    'http://localhost:3001',
+  ];
+}

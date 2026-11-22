@@ -24,7 +24,12 @@ export interface AuthState {
 
 /** MFA challenge result returned when login requires a second factor. */
 export interface MfaChallengeResult {
-  challengeType: 'TOTP' | 'SMS' | 'EMAIL';
+  /**
+   * NEW_PASSWORD: an admin-created account signing in with its temporary
+   * password must choose a permanent one (see completeNewPassword) before any
+   * second factor.
+   */
+  challengeType: 'TOTP' | 'SMS' | 'EMAIL' | 'NEW_PASSWORD';
   session: string;
 }
 
@@ -46,6 +51,12 @@ export interface TotpSetupDetails {
 export interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<MfaChallengeResult | void>;
   completeMfa: (code: string) => Promise<void>;
+  /**
+   * Answer a NEW_PASSWORD challenge with the user's chosen permanent password.
+   * Resolves with the next challenge (e.g. TOTP) when one follows, or void once
+   * signed in. Rejects when Cognito refuses the password.
+   */
+  completeNewPassword: (newPassword: string) => Promise<MfaChallengeResult | void>;
   /**
    * Begin TOTP enrollment for the currently signed-in user. Returns the shared
    * secret and an otpauth:// setup URI for QR rendering. Requires an active

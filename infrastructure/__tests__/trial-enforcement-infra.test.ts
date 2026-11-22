@@ -78,16 +78,18 @@ describe('free-trial enforcement switch (infrastructure)', () => {
   });
 
   describe('Product Intelligence', () => {
-    it('gives ONLY /generate and /batch the gate env, defaulting to off', () => {
+    // /usage reads the entitlement too: the token budget is sized from the plan.
+    it('gives ONLY /generate, /batch and /usage the gate env, defaulting to off', () => {
       const t = productIntelligence();
       const fns = functionsWith(t, 'TRIAL_ENFORCEMENT');
-      expect(fns).toHaveLength(2);
+      expect(fns).toHaveLength(3);
       for (const f of fns) {
         expect(f.Properties.Environment!.Variables!['TRIAL_ENFORCEMENT']).toBe('false');
         expect(f.Properties.Environment!.Variables).toHaveProperty('PRODUCTS_TABLE');
       }
       expect(names(fns).join()).toMatch(/generate/i);
       expect(names(fns).join()).toMatch(/batch/i);
+      expect(names(fns).join()).toMatch(/usage/i);
     });
     it('turns on with the context flag', () => {
       for (const f of functionsWith(productIntelligence({ trialEnforcement: 'true' }), 'TRIAL_ENFORCEMENT')) {

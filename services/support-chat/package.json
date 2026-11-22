@@ -1,0 +1,31 @@
+{
+  "name": "@merch-os/support-chat",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Live chat — visitors on the website and seller dashboard talk to the MerchOS support team (admin dashboard Support inbox)",
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aws-sdk/client-apigatewaymanagementapi": "3.654.0",
+    "@aws-sdk/client-dynamodb": "3.654.0",
+    "@aws-sdk/client-scheduler": "3.654.0",
+    "@aws-sdk/client-secrets-manager": "3.654.0",
+    "@aws-sdk/client-sesv2": "3.654.0",
+    "@aws-sdk/lib-dynamodb": "3.654.0",
+    "@merch-os/rbac": "*",
+    "@middy/core": "5.4.7",
+    "aws-jwt-verify": "5.2.1",
+    "web-push": "3.6.7",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "8.10.140",
+    "@types/web-push": "3.6.4",
+    "aws-sdk-client-mock": "4.0.1",
+    "typescript": "5.4.5",
+    "vitest": "1.6.0"
+  }
+}

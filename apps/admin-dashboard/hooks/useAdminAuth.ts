@@ -43,6 +43,12 @@ export interface AdminAuthState {
    * Resolves on success, throws on invalid code.
    */
   completeMfa: (code: string) => Promise<void>;
+  /**
+   * First sign-in on a temporary password: set the permanent password.
+   * Returns the next challenge (TOTP) or null when no second factor followed,
+   * which, as with login(), means MFA enrollment is required.
+   */
+  completeNewPassword: (newPassword: string) => Promise<MfaChallengeResult | null>;
   /** Revoke session, clear tokens, and redirect to /login. */
   logout: () => Promise<void>;
   /** Silently refresh the access token; returns the new token string. */
@@ -64,6 +70,7 @@ export function useAdminAuth(): AdminAuthState {
     accessToken,
     login: baseLogin,
     completeMfa,
+    completeNewPassword: baseCompleteNewPassword,
     logout,
     refreshSession,
   } = useAuth();
@@ -98,6 +105,11 @@ export function useAdminAuth(): AdminAuthState {
     return result ?? null;
   };
 
+  const completeNewPassword = async (newPassword: string): Promise<MfaChallengeResult | null> => {
+    const result = await baseCompleteNewPassword(newPassword);
+    return result ?? null;
+  };
+
   return {
     user: adminUser,
     isAuthenticated,
@@ -105,6 +117,7 @@ export function useAdminAuth(): AdminAuthState {
     accessToken,
     login,
     completeMfa,
+    completeNewPassword,
     logout,
     refreshSession,
   };

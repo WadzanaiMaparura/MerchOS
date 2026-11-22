@@ -31,6 +31,8 @@ export const defaultPermissionConfig: PermissionRegistryConfig = {
         { resource: 'processing-jobs', actions: ['read'] },
         { resource: 'logs', actions: ['read'] },
         { resource: 'users.verification', actions: ['create'] }, // resend verification email
+        // Live chat inbox: answer, resolve and delete (POPIA) conversations.
+        { resource: 'support-inbox', actions: ['read', 'update', 'delete'] },
       ],
     },
     {
@@ -59,6 +61,7 @@ export const defaultPermissionConfig: PermissionRegistryConfig = {
         { resource: 'taxonomy', actions: ['create', 'read', 'update', 'delete'] },
         { resource: 'alerts', actions: ['read', 'update'] },
         { resource: 'audit-log', actions: ['read'] },
+        { resource: 'support-inbox', actions: ['read', 'update', 'delete'] },
       ],
     },
   ],

@@ -162,29 +162,30 @@ export function AuthProvider({ children }: AuthProviderProps): React.ReactElemen
       },
     });
 
-    // Check if MFA challenge is required
-    if (result.nextStep.signInStep === 'CONFIRM_SIGN_IN_WITH_TOTP_CODE') {
-      pendingSignInRef.current = email;
-      return {
-        challengeType: 'TOTP',
-        session: email,
-      };
-    }
+    return resolveSignInStep(result, email);
+  }, []);
 
-    if (result.nextStep.signInStep === 'CONFIRM_SIGN_IN_WITH_SMS_CODE') {
+  /**
+   * Map an Amplify sign-in step to the challenge the UI must answer next, or
+   * load the session when sign-in is complete. Shared by login() and
+   * completeNewPassword(), since choosing a new password can be followed by an
+   * MFA challenge.
+   */
+  const resolveSignInStep = async (
+    result: { isSignedIn: boolean; nextStep: { signInStep: string } },
+    email: string,
+  ): Promise<MfaChallengeResult | void> => {
+    const challengeByStep: Record<string, MfaChallengeResult['challengeType']> = {
+      CONFIRM_SIGN_IN_WITH_TOTP_CODE: 'TOTP',
+      CONFIRM_SIGN_IN_WITH_SMS_CODE: 'SMS',
+      CONFIRM_SIGN_IN_WITH_EMAIL_CODE: 'EMAIL',
+      // Admin-created account on its temporary password.
+      CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED: 'NEW_PASSWORD',
+    };
+    const challengeType = challengeByStep[result.nextStep.signInStep];
+    if (challengeType) {
       pendingSignInRef.current = email;
-      return {
-        challengeType: 'SMS',
-        session: email,
-      };
-    }
-
-    if (result.nextStep.signInStep === 'CONFIRM_SIGN_IN_WITH_EMAIL_CODE') {
-      pendingSignInRef.current = email;
-      return {
-        challengeType: 'EMAIL',
-        session: email,
-      };
+      return { challengeType, session: email };
     }
 
     // Auth completed — load session
@@ -199,7 +200,18 @@ export function AuthProvider({ children }: AuthProviderProps): React.ReactElemen
         setAccessToken(accessTkn.toString());
         setIsAuthenticated(true);
       }
+      pendingSignInRef.current = null;
     }
+  };
+
+  /**
+   * Answer the NEW_PASSWORD challenge. Cognito enforces the pool password
+   * policy and rejects weak passwords.
+   */
+  const completeNewPassword = useCallback(async (newPassword: string): Promise<MfaChallengeResult | void> => {
+    const result = await confirmSignIn({ challengeResponse: newPassword });
+    // resolveSignInStep only touches stable state setters and a ref.
+    return resolveSignInStep(result, pendingSignInRef.current ?? '');
   }, []);
 
   /**
@@ -334,13 +346,14 @@ export function AuthProvider({ children }: AuthProviderProps): React.ReactElemen
       accessToken,
       login,
       completeMfa,
+      completeNewPassword,
       setUpTotp,
       verifyTotp,
       enableEmailMfa,
       logout,
       refreshSession,
     }),
-    [user, isAuthenticated, isLoading, accessToken, login, completeMfa, setUpTotp, verifyTotp, enableEmailMfa, logout, refreshSession]
+    [user, isAuthenticated, isLoading, accessToken, login, completeMfa, completeNewPassword, setUpTotp, verifyTotp, enableEmailMfa, logout, refreshSession]
   );
 
   return (
