@@ -325,6 +325,25 @@ export class BedrockClient {
    * @see Requirements 14.1, 14.2, 14.3, 14.4, 14.5
    */
   async invoke(params: BedrockInvocationParams): Promise<BedrockInvocationResult> {
+    // Backup model (BEDROCK_FALLBACK_MODEL_ID): if the configured model is
+    // refused, retired or still throttled after retries, write the listing with
+    // the backup instead of failing. AWS has changed this account's model access
+    // several times, so a single model must not be able to stop listing writing.
+    const fallbackModelId = process.env['BEDROCK_FALLBACK_MODEL_ID']?.trim();
+    try {
+      return await this.invokeModel(params);
+    } catch (error) {
+      if (!fallbackModelId || fallbackModelId === params.modelId) throw error;
+      console.warn('Bedrock model unavailable, using fallback', {
+        modelId: params.modelId,
+        fallbackModelId,
+        error: (error as { message?: string }).message,
+      });
+      return this.invokeModel({ ...params, modelId: fallbackModelId });
+    }
+  }
+
+  private async invokeModel(params: BedrockInvocationParams): Promise<BedrockInvocationResult> {
     const { modelId, prompt, maxTokens, temperature, topP, stopSequences } = params;
     const maxAttempts = 1 + this.retryConfig.maxRetries; // 1 initial + retries
     let lastError: unknown = null;

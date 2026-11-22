@@ -33,10 +33,19 @@ import type { ModelConfig } from '../types/usage.types';
  * BEDROCK_FAST_MODEL_ID / BEDROCK_STRONG_MODEL_ID on the Lambdas (CDK context
  * bedrockFastModelId / bedrockStrongModelId).
  */
-/** Short, structured tasks (titles, bullets, extraction, classification). */
-export const DEFAULT_FAST_MODEL_ID = 'eu.amazon.nova-lite-v1:0';
-/** Long-form writing and reasoning (descriptions, SEO, compliance). */
-export const DEFAULT_STRONG_MODEL_ID = 'eu.amazon.nova-pro-v1:0';
+/**
+ * UPDATE 22 Nov 2026 (later the same day): a probe of every EU model showed
+ * Claude Haiku 4.5 and Sonnet 4.6 now work for this account (all 5.x models and
+ * Opus 4.8 are still refused). By decision, listing writing uses Claude Haiku 4.5
+ * for every task, with Nova Pro as the automatic backup (BEDROCK_FALLBACK_MODEL_ID,
+ * see bedrock-client.ts) in case access changes again.
+ */
+/** Short, structured tasks (titles, extraction, classification). */
+export const DEFAULT_FAST_MODEL_ID = 'eu.anthropic.claude-haiku-4-5-20251001-v1:0';
+/** Long-form writing and reasoning (descriptions, bullets, SEO, compliance). */
+export const DEFAULT_STRONG_MODEL_ID = 'eu.anthropic.claude-haiku-4-5-20251001-v1:0';
+/** Backup used automatically when the configured model is unavailable. */
+export const DEFAULT_FALLBACK_MODEL_ID = 'eu.amazon.nova-pro-v1:0';
 
 /** Only EU cross-region inference-profile ids are valid here (see above). */
 function modelIdFromEnv(names: string[], fallback: string): string {
