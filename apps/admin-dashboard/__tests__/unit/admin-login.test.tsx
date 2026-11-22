@@ -22,6 +22,7 @@ vi.mock('next/navigation', () => ({
 
 const baseLoginMock = vi.fn();
 const completeMfaMock = vi.fn();
+const completeNewPasswordMock = vi.fn();
 vi.mock('@merch-os/auth', () => ({
   useAuth: () => ({
     user: null,
@@ -30,6 +31,7 @@ vi.mock('@merch-os/auth', () => ({
     accessToken: null,
     login: baseLoginMock,
     completeMfa: completeMfaMock,
+    completeNewPassword: completeNewPasswordMock,
     logout: vi.fn(),
     refreshSession: vi.fn(),
   }),
@@ -100,5 +102,33 @@ describe('Admin LoginPage routing', () => {
       expect(screen.getByRole('alert').textContent).toMatch(/invalid email or password/i)
     );
     expect(pushMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('First sign-in with a temporary password', () => {
+  it('lets the user type and submit a new password, then routes to MFA setup', async () => {
+    baseLoginMock.mockResolvedValue({ challengeType: 'NEW_PASSWORD', session: 'info@merchos.co.za' });
+    completeNewPasswordMock.mockResolvedValue(undefined);
+    render(<AdminLoginPage />);
+
+    await submitLogin('info@merchos.co.za', 'TempPass1!');
+    await screen.findByRole('heading', { name: /set your password/i });
+
+    // Regression: the fields were reused from the sign-in form and wiped input.
+    const newPassword = screen.getByLabelText(/^new password/i) as HTMLInputElement;
+    const confirm = screen.getByLabelText(/confirm new password/i) as HTMLInputElement;
+    fireEvent.change(newPassword, { target: { value: 'Imani-Strong-Pass1' } });
+    fireEvent.change(confirm, { target: { value: 'Imani-Strong-Pass1' } });
+    expect(newPassword.value).toBe('Imani-Strong-Pass1');
+    expect(confirm.value).toBe('Imani-Strong-Pass1');
+
+    fireEvent.click(screen.getByRole('button', { name: /set password and continue/i }));
+    await waitFor(() => expect(completeNewPasswordMock).toHaveBeenCalledWith('Imani-Strong-Pass1'));
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/mfa/setup'));
+  });
+
+  it('shows the email placeholder on our .co.za domain', () => {
+    render(<AdminLoginPage />);
+    expect(screen.getByPlaceholderText('admin@merchos.co.za')).toBeTruthy();
   });
 });

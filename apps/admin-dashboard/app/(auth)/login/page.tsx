@@ -166,7 +166,10 @@ export default function AdminLoginPage() {
 
   if (needsNewPassword) {
     return (
-      <div className="space-y-8">
+      // The distinct key makes React build fresh fields for this form. Without
+      // it the sign-in inputs were reused, stayed bound to the sign-in form,
+      // and wiped every character typed into the new password.
+      <div key="new-password" className="space-y-8">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900">Set your password</h1>
           <p className="mt-2 text-sm text-gray-600">
@@ -229,7 +232,7 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div key="sign-in" className="space-y-8">
       <div className="text-center">
         <h1 className="text-2xl font-bold text-gray-900">Admin Sign In</h1>
         <p className="mt-2 text-sm text-gray-600">
@@ -262,7 +265,7 @@ export default function AdminLoginPage() {
             <Input
               {...field}
               type="email"
-              placeholder="admin@merchos.io"
+              placeholder="admin@merchos.co.za"
               autoComplete="email"
               disabled={isSubmitting || isLocked}
             />
