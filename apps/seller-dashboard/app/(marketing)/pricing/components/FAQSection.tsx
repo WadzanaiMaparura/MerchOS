@@ -15,13 +15,13 @@ export function FAQSection({ items }: FAQSectionProps) {
   }
 
   return (
-    <section className="py-16 sm:py-24" aria-labelledby="faq-heading">
+    <section className="pt-6 pb-10 sm:pt-8 sm:pb-14" aria-labelledby="faq-heading">
       <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
         <h2 id="faq-heading" className="text-3xl sm:text-4xl font-bold text-gray-900 text-center">
           Frequently Asked Questions
         </h2>
 
-        <dl className="mt-12 divide-y divide-gray-200">
+        <dl className="mt-8 divide-y divide-gray-200">
           {items.map((item, index) => {
             const isExpanded = expandedIndex === index;
             const panelId = `faq-panel-${index}`;

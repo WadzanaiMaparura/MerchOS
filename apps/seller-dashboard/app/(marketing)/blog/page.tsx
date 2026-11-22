@@ -7,7 +7,7 @@ export const metadata: Metadata = {
 
 export default function BlogPage() {
   return (
-    <div className="max-w-4xl mx-auto px-6 sm:px-10 lg:px-16 py-16 sm:py-24">
+    <div className="max-w-4xl mx-auto px-6 sm:px-10 lg:px-16 py-10 sm:py-14">
       <a href="/" className="text-sm text-blue-600 hover:text-blue-700 font-medium mb-8 inline-block">← Back to home</a>
       
       <h1 className="text-3xl sm:text-4xl font-bold text-[#111827] mb-6">MerchOS Blog</h1>
@@ -17,7 +17,7 @@ export default function BlogPage() {
         automation best practices, and practical guides for online sellers.
       </p>
       
-      <p className="text-[#4B5563] leading-relaxed mb-12">
+      <p className="text-[#4B5563] leading-relaxed mb-8">
         Whether you're selling on Takealot, Amazon, Makro, Shopify, or WooCommerce, 
         our goal is to help you spend less time managing listings and more time growing your business.
       </p>

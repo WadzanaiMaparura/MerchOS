@@ -272,23 +272,45 @@ function ChatWidgetInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Who is around? Checked each time the panel opens.
+  // Who is around? Checked on page load (for the "We're online" callout),
+  // every 2 minutes, and again each time the panel opens.
   useEffect(() => {
-    if (!open || session) return;
+    if (session) return;
     let cancelled = false;
-    chatApi
-      .status()
-      .then((a) => {
-        if (cancelled) return;
-        setAvailability(a);
-        setAgentName(a.agentName);
-      })
-      .catch(() => !cancelled && setAvailability({ online: false, withinHours: false, agentName, hoursLabel: '' }));
+    const check = () =>
+      chatApi
+        .status()
+        .then((a) => {
+          if (cancelled) return;
+          setAvailability(a);
+          setAgentName(a.agentName);
+        })
+        .catch(() => !cancelled && setAvailability({ online: false, withinHours: false, agentName, hoursLabel: '' }));
+    void check();
+    const timer = setInterval(() => void check(), 120_000);
     return () => {
       cancelled = true;
+      clearInterval(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, session]);
+
+  // Callout next to the bubble ("We're online · Chat to us"); dismissible for this visit.
+  const [calloutDismissed, setCalloutDismissed] = useState(() => {
+    try {
+      return window.sessionStorage.getItem('merchos-chat-callout') === 'off';
+    } catch {
+      return false;
+    }
+  });
+  const dismissCallout = () => {
+    setCalloutDismissed(true);
+    try {
+      window.sessionStorage.setItem('merchos-chat-callout', 'off');
+    } catch {
+      // storage disabled: hide for this page view only
+    }
+  };
 
   // Waiting timeline, measured from when the chat started (survives reloads).
   useEffect(() => {
@@ -619,6 +641,38 @@ function ChatWidgetInner() {
         </div>
       )}
 
+      <div className="relative">
+      {!open && !calloutDismissed && availability && !session && (
+        <div className="absolute bottom-1 right-[calc(100%+14px)] animate-fadeIn">
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="relative block whitespace-nowrap rounded-xl bg-white py-2.5 pl-4 pr-9 text-left shadow-[0_4px_20px_rgba(15,23,42,0.18)] ring-1 ring-gray-100 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+          >
+            <span className="block text-[15px] font-medium text-gray-900">
+              {availability.online ? "We're online" : 'Questions?'}
+            </span>
+            <span className="block text-sm text-gray-500">
+              {availability.online ? 'Chat to us' : 'Leave us a message'}
+            </span>
+            {/* Pointer towards the bubble */}
+            <span
+              aria-hidden="true"
+              className="absolute -right-1.5 bottom-4 h-3 w-3 rotate-45 bg-white ring-1 ring-gray-100 [clip-path:polygon(100%_0,100%_100%,0_0)]"
+            />
+          </button>
+          <button
+            type="button"
+            onClick={dismissCallout}
+            className="absolute right-1.5 top-1.5 rounded p-1 text-gray-400 hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+            aria-label="Hide chat message"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="h-3.5 w-3.5" aria-hidden="true">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
       <button
         ref={bubbleRef}
         type="button"
@@ -634,6 +688,7 @@ function ChatWidgetInner() {
           </span>
         )}
       </button>
+      </div>
     </div>
   );
 }

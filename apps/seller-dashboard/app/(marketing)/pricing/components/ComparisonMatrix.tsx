@@ -45,9 +45,9 @@ function CrossIcon() {
 
 export function ComparisonMatrix({ categories, tiers }: ComparisonMatrixProps) {
   return (
-    <section className="py-20 sm:py-28" aria-labelledby="comparison-heading">
+    <section className="py-8 sm:py-10" aria-labelledby="comparison-heading">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <h2 id="comparison-heading" className="text-3xl sm:text-4xl font-bold text-gray-900 text-center mb-12">
+        <h2 id="comparison-heading" className="text-3xl sm:text-4xl font-bold text-gray-900 text-center mb-8">
           Compare Plans
         </h2>
 

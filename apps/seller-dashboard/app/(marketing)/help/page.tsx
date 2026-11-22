@@ -15,19 +15,19 @@ const topics = [
 
 export default function HelpPage() {
   return (
-    <div className="max-w-4xl mx-auto px-6 sm:px-10 lg:px-16 py-16 sm:py-24">
+    <div className="max-w-4xl mx-auto px-6 sm:px-10 lg:px-16 py-10 sm:py-14">
       <a href="/" className="text-sm text-blue-600 hover:text-blue-700 font-medium mb-8 inline-block">← Back to home</a>
       
       <h1 className="text-3xl sm:text-4xl font-bold text-[#111827] mb-6">MerchOS Help Centre</h1>
       
-      <p className="text-lg text-[#4B5563] leading-relaxed mb-12">
+      <p className="text-lg text-[#4B5563] leading-relaxed mb-8">
         Welcome to the MerchOS Help Centre. We're building a comprehensive knowledge base 
         designed to help marketplace sellers get started quickly and solve common questions independently.
       </p>
 
       <h2 className="text-xl font-semibold text-[#111827] mb-6">Popular Topics</h2>
       
-      <div className="space-y-4 mb-12">
+      <div className="space-y-4 mb-8">
         {topics.map((topic) => (
           <div key={topic.title} className="rounded-xl border border-gray-200 bg-white p-6 hover:shadow-sm transition-shadow">
             <h3 className="text-base font-semibold text-[#111827] mb-1">{topic.title}</h3>

@@ -20,18 +20,18 @@ const contacts = [
 
 export default function ContactPage() {
   return (
-    <div className="max-w-4xl mx-auto px-6 sm:px-10 lg:px-16 py-16 sm:py-24">
+    <div className="max-w-4xl mx-auto px-6 sm:px-10 lg:px-16 py-10 sm:py-14">
       <a href="/" className="text-sm text-blue-600 hover:text-blue-700 font-medium mb-8 inline-block">← Back to home</a>
       
       <h1 className="text-3xl sm:text-4xl font-bold text-[#111827] mb-4">Contact Us</h1>
-      <p className="text-lg text-[#4B5563] leading-relaxed mb-12">
+      <p className="text-lg text-[#4B5563] leading-relaxed mb-8">
         We'd love to hear from you.
       </p>
 
       <section
         id="training"
         aria-labelledby="training-booking-heading"
-        className="scroll-mt-24 mb-12 rounded-2xl border-2 border-blue-600 bg-blue-50 p-8"
+        className="scroll-mt-24 mb-8 rounded-2xl border-2 border-blue-600 bg-blue-50 p-8"
       >
         <h2 id="training-booking-heading" className="text-xl font-bold text-[#111827]">
           Book free training
@@ -57,7 +57,7 @@ export default function ContactPage() {
         </p>
       </section>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-12">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
         {contacts.map((contact) => (
           <div key={contact.label} className="rounded-xl border border-gray-200 bg-white p-6">
             <h3 className="text-sm font-semibold text-[#111827] mb-2">{contact.label}</h3>
