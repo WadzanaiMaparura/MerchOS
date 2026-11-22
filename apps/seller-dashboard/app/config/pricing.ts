@@ -70,7 +70,7 @@ export const pricingConfig: PricingConfig = {
       highlighted: false,
       description: 'Try MerchOS on your own products',
       features: [
-        '15 products, AI included',
+        '15 products, listing writing included',
         'Corrections included',
         'Export to every marketplace',
         'Unlimited team members',
@@ -90,7 +90,7 @@ export const pricingConfig: PricingConfig = {
       description: 'For new sellers',
       features: [
         '500 new products / month',
-        'AI-written listings, corrections included',
+        'Ready-written listings, corrections included',
         'Export to every marketplace',
         'Unlimited team members',
         'Free training',
@@ -109,7 +109,7 @@ export const pricingConfig: PricingConfig = {
       description: 'For growing businesses',
       features: [
         '1,000 new products / month',
-        'AI-written listings, corrections included',
+        'Ready-written listings, corrections included',
         'Export to every marketplace',
         'Unlimited team members',
         'Free training',
@@ -128,7 +128,7 @@ export const pricingConfig: PricingConfig = {
       description: 'For high-volume sellers and agencies',
       features: [
         '2,000 new products / month',
-        'AI-written listings, corrections included',
+        'Ready-written listings, corrections included',
         'Export to every marketplace',
         'Unlimited team members',
         'Free training + a dedicated session',
@@ -165,7 +165,7 @@ export const pricingConfig: PricingConfig = {
           tiers: { trial: '15 (once)', starter: '500', growth: '1,000', pro: '2,000', enterprise: 'Custom' },
         },
         {
-          name: 'AI-written listings',
+          name: 'Ready-written listings',
           tiers: { trial: true, starter: true, growth: true, pro: true, enterprise: true },
         },
         {
@@ -222,7 +222,7 @@ export const pricingConfig: PricingConfig = {
     {
       question: 'Is there a free trial?',
       answer:
-        'Yes. Create your first 15 products free, including AI-written content and corrections. No credit card is needed, and there is no time limit.',
+        'Yes. Create your first 15 products free, including listing writing and corrections. No credit card is needed, and there is no time limit.',
     },
     {
       question: 'What happens when my 15 free products are used?',
@@ -232,7 +232,7 @@ export const pricingConfig: PricingConfig = {
     {
       question: 'What counts as a new product?',
       answer:
-        'Each product you add in a month, whether from a photo, a spreadsheet row or typed in. Its AI-written listing and the corrections you need are included. You can add them any day: one today, twenty tomorrow, until your monthly number is reached.',
+        'Each product you add in a month, whether from a photo, a spreadsheet row or typed in. Its ready-written listing and the corrections you need are included. You can add them any day: one today, twenty tomorrow, until your monthly number is reached.',
     },
     {
       question: 'Do I pay extra to export to more marketplaces?',

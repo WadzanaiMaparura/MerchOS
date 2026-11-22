@@ -111,7 +111,7 @@ const plans = [
 ];
 
 const includedFeatures = [
-  'AI-written listings, corrections included',
+  'Ready-written listings, corrections included',
   'Export to every marketplace',
   'Unlimited team members',
   'Free training',
@@ -902,7 +902,7 @@ function PricingSection() {
             Simple pricing. Free to start.
           </h2>
           <p className="mt-3 text-base text-gray-600">
-            Create your first 15 products free, AI included. No credit card. Free training, even before you subscribe.
+            Create your first 15 products free, listing writing included. No credit card. Free training, even before you subscribe.
           </p>
         </div>
 

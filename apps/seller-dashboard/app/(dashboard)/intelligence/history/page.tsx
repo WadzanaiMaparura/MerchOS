@@ -160,7 +160,7 @@ export default function IntelligenceHistoryPage() {
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Generation History</h1>
           <p className="mt-1 text-sm text-gray-600">
-            View past AI content generation requests with status, cost, and results.
+            View past content generation requests with status, cost, and results.
           </p>
         </div>
       </div>

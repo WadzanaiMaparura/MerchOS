@@ -67,10 +67,10 @@ export default function ProductDetailPage() {
   const regenerate = useRegenerateAttribute();
   const searchParams = useSearchParams();
 
-  // AI generation feedback. `?ai=<reason>` arrives from the create page when the
+  // Listing-writing feedback. `?notice=<reason>` arrives from the create page when the
   // product was saved but generation did not finish.
   const [aiError, setAiError] = useState<{ message: string; trial: boolean } | null>(() => {
-    const reason = searchParams?.get('ai');
+    const reason = searchParams?.get('notice');
     return reason ? { message: reason, trial: /trial/i.test(reason) } : null;
   });
   const [aiNotice, setAiNotice] = useState<string | null>(null);
@@ -93,7 +93,7 @@ export default function ProductDetailPage() {
         return;
       }
       setAiError({
-        message: describeProductError(err, 'AI generation failed. Please try again.'),
+        message: describeProductError(err, 'Listing writing failed. Please try again.'),
         trial: isTrialErrorCode(e?.code),
       });
     }
@@ -257,7 +257,7 @@ export default function ProductDetailPage() {
               disabled={synthesize.isPending}
               className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
             >
-              {synthesize.isPending ? 'Generating…' : 'Generate with AI'}
+              {synthesize.isPending ? 'Generating…' : 'Write my listing'}
             </button>
           )}
         </div>
@@ -265,7 +265,7 @@ export default function ProductDetailPage() {
 
       {product.lifecycleState === 'GENERATING' && !synthesize.isPending && (
         <Alert variant="info" title="Generating">
-          AI is writing this listing. Refresh in a moment to see the result.{' '}
+          MerchOS is writing this listing. Refresh in a moment to see the result.{' '}
           <button type="button" onClick={() => void refetch()} className="font-medium underline">
             Refresh now
           </button>
@@ -285,7 +285,7 @@ export default function ProductDetailPage() {
         <div aria-live="assertive">
           <Alert
             variant={aiError.trial ? 'warning' : 'error'}
-            title={aiError.trial ? 'Free trial limit' : 'AI generation failed'}
+            title={aiError.trial ? 'Free trial limit' : 'Listing writing failed'}
             dismissible
             onDismiss={() => setAiError(null)}
           >
@@ -592,8 +592,8 @@ function EnrichmentSection({ enrichmentLayer, canEdit, onApprove, onOverride, is
 
   return (
     <section aria-labelledby="enrichment-heading">
-      <Card title="AI Enrichment">
-        <h3 id="enrichment-heading" className="sr-only">AI Enrichment</h3>
+      <Card title="Suggested details">
+        <h3 id="enrichment-heading" className="sr-only">Suggested details</h3>
         <p className="mb-3 text-xs text-gray-500">
           Enriched at: {formatDateTime(enrichmentLayer.enrichedAt)} | Language: {enrichmentLayer.detectedLanguage}
         </p>
@@ -740,7 +740,7 @@ function EnrichedAttributeRow({ name, attribute, canEdit, onApprove, onOverride,
               onClick={onRegenerate}
               disabled={regenerateBusy}
               className="rounded px-2 py-0.5 text-xs font-medium text-purple-700 hover:bg-purple-50 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:ring-offset-2"
-              aria-label={`Regenerate ${name} with AI`}
+              aria-label={`Regenerate ${name}`}
             >
               {isRegenerating ? 'Regenerating…' : 'Regenerate'}
             </button>

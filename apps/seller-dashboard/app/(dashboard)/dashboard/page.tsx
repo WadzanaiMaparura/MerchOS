@@ -88,7 +88,7 @@ const CREDITS = {
 
 const STAGES: { stage: Stage; count: number; note: string }[] = [
   { stage: 'DRAFT', count: 0, note: 'uploaded, not started' },
-  { stage: 'GENERATING', count: 0, note: 'AI synthesising' },
+  { stage: 'GENERATING', count: 0, note: 'Writing listings' },
   { stage: 'NEEDS_REVIEW', count: 0, note: 'awaiting your approval' },
   { stage: 'CSV_READY', count: 0, note: 'ready to download' },
   { stage: 'EXPORTED', count: 0, note: 'downloaded by you' },

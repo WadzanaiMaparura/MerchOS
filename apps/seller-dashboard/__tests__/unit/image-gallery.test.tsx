@@ -104,7 +104,7 @@ describe('ImageJobStatus', () => {
         job={{ ...base, status: 'COMPLETED', enhancement: { attempted: true, applied: true } }}
       />,
     );
-    expect(screen.getByText(/AI enhancement applied/i)).toBeTruthy();
+    expect(screen.getByText(/Enhancement applied/i)).toBeTruthy();
   });
 
   it('renders a failure message when FAILED', () => {

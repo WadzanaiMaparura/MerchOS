@@ -416,9 +416,9 @@ export default function IntelligencePage() {
     <div className="flex flex-col gap-6 max-w-3xl">
       {/* Page Header */}
       <div>
-        <h1 className="text-2xl font-semibold text-gray-900">AI Content Generation</h1>
+        <h1 className="text-2xl font-semibold text-gray-900">Content Generation</h1>
         <p className="mt-1 text-sm text-gray-600">
-          Generate optimized product content using AI. Select a generation type and provide product information to get started.
+          Generate optimised product content. Select a generation type and provide product information to get started.
         </p>
       </div>
 
