@@ -265,10 +265,10 @@ function CustomerReviewStack({ reviews }: { reviews: CustomerReview[] }) {
 const WORKS_WITH: Array<{ name: string; src?: string; h: string }> = [
   { name: 'Takealot', src: '/logos/takealot.svg', h: 'h-5' },
   { name: 'Amazon', src: '/logos/amazon.svg', h: 'h-6 pt-1' },
-  // Makro SA and WooCommerce: waiting for the exact current logo files.
-  { name: 'Makro', h: 'h-5' },
+  // Makro SA: seeklogo.com logo 618878 (trimmed). WooCommerce: supplied SVG.
+  { name: 'Makro', src: '/logos/makro.png', h: 'h-[18px]' },
   { name: 'Shopify', src: '/logos/shopify.svg', h: 'h-6' },
-  { name: 'WooCommerce', h: 'h-5' },
+  { name: 'WooCommerce', src: '/logos/woocommerce.svg', h: 'h-5' },
 ];
 
 function HeroSection() {
