@@ -23,6 +23,8 @@ describe('model-config', () => {
     expect(m.getModelConfig('title').modelId).toBe(m.DEFAULT_FAST_MODEL_ID);
     expect(m.getModelConfig('description').modelId).toBe(m.DEFAULT_STRONG_MODEL_ID);
     expect(m.getModelConfig('compliance').modelId).toBe(m.DEFAULT_STRONG_MODEL_ID);
+    // Nova Lite wrote bullets as one paragraph; Pro follows the format.
+    expect(m.getModelConfig('bullets').modelId).toBe(m.DEFAULT_STRONG_MODEL_ID);
   });
 
   it('can be switched (e.g. to Claude) by configuration alone', async () => {

@@ -77,7 +77,8 @@ const MODEL_CONFIG_MAP: Record<GenerationType, ModelConfig> = {
   },
   bullets: {
     generationType: 'bullets',
-    modelId: FAST_MODEL,
+    // Nova Lite ignored "one bullet per line" and wrote a paragraph; Pro follows it.
+    modelId: STRONG_MODEL,
     maxTokens: 1024,
     temperature: 0.5,
   },

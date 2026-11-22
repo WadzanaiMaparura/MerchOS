@@ -35,6 +35,7 @@ import { calculate, shouldRecommendReview } from './confidence-scorer';
 import { getModelConfig } from './model-config';
 import { promptManager, PromptManager } from './prompt-manager';
 import { responseCache, ResponseCache } from './response-cache';
+import { stableStringify } from './stable-json';
 
 // ---------------------------------------------------------------------------
 // Input Interfaces
@@ -150,10 +151,11 @@ function normalizeInput(productData: ProductData, options?: Record<string, unkno
       images: productData.images ?? null,
       price: productData.price ?? null,
       existingContent: productData.existingContent ?? null,
+      barcode: productData.barcode ?? null,
     },
     ...(options ? { options } : {}),
   };
-  return JSON.stringify(payload, Object.keys(payload).sort());
+  return stableStringify(payload);
 }
 
 /**
@@ -669,14 +671,14 @@ export class ContentGenerator {
   /**
    * Parses bullet points from Bedrock's text response.
    * Handles various list formats (numbered, dashed, bulleted).
-   * Ensures exactly the requested count is returned by padding or trimming.
+   * Trims to the requested count; never pads with repeats.
    *
    * @param rawContent - The raw text response from Bedrock
    * @param targetCount - The desired number of bullets
-   * @returns An array of exactly targetCount bullet strings
+   * @returns Up to targetCount distinct bullet strings
    */
   private parseBullets(rawContent: string, targetCount: number): string[] {
-    const lines = rawContent
+    let lines = rawContent
       .split('\n')
       .map((line) => line.trim())
       .filter((line) => line.length > 0)
@@ -684,18 +686,18 @@ export class ContentGenerator {
       .map((line) => line.replace(/^(\d+[\.\)]\s*|[-•*]\s*)/, '').trim())
       .filter((line) => line.length > 0);
 
-    // If we have too many, take the first targetCount
-    if (lines.length >= targetCount) {
-      return lines.slice(0, targetCount);
+    // A model sometimes answers with one paragraph: use its sentences instead.
+    if (lines.length < targetCount) {
+      const sentences = lines
+        .flatMap((line) => line.split(/(?<=[.!?])\s+(?=[A-Z0-9])/))
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+      if (sentences.length > lines.length) lines = sentences;
     }
 
-    // If we have too few, pad with the last available or generic bullets
-    const result = [...lines];
-    while (result.length < targetCount) {
-      result.push(result[result.length - 1] ?? 'Key product feature');
-    }
-
-    return result;
+    // Never repeat a bullet to fill the count: fewer, distinct bullets read
+    // better than duplicates (the old padding copied the last one).
+    return [...new Set(lines)].slice(0, targetCount);
   }
 
   /**

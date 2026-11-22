@@ -9,6 +9,8 @@
  */
 
 import { createHash } from 'crypto';
+import { stableStringify } from './stable-json';
+import { getModelConfig } from './model-config';
 
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
@@ -75,15 +77,24 @@ export function setDynamoDocClient(client: DynamoDBDocumentClient): void {
  * @param input - The cache key input containing normalized data, generation type, marketplace, and prompt version
  * @returns A hex-encoded SHA-256 hash string
  */
+/**
+ * Bumped when the key format changes so older entries can never be served.
+ * v2: keys built before this ignored the product data entirely (see stable-json.ts).
+ */
+export const CACHE_KEY_VERSION = 2;
+
 export function computeKey(input: CacheKeyInput): string {
   const payload = {
+    keyVersion: CACHE_KEY_VERSION,
+    // A model change must never reuse answers written by the previous model.
+    model: getModelConfig(input.generationType).modelId,
     generationType: input.generationType,
     marketplace: input.marketplace ?? null,
     normalizedInput: input.normalizedInput,
     promptVersion: input.promptVersion,
   };
 
-  const serialized = JSON.stringify(payload, Object.keys(payload).sort());
+  const serialized = stableStringify(payload);
   return createHash('sha256').update(serialized).digest('hex');
 }
 
