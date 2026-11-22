@@ -517,7 +517,7 @@ function BillingContent() {
                           ? 'Custom'
                           : `${plan.monthlyProducts.toLocaleString('en-ZA')}/month`}
                       </li>
-                      <li>AI listing + corrections included</li>
+                      <li>Listing writing + corrections included</li>
                       <li>Export to every marketplace</li>
                       <li>Unlimited team members</li>
                     </ul>

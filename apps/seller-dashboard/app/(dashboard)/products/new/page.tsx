@@ -3,7 +3,7 @@
 /**
  * Create product — POST /products, then (optionally) AI generation.
  *
- * Creates one DRAFT product from what the seller knows. With "Generate with AI"
+ * Creates one DRAFT product from what the seller knows. With "Write my listing"
  * ticked, MerchOS then writes the title, description, bullets, attributes and
  * category (POST /products/{id}/synthesize) and the product moves to REVIEW.
  */
@@ -118,8 +118,8 @@ export default function NewProductPage() {
         router.push(`/products/${encodeURIComponent(productId)}`);
       } catch (err) {
         // The product exists; send the seller to it with the reason.
-        const reason = describeProductError(err, 'AI generation did not complete.');
-        router.push(`/products/${encodeURIComponent(productId)}?ai=${encodeURIComponent(reason)}`);
+        const reason = describeProductError(err, 'Listing writing did not complete.');
+        router.push(`/products/${encodeURIComponent(productId)}?notice=${encodeURIComponent(reason)}`);
       }
       return;
     }
@@ -134,7 +134,7 @@ export default function NewProductPage() {
         </Link>
         <h1 className="mt-2 text-2xl font-semibold text-gray-900">New product</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Add what you know. MerchOS can write the rest of the listing with AI, and you review it before export.
+          Add what you know. MerchOS writes the rest of the listing, and you review it before export.
         </p>
       </div>
 
@@ -244,7 +244,7 @@ export default function NewProductPage() {
             className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-600"
           />
           <span>
-            <span className="block text-sm font-medium text-gray-900">Generate the listing with AI</span>
+            <span className="block text-sm font-medium text-gray-900">Write my listing</span>
             <span className="block text-xs text-gray-500">
               Writes the title, description, bullet points, attributes and category. You review every field before
               it is exported. Takes up to a minute.
@@ -264,7 +264,7 @@ export default function NewProductPage() {
             disabled={busy}
             className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
           >
-            {phase === 'saving' ? 'Creating…' : phase === 'generating' ? 'Generating with AI…' : 'Create product'}
+            {phase === 'saving' ? 'Creating…' : phase === 'generating' ? 'Writing your listing…' : 'Create product'}
           </button>
         </div>
         <p className="sr-only" aria-live="polite">

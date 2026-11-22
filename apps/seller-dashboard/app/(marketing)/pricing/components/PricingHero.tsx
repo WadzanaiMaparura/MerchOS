@@ -7,7 +7,7 @@ export function PricingHero() {
             Pricing
           </h1>
           <p className="mt-4 text-lg text-gray-600">
-            Create your first 15 products free, AI included. No credit card. Free training, even before you subscribe.
+            Create your first 15 products free, listing writing included. No credit card. Free training, even before you subscribe.
           </p>
         </div>
       </div>

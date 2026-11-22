@@ -55,7 +55,7 @@ export default function TrainingSection({ variant = 'full' }: { variant?: 'strip
           </h2>
           <p className="mt-3 max-w-3xl text-base text-gray-600">
             Not sure where to start? We&apos;ll show you, at no cost. Our team walks you through loading your
-            catalogue, generating listings with AI and exporting files each marketplace accepts. You don&apos;t need
+            catalogue, generating your listings and exporting files each marketplace accepts. You don&apos;t need
             a subscription to book.
           </p>
           <ul className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">

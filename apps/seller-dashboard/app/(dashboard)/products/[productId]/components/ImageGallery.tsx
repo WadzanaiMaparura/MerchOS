@@ -246,7 +246,7 @@ export function ImageJobStatus({ job }: { job: ImageJob }) {
           </Alert>
         )}
         {job.enhancement?.applied && (
-          <p className="text-xs text-gray-500">AI enhancement applied to improve a weak photo.</p>
+          <p className="text-xs text-gray-500">Enhancement applied to improve a weak photo.</p>
         )}
         {job.variants.length > 0 && <VariantGallery variants={job.variants} />}
       </div>
