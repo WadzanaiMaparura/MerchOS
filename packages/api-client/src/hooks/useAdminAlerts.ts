@@ -58,7 +58,9 @@ export function useAlerts(
  * Fetches the count of unresolved alerts.
  * Cached for 60 seconds.
  */
-export function useUnresolvedAlertCount(): UseQueryResult<number, ApiError> {
+export function useUnresolvedAlertCount(
+  options: { enabled?: boolean } = {},
+): UseQueryResult<number, ApiError> {
   const client = useApiClient();
 
   return useQuery<number, ApiError>({
@@ -68,6 +70,8 @@ export function useUnresolvedAlertCount(): UseQueryResult<number, ApiError> {
       return response.data;
     },
     staleTime: UNRESOLVED_COUNT_STALE_TIME,
+    // Roles without alert access (e.g. Support) must not call the endpoint.
+    enabled: options.enabled ?? true,
   });
 }
 

@@ -90,6 +90,12 @@ export default function LoginPage() {
         // If an MFA challenge is returned (email OTP for sellers), continue to
         // the code-entry page, carrying the destination. The pending challenge is
         // held in the shared AuthProvider, so the MFA page resolves it via completeMfa().
+        // A temporary password (admin-created account) is not a seller flow:
+        // invited sellers set their password from the invitation link.
+        if (result && result.challengeType === 'NEW_PASSWORD') {
+          setError('This account still has a temporary password. Please use the link in your invitation email.');
+          return;
+        }
         if (result && 'challengeType' in result) {
           router.push(next ? `/login/mfa?next=${encodeURIComponent(next)}` : '/login/mfa');
           return;

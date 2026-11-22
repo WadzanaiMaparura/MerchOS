@@ -562,16 +562,6 @@ export class SupplierIntelligenceStack extends cdk.Stack {
     ]);
 
     // -----------------------------------------------------------------------
-    // Lambda Functions — WhatsApp Webhook (Req 3.2)
-    // -----------------------------------------------------------------------
-
-    const whatsappWebhookFn = createFn('WhatsappWebhook', path.join(handlersPath, 'whatsapp-webhook.ts'), [
-      rawUploadsReadWrite,
-      importJobsTableReadWrite,
-      sqsSendMessage,
-    ]);
-
-    // -----------------------------------------------------------------------
     // Lambda Functions — Step Functions Task Processors (Req 2.x, 3.x, 4.x, 6.x, 7.x, 14.x)
     // -----------------------------------------------------------------------
 
@@ -703,7 +693,6 @@ export class SupplierIntelligenceStack extends cdk.Stack {
       getImportJob: getImportJobFn,
       getSupplierImports: getSupplierImportsFn,
       importQueueConsumer: importQueueConsumerFn,
-      whatsappWebhook: whatsappWebhookFn,
       // Processors (also exposed so 12.3 can grant SFN invoke policy)
       fileParser: fileParserFn,
       pdfParser: pdfParserFn,
@@ -1033,9 +1022,9 @@ export class SupplierIntelligenceStack extends cdk.Stack {
     // Requirements: 11.3, 12.1, 12.5
     //
     // All supplier management endpoints require a valid Cognito JWT.
-    // The WhatsApp webhook endpoint is public (HMAC-signed by the application
-    // layer itself).  A default throttle is applied at the stage level to
-    // enforce platform-wide rate limits before requests even reach Lambda.
+    // Every route requires the seller JWT. A default throttle is applied at
+    // the stage level to enforce platform-wide rate limits before requests
+    // even reach Lambda.
     // -----------------------------------------------------------------------
 
     // cognitoUserPoolId is read above (near commonEnv) so it can also seed
@@ -1054,7 +1043,7 @@ export class SupplierIntelligenceStack extends cdk.Stack {
       },
     );
 
-    // HTTP API Gateway — no default authorizer so the webhook route stays open
+    // HTTP API Gateway — the JWT authorizer is attached per route
     this.httpApi = new HttpApi(this, 'SupplierHttpApi', {
       apiName: `merch-os-supplier-api-${env}`,
       description: 'MerchOS Supplier Intelligence API — supplier management and import endpoints',
@@ -1063,7 +1052,6 @@ export class SupplierIntelligenceStack extends cdk.Stack {
           'Content-Type',
           'Authorization',
           'X-Amz-Date',
-          'X-Hub-Signature-256',
         ],
         allowMethods: [
           CorsHttpMethod.GET,
@@ -1197,17 +1185,6 @@ export class SupplierIntelligenceStack extends cdk.Stack {
     });
 
     // -----------------------------------------------------------------------
-    // WhatsApp webhook — NO JWT authorizer (HMAC validated inside the handler)
-    // -----------------------------------------------------------------------
-
-    this.httpApi.addRoutes({
-      path: '/webhooks/whatsapp',
-      methods: [HttpMethod.POST],
-      integration: integration('WhatsappWebhookIntegration', whatsappWebhookFn),
-      // Intentionally no authorizer — HMAC signature verified in handler (Req 3.2)
-    });
-
-    // -----------------------------------------------------------------------
     // Grant API Gateway permission to invoke each Lambda
     //
     // HttpLambdaIntegration calls addPermission automatically for managed
@@ -1231,7 +1208,6 @@ export class SupplierIntelligenceStack extends cdk.Stack {
       getImportJobFn,
       startImportFn,
       getSupplierImportsFn,
-      whatsappWebhookFn,
     ];
 
     for (const fn of authorisedHandlers) {

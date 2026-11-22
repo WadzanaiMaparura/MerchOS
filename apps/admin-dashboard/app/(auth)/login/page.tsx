@@ -29,6 +29,26 @@ const loginSchema = z.object({
 
 type LoginFormData = z.infer<typeof loginSchema>;
 
+// Mirrors the Cognito pool password policy so most mistakes are caught before
+// the round trip; Cognito still has the final say.
+const newPasswordSchema = z
+  .object({
+    newPassword: z
+      .string()
+      .min(12, 'Use at least 12 characters')
+      .regex(/[a-z]/, 'Add a lowercase letter')
+      .regex(/[A-Z]/, 'Add an uppercase letter')
+      .regex(/[0-9]/, 'Add a number')
+      .regex(/[^A-Za-z0-9]/, 'Add a symbol'),
+    confirmPassword: z.string().min(1, 'Please confirm your password'),
+  })
+  .refine((d) => d.newPassword === d.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  });
+
+type NewPasswordFormData = z.infer<typeof newPasswordSchema>;
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 /** Maximum failed attempts before lockout messaging. */
@@ -40,9 +60,39 @@ const LOCKOUT_WINDOW_MS = 30 * 60 * 1000;
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const { login } = useAdminAuth();
+  const { login, completeNewPassword } = useAdminAuth();
 
   const [error, setError] = useState<string | null>(null);
+  // First sign-in on a temporary password: ask for a permanent one.
+  const [needsNewPassword, setNeedsNewPassword] = useState(false);
+
+  const newPasswordForm = useForm<NewPasswordFormData>({
+    resolver: zodResolver(newPasswordSchema),
+    defaultValues: { newPassword: '', confirmPassword: '' },
+  });
+
+  const onSubmitNewPassword = useCallback(
+    async (data: NewPasswordFormData) => {
+      setError(null);
+      setIsSubmitting(true);
+      try {
+        const next = await completeNewPassword(data.newPassword);
+        // Same MFA gate as a normal login.
+        router.push(next ? '/mfa' : '/mfa/setup');
+      } catch (err) {
+        const message = err instanceof Error ? err.message : '';
+        setError(
+          /password/i.test(message)
+            ? 'That password was not accepted. Use at least 12 characters with upper and lowercase letters, a number and a symbol.'
+            : 'Your temporary sign-in has expired. Please sign in again with the password from your email.',
+        );
+        if (!/password/i.test(message)) setNeedsNewPassword(false);
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [completeNewPassword, router],
+  );
   const [isLocked, setIsLocked] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [failedAttempts, setFailedAttempts] = useState<number[]>([]);
@@ -77,6 +127,11 @@ export default function AdminLoginPage() {
       try {
         const challenge = await login(data.email, data.password);
 
+        if (challenge?.challengeType === 'NEW_PASSWORD') {
+          setNeedsNewPassword(true);
+          return;
+        }
+
         if (challenge) {
           // Operator has TOTP enrolled — complete the second factor.
           router.push('/mfa');
@@ -108,6 +163,70 @@ export default function AdminLoginPage() {
     },
     [login, router, failedAttempts, isAccountLocked]
   );
+
+  if (needsNewPassword) {
+    return (
+      <div className="space-y-8">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900">Set your password</h1>
+          <p className="mt-2 text-sm text-gray-600">
+            You signed in with a temporary password. Choose a new one to continue.
+          </p>
+        </div>
+
+        {error && (
+          <div
+            role="alert"
+            aria-live="assertive"
+            className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+          >
+            {error}
+          </div>
+        )}
+
+        <Form
+          form={newPasswordForm}
+          onSubmit={onSubmitNewPassword}
+          aria-label="Set new password form"
+          className="space-y-6"
+        >
+          <FormField<NewPasswordFormData> name="newPassword" label="New password" required>
+            {({ field }) => (
+              <Input
+                {...field}
+                type="password"
+                autoComplete="new-password"
+                disabled={isSubmitting}
+              />
+            )}
+          </FormField>
+          <p className="-mt-4 text-xs text-gray-500">
+            At least 12 characters, with upper and lowercase letters, a number and a symbol.
+          </p>
+
+          <FormField<NewPasswordFormData> name="confirmPassword" label="Confirm new password" required>
+            {({ field }) => (
+              <Input
+                {...field}
+                type="password"
+                autoComplete="new-password"
+                disabled={isSubmitting}
+              />
+            )}
+          </FormField>
+
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="flex w-full justify-center rounded-md bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-blue-300"
+            aria-busy={isSubmitting}
+          >
+            {isSubmitting ? 'Saving…' : 'Set password and continue'}
+          </button>
+        </Form>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">

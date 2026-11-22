@@ -15,6 +15,7 @@ import { ImageIntelligenceStack } from '../lib/image-intelligence-stack';
 import { ProductIntelligenceStack } from '../lib/product-intelligence-stack';
 import { ExportApiStack } from '../lib/export-api-stack';
 import { BillingApiStack } from '../lib/billing-api-stack';
+import { SupportChatStack } from '../lib/support-chat-stack';
 
 const app = new cdk.App();
 
@@ -140,5 +141,16 @@ const billingApiStack = new BillingApiStack(app, `MerchOS-BillingApi-${env}`, {
 });
 billingApiStack.addDependency(foundationStack);
 billingApiStack.addDependency(authStack);
+
+// Live chat (website + seller dashboard visitors, admin Support inbox). Agents
+// authenticate with the admin dashboard Cognito client (id read from SSM).
+const supportChatStack = new SupportChatStack(app, `MerchOS-SupportChat-${env}`, {
+  env: cdkEnv,
+  environment: env,
+  userPool: authStack.userPool,
+  platformKey: foundationStack.platformKey,
+});
+supportChatStack.addDependency(foundationStack);
+supportChatStack.addDependency(authStack);
 
 app.synth();

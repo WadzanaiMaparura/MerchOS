@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
 import { Providers } from './providers';
+import { ChatWidget } from './components/chat/ChatWidget';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -31,6 +32,8 @@ export default function RootLayout({
         />
         <Providers>
           {children}
+          {/* Live chat bubble on every website and dashboard page. */}
+          <ChatWidget />
         </Providers>
       </body>
     </html>
