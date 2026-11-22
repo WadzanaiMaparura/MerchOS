@@ -59,6 +59,15 @@ interface RawExtractedAttribute {
 const STANDARD_ATTRIBUTES: readonly string[] = ['size', 'color', 'material', 'weight', 'dimensions'];
 
 /**
+ * Further common marketplace attributes offered to the model as keys. Without
+ * them the prompt forced every value into the five above, so a kettle's
+ * "1.7 litre" became dimensions and "2200 watt" became weight.
+ */
+const EXTRA_ATTRIBUTE_KEYS: readonly string[] = [
+  'capacity', 'power', 'voltage', 'warranty', 'model', 'pack_size', 'colour_family', 'features',
+];
+
+/**
  * Unit normalization mappings for converting common units to standard metric units.
  * Maps source unit → { targetUnit, conversionFactor }.
  */
@@ -188,13 +197,19 @@ function buildExtractionPrompt(text: string, productData: ProductData): string {
   return `Extract structured product attributes from the following text. Return ONLY a valid JSON array of objects.
 
 Each object must have these fields:
-- "key": one of "${STANDARD_ATTRIBUTES.join('", "')}" (or other relevant product attributes)
+- "key": the attribute name, in lowercase, that describes what the value measures
 - "value": the raw extracted value as a string
-- "unit": the unit of measurement if applicable (e.g., "lbs", "inches", "cm"), or null if not applicable
+- "unit": the unit of measurement if applicable (e.g., "kg", "cm", "L", "W"), or null if not applicable
 - "confidence": a number between 0 and 1 indicating your confidence in this extraction
 
-Focus on extracting these standard attributes when present: ${STANDARD_ATTRIBUTES.join(', ')}.
-Also extract any other clearly stated product attributes.
+Use these keys when they fit: ${[...STANDARD_ATTRIBUTES, ...EXTRA_ATTRIBUTE_KEYS].join(', ')}.
+Choose the key by what the value means, never force a value under a key that does not describe it:
+- litres / ml / gallons are "capacity" (not dimensions)
+- watts / W are "power" (not weight); volts / V are "voltage"
+- kg / g / lbs are "weight"; cm / mm / inches with length x width x height are "dimensions"
+- warranty or guarantee periods are "warranty"
+If a key in the list does not fit, use another short, clear lowercase key.
+Extract every attribute that is clearly stated; do not guess values that are not in the text.
 ${contextSection}
 Text to analyze:
 """

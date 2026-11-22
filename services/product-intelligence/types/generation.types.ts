@@ -52,6 +52,8 @@ export interface ProductData {
   price?: { amount: number; currency: string } | undefined;
   /** Existing content to optimize or validate */
   existingContent?: string | undefined;
+  /** International barcode (GTIN/EAN/UPC), already check-digit validated upstream */
+  barcode?: string | undefined;
 }
 
 /**

@@ -44,6 +44,8 @@ export const productDataSchema = z.object({
   images: z.array(z.string().url('Each image must be a valid URL')).optional(),
   price: priceSchema.optional(),
   existingContent: z.string().max(50000, 'Existing content must not exceed 50000 characters').optional(),
+  /** International barcode (GTIN-8/12/13/14, EAN/UPC). Digits only. */
+  barcode: z.string().regex(/^(\d{8}|\d{12,14})$/, 'Barcode must be 8, 12, 13 or 14 digits').optional(),
 });
 
 /**

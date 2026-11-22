@@ -225,6 +225,34 @@ function buildPromptVariables(
   return variables;
 }
 
+/** Display names used in prompts ("Write for Takealot"). */
+const MARKETPLACE_NAMES: Record<string, string> = {
+  takealot: 'Takealot',
+  makro: 'Makro',
+  amazon: 'Amazon',
+  shopify: 'Shopify',
+  woocommerce: 'WooCommerce',
+};
+
+export function marketplaceName(marketplace?: string): string {
+  return (marketplace && MARKETPLACE_NAMES[marketplace]) || 'online marketplaces';
+}
+
+/**
+ * Marketplaces show plain text, so strip Markdown the model may add
+ * (**bold**, __bold__, `code`, # headings) while keeping the words.
+ */
+export function toPlainText(text: string): string {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^["']|["']$/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .trim();
+}
+
 /**
  * Applies marketplace character limit enforcement to content.
  * Truncates at the nearest sentence boundary when the limit is exceeded.
@@ -343,7 +371,10 @@ export class ContentGenerator {
       }
 
       // 3. Build prompt and invoke Bedrock
-      const variables = buildPromptVariables(request.productData, request.attributes);
+      const variables = buildPromptVariables(request.productData, {
+        ...(request.attributes ?? {}),
+        marketplace: marketplaceName(request.marketplace),
+      });
       const prompt = this.promptMgr.interpolate(template.content, variables);
       const modelConfig = getModelConfig(generationType);
 
@@ -354,8 +385,8 @@ export class ContentGenerator {
         temperature: modelConfig.temperature,
       });
 
-      // 4. Process the generated title
-      let generatedTitle = bedrockResult.content.trim();
+      // 4. Process the generated title (one line, plain text)
+      let generatedTitle = toPlainText(bedrockResult.content).split('\n')[0]!.trim();
       let truncated = false;
 
       // Apply marketplace character limits
@@ -434,7 +465,7 @@ export class ContentGenerator {
       }
 
       // 3. Build prompt with tone and word count instructions
-      const extras: Record<string, string> = {};
+      const extras: Record<string, string> = { marketplace: marketplaceName(request.marketplace) };
       if (request.tone) {
         extras['tone'] = request.tone;
       }
@@ -463,8 +494,8 @@ export class ContentGenerator {
         temperature: modelConfig.temperature,
       });
 
-      // 4. Process the generated description
-      let generatedDescription = bedrockResult.content.trim();
+      // 4. Process the generated description (plain text for marketplaces)
+      let generatedDescription = toPlainText(bedrockResult.content);
       let truncated = false;
 
       // Validate word count against range with 10% tolerance
@@ -579,6 +610,7 @@ export class ContentGenerator {
       const extras: Record<string, string> = {
         bullet_count: String(bulletCount),
         ...(request.attributes ?? {}),
+        marketplace: marketplaceName(request.marketplace),
       };
 
       const variables = buildPromptVariables(request.productData, extras);
@@ -599,7 +631,7 @@ export class ContentGenerator {
       });
 
       // 4. Parse bullets from Bedrock response
-      const bullets = this.parseBullets(bedrockResult.content, bulletCount);
+      const bullets = this.parseBullets(toPlainText(bedrockResult.content), bulletCount);
 
       // 5. Calculate confidence score
       const inputCompleteness = calculateInputCompleteness(request.productData);

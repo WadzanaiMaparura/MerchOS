@@ -39,6 +39,59 @@ function resolveProductService(): ProductService {
   return productService ?? getProductService();
 }
 
+/**
+ * True for a GTIN-8/12/13/14 (EAN/UPC) barcode with a correct check digit.
+ * Exported for tests.
+ */
+export function isValidGtin(code: string): boolean {
+  if (!/^(\d{8}|\d{12,14})$/.test(code)) return false;
+  const digits = code.split('').map(Number);
+  const check = digits.pop()!;
+  // Weights alternate 3,1,3,1… from the digit next to the check digit.
+  const sum = digits.reverse().reduce((acc, d, i) => acc + d * (i % 2 === 0 ? 3 : 1), 0);
+  return (10 - (sum % 10)) % 10 === check;
+}
+
+/**
+ * What the writing service receives. Only non-empty values are sent: the
+ * Intelligence API rejects nulls, non-string attribute values and image
+ * storage keys (it expects URLs, and the prompts do not use images), which
+ * previously failed "Write my listing" for any product with photos or blanks.
+ * Exported for tests.
+ */
+export function buildProductData(dto: unknown): Record<string, unknown> {
+  const p = dto as Record<string, unknown>;
+  const text = (v: unknown, max: number): string | undefined =>
+    typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined;
+
+  const description = [text(p['description'], 10000), text(p['shortDescription'], 2000)]
+    .filter(Boolean)
+    .filter((v, i, all) => all.indexOf(v) === i)
+    .join('\n\n');
+
+  const attributes: Record<string, string> = {};
+  const rawAttributes = p['attributes'];
+  if (rawAttributes && typeof rawAttributes === 'object' && !Array.isArray(rawAttributes)) {
+    for (const [k, v] of Object.entries(rawAttributes as Record<string, unknown>)) {
+      if (v === null || v === undefined || v === '') continue;
+      if (['string', 'number', 'boolean'].includes(typeof v)) attributes[k] = String(v);
+    }
+  }
+  const barcode = text(p['barcode'], 14)?.replace(/\s+/g, '');
+
+  const data: Record<string, unknown> = {};
+  const name = text(p['title'], 500);
+  const brand = text(p['brand'], 200);
+  const category = text(p['category'], 500);
+  if (name) data['name'] = name;
+  if (description) data['description'] = description;
+  if (brand) data['brand'] = brand;
+  if (category) data['category'] = category;
+  if (Object.keys(attributes).length) data['attributes'] = attributes;
+  if (barcode && isValidGtin(barcode)) data['barcode'] = barcode;
+  return data;
+}
+
 /** Default generation types requested when the caller does not specify. */
 const DEFAULT_TYPES = ['title', 'description', 'bullets', 'attributes', 'category'] as const;
 
@@ -142,13 +195,7 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
 
   // 7. Call the Intelligence API for each type (server-to-server, JWT forwarded)
   const caller = getIntelligenceCaller();
-  const productData: Record<string, unknown> = {
-    name: dto.title,
-    description: dto.description,
-    brand: dto.brand,
-    attributes: dto.attributes,
-    images: dto.images.map((i) => i.s3Key),
-  };
+  const productData = buildProductData(dto);
 
   // In parallel: sequential calls (~5-10 s each) overran API Gateway's 30 s limit
   // and the Lambda timeout, which left the product stuck in GENERATING. A single

@@ -92,6 +92,114 @@ const TEMPLATES = {
   compliance: { variables: [], content: 'Compliance validation handled by ComplianceValidator service. Content: {{existing_content}}.' },
 };
 
+/**
+ * Version 2 of the writing prompts (Nov 2026). Changes from v1:
+ * - the supplier's own details ({{product_description}}) are included; v1 never
+ *   sent them, so features like boil-dry protection and warranty were lost;
+ * - benefits and expected results are encouraged, invented specifications are not;
+ * - plain text only (marketplaces show ** literally), South African English;
+ * - written for the target marketplace ({{marketplace}}).
+ * The newest active version is used; v1 stays active as a rollback (deactivate v2).
+ */
+const PRODUCT_BLOCK =
+  'Product name: {{product_name}}\n' +
+  'Brand: {{brand}}\n' +
+  'Category: {{category}}\n' +
+  'Specifications: {{attributes}}\n' +
+  'Supplier details: {{product_description}}';
+
+const V2_VARS = ['product_name', 'brand', 'category', 'attributes', 'product_description', 'marketplace'];
+
+const TEMPLATES_V2 = {
+  title: {
+    variables: V2_VARS,
+    content:
+      'You write product titles for {{marketplace}} listings for South African shoppers.\n' +
+      'Write ONE title in this order: brand, what the product is, then its most important ' +
+      'specifications (for example size, capacity, power, colour or pack size).\n\n' +
+      'Rules:\n' +
+      '- Use only the facts below. Never invent a specification, model number or size.\n' +
+      '- Between 60 and 120 characters.\n' +
+      '- No emojis, no quotation marks, no ALL CAPS words.\n' +
+      '- Plain text only.\n\n' +
+      PRODUCT_BLOCK +
+      '\n\nReturn only the title.',
+  },
+  description: {
+    variables: V2_VARS,
+    content:
+      'You write product descriptions for {{marketplace}} listings for South African shoppers.\n' +
+      'Write 2 to 4 short paragraphs, 120 to 220 words in total, in South African English ' +
+      '(for example "colour", "litre").\n\n' +
+      'Rules:\n' +
+      '- Start with what the product is and who it suits.\n' +
+      '- Cover every feature and specification in the details below and say what each one ' +
+      'means for the buyer. Benefits and expected results are welcome, for example quicker ' +
+      'boiling, easier cleaning or more cups at once.\n' +
+      '- Never invent specifications, parts, materials, certifications or included items. ' +
+      'If something is not in the details, leave it out.\n' +
+      '- Include the warranty or guarantee when it is given.\n' +
+      '- Plain text only: no headings, no lists, no bold, no emojis.\n\n' +
+      PRODUCT_BLOCK +
+      '\n\nReturn only the description.',
+  },
+  bullets: {
+    variables: [...V2_VARS, 'bullet_count'],
+    content:
+      'Write exactly {{bullet_count}} feature bullets for a {{marketplace}} listing for ' +
+      'South African shoppers, in South African English.\n\n' +
+      'Rules:\n' +
+      '- Each bullet names one feature from the details, then its benefit to the buyer, ' +
+      'in one sentence of 10 to 25 words.\n' +
+      '- Most important first. Include safety features and the warranty when they are given.\n' +
+      '- Benefits and expected results are welcome; never invent a specification.\n' +
+      '- Plain text only: no bold, no numbers or symbols at the start. One bullet per line.\n\n' +
+      PRODUCT_BLOCK +
+      '\n\nReturn only the bullets, one per line.',
+  },
+};
+
+async function hasVersion(generationType, version) {
+  const res = await doc.send(
+    new QueryCommand({
+      TableName: TABLE,
+      KeyConditionExpression: 'PK = :pk AND SK = :sk',
+      ExpressionAttributeValues: {
+        ':pk': `PROMPT#${generationType}`,
+        ':sk': `VERSION#${String(version).padStart(10, '0')}`,
+      },
+    })
+  );
+  return (res.Items ?? []).length > 0;
+}
+
+async function seedVersion(generationType, version, def) {
+  if (await hasVersion(generationType, version)) {
+    console.log(`  = ${generationType}: v${version} already exists, skipping`);
+    return false;
+  }
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: {
+        PK: `PROMPT#${generationType}`,
+        SK: `VERSION#${String(version).padStart(10, '0')}`,
+        templateId: randomUUID(),
+        generationType,
+        version,
+        content: def.content,
+        variables: def.variables,
+        active: true,
+        createdAt: new Date().toISOString(),
+        createdBy: 'seed-script',
+      },
+      ConditionExpression: 'attribute_not_exists(PK)',
+    })
+  );
+  console.log(`  + ${generationType}: seeded v${version}`);
+  return true;
+}
+
 async function hasActiveTemplate(generationType) {
   const res = await doc.send(
     new QueryCommand({
@@ -138,6 +246,9 @@ async function main() {
   let seeded = 0;
   for (const [type, def] of Object.entries(TEMPLATES)) {
     if (await seedOne(type, def)) seeded++;
+  }
+  for (const [type, def] of Object.entries(TEMPLATES_V2)) {
+    if (await seedVersion(type, 2, def)) seeded++;
   }
   console.log(`\nDone. Seeded ${seeded} new template(s); ${Object.keys(TEMPLATES).length - seeded} already present.`);
 }
