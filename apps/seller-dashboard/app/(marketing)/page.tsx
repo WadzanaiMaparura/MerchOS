@@ -232,9 +232,9 @@ const customerReviews: CustomerReview[] = [
 
 function CustomerReviewStack({ reviews }: { reviews: CustomerReview[] }) {
   return (
-    <div className="flex items-center gap-4">
-      {/* Overlapping avatars */}
-      <div className="flex -space-x-2.5">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      {/* Overlapping avatars. shrink-0: on phones they were squeezed over the text */}
+      <div className="flex shrink-0 -space-x-2.5">
         {reviews.slice(0, 5).map((review) => (
           <img
             key={review.id}
@@ -246,7 +246,7 @@ function CustomerReviewStack({ reviews }: { reviews: CustomerReview[] }) {
       </div>
 
       {/* Rating and trust text */}
-      <div>
+      <div className="min-w-0">
         <div className="flex items-center gap-1">
           {[...Array(5)].map((_, i) => (
             <StarIcon key={i} />
@@ -314,7 +314,8 @@ function HeroSection() {
             </div>
 
             {/* Trust indicators */}
-            <div className="mt-8 flex items-center gap-x-6 text-[12px] font-semibold text-[#374151]">
+            {/* Wraps on phones; nowrap per item keeps each phrase on one line. */}
+            <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-2 text-[12px] font-semibold text-[#374151]">
               {['Save 40+ hours every week', 'Reduce listing rejections', 'Scale your business faster'].map((text) => (
                 <span key={text} className="flex items-center gap-1.5 whitespace-nowrap">
                   <svg className="w-[16px] h-[16px] text-[#2563EB] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -338,7 +339,7 @@ function HeroSection() {
                 never redrawn. A marketplace without an exact file yet shows its
                 name instead; drop the file in public/logos and set `src`.
               */}
-              <ul className="flex flex-wrap items-center gap-x-5 gap-y-2" aria-label="Marketplaces MerchOS works with">
+              <ul className="flex flex-wrap items-center gap-x-4 gap-y-3 sm:gap-x-5" aria-label="Marketplaces MerchOS works with">
                 {WORKS_WITH.map((m) => (
                   <li key={m.name} className="flex items-center">
                     {m.src ? (
