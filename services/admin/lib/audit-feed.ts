@@ -27,7 +27,9 @@ export type AuditActionType =
   | 'remove-exempt'
   | 'review-approved'
   | 'review-rejected'
-  | 'free-month-applied';
+  | 'free-month-applied'
+  | 'alert-resolved'
+  | 'alert-note';
 
 export const AUDIT_ACTIONS: Record<AuditActionType, string> = {
   'resend-verification': 'Resent verification email',
@@ -38,6 +40,8 @@ export const AUDIT_ACTIONS: Record<AuditActionType, string> = {
   'review-approved': 'Approved review for the website',
   'review-rejected': 'Hid review',
   'free-month-applied': 'Marked referral free month applied',
+  'alert-resolved': 'Resolved an alert',
+  'alert-note': 'Added a note to an alert',
 };
 
 export interface AuditEvent {
@@ -142,7 +146,7 @@ export async function loadAudit(query: AuditQuery): Promise<{ events: AuditEvent
       byId: String(i['by'] ?? ''),
       byRole: str(i['byRole']),
       tenantId: str(i['tenantId']),
-      subject: str(i['tenantId']) ? undefined : 'Unfinished sign-up',
+      subject: str(i['tenantId']) ? undefined : str(i['subjectLabel']) ? `Alert: ${i['subjectLabel']}` : 'Unfinished sign-up',
       reason: str(i['reason']),
       detail: str(i['detail']),
     });

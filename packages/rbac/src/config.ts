@@ -37,6 +37,9 @@ export const defaultPermissionConfig: PermissionRegistryConfig = {
         { resource: 'support-inbox', actions: ['read', 'update', 'delete'] },
         // Seller reviews: approve before they show on the website.
         { resource: 'reviews', actions: ['read', 'update', 'delete'] },
+        // Health and Alerts, view only ("is something down?"). Resolving is Admin.
+        { resource: 'infrastructure', actions: ['read'] },
+        { resource: 'alerts', actions: ['read'] },
       ],
     },
     {
