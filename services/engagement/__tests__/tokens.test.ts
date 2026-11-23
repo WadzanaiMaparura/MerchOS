@@ -61,8 +61,9 @@ describe('schedule timing', () => {
     expect(dueDate('referral', signUp).toISOString()).toBe('2026-12-26T07:00:00.000Z');
   });
 
-  it('checks a referral exactly 14 days after the payment', () => {
+  it('checks a referral exactly 14 days after the payment, then weekly', () => {
     expect(dueDate('qualify', signUp).toISOString()).toBe('2026-12-05T22:15:00.000Z');
+    expect(dueDate('qualify', signUp, 1).toISOString()).toBe('2026-11-28T22:15:00.000Z');
   });
 
   it('formats the Scheduler at() expression', () => {

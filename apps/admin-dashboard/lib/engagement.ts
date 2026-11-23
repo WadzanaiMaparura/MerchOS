@@ -38,6 +38,9 @@ export interface AdminReferral {
   qualifiedAt?: string;
   reward?: 'EARNED' | 'APPLIED';
   rewardAppliedAt?: string;
+  lapseReason?: 'stopped-paying' | 'not-active';
+  productsAtLastCheck?: number;
+  lastCheckedAt?: string;
 }
 
 export class EngagementApiError extends Error {

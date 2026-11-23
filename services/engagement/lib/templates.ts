@@ -220,12 +220,12 @@ export function referralInvite(i: ReferralInviteInput): RenderedEmail {
     steps([
       ['Share your personal link', 'Send it to a seller on WhatsApp, email or anywhere you like.'],
       ['They try MerchOS free', 'They get their first 15 products free, no card needed, like you did.'],
-      ['You get a month free', 'When they subscribe and stay for 14 days, your next monthly payment is skipped.'],
+      ['You get a month free', 'When they subscribe, stay for 14 days and add at least 10 products, your next monthly payment is skipped.'],
     ]) +
     copyBox('Your personal link', escapeHtml(i.linkLabel)) +
     button('Copy my link', `${i.siteUrl}/referrals`) +
     small(
-      'One free month for each seller who subscribes through your link and stays subscribed for 14 days. There is no limit. Free months are applied to your next payments in order.',
+      'One free month for each seller who subscribes through your link, stays subscribed for 14 days and is actively using MerchOS (at least 10 products added within 90 days of subscribing). There is no limit. Free months are applied to your next payments in order.',
     );
   return render('Refer a seller, get a month free', 'Share your link. When they subscribe, you get a month free.', body, i.unsubscribeUrl);
 }

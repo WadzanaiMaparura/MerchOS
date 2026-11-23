@@ -5,7 +5,8 @@
  *
  *   Trial track       tips +2 days, training +5 days      (from sign-up)
  *   Subscriber track  review +30 days, referral +35 days  (from first payment)
- *   Referral check    qualify +14 days                    (from the referred seller's first payment)
+ *   Referral check    qualify +14 days, then weekly       (from the referred seller's first payment;
+ *                                                       weekly while they have under 10 products)
  */
 
 import { ConflictException, CreateScheduleCommand, SchedulerClient } from '@aws-sdk/client-scheduler';
@@ -26,7 +27,12 @@ export interface ScheduledEvent {
   tenantId: string;
   /** qualify only: the seller who referred `tenantId`. */
   referrerTenantId?: string;
+  /** qualify only: 0 = the 14-day check, 1+ = weekly re-checks for activity. */
+  attempt?: number;
 }
+
+/** Days between re-checks while a referred seller has not yet added enough products. */
+export const RECHECK_DAYS = 7;
 
 let scheduler: SchedulerClient | undefined;
 
@@ -44,8 +50,9 @@ export function atExpression(when: Date): string {
  * Emails land at 9am South African time (07:00 UTC) on the due day, not at
  * whatever hour the seller signed up. The referral check runs exactly 14 days on.
  */
-export function dueDate(step: ScheduledStep, from: Date): Date {
-  const due = new Date(from.getTime() + STEP_DELAY_DAYS[step] * 24 * 60 * 60 * 1000);
+export function dueDate(step: ScheduledStep, from: Date, attempt = 0): Date {
+  const days = step === 'qualify' && attempt > 0 ? RECHECK_DAYS : STEP_DELAY_DAYS[step];
+  const due = new Date(from.getTime() + days * 24 * 60 * 60 * 1000);
   if (step !== 'qualify') due.setUTCHours(7, 0, 0, 0);
   return due;
 }
@@ -56,10 +63,11 @@ export async function scheduleStep(event: ScheduledEvent, from: Date = new Date(
   try {
     await scheduler.send(
       new CreateScheduleCommand({
-        // <= 64 chars: "eng-referral-" + a 36-char uuid.
-        Name: `eng-${event.step}-${event.tenantId}`,
+        // <= 64 chars ("eng-qualify-" + 36-char uuid + "-12"). Re-checks get their own name:
+        // the schedule that is firing right now still exists while it creates the next one.
+        Name: `eng-${event.step}-${event.tenantId}${event.attempt ? `-${event.attempt}` : ''}`,
         GroupName: config.scheduleGroup,
-        ScheduleExpression: atExpression(dueDate(event.step, from)),
+        ScheduleExpression: atExpression(dueDate(event.step, from, event.attempt ?? 0)),
         ScheduleExpressionTimezone: 'UTC',
         FlexibleTimeWindow: { Mode: 'FLEXIBLE', MaximumWindowInMinutes: 60 },
         ActionAfterCompletion: 'DELETE',
