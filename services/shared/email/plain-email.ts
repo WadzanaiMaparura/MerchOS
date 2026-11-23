@@ -33,28 +33,28 @@ export function escapeHtml(value: string): string {
 // ─── Building blocks (arguments are trusted HTML unless noted) ──────────────
 
 export const heading = (html: string): string =>
-  `<h1 style="margin:0 0 14px;font-size:20px;line-height:1.3;font-weight:bold;color:${TEXT}">${html}</h1>`;
+  `<h1 style="margin:0 0 16px;font-size:24px;line-height:1.3;font-weight:bold;color:${TEXT}">${html}</h1>`;
 
 export const para = (html: string): string =>
-  `<p style="margin:0 0 14px;font-size:14px;line-height:1.55;color:${TEXT}">${html}</p>`;
+  `<p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:${TEXT}">${html}</p>`;
 
 export const small = (html: string): string =>
-  `<p style="margin:0 0 14px;font-size:12px;line-height:1.5;color:${FAINT}">${html}</p>`;
+  `<p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:${FAINT}">${html}</p>`;
 
 export const link = (href: string, label: string): string =>
   `<a href="${escapeHtml(href)}" style="color:${BLUE}">${label}</a>`;
 
 export const bullets = (items: string[]): string =>
-  `<ul style="margin:0 0 14px;padding-left:22px">${items
-    .map((i) => `<li style="margin:0 0 5px;font-size:14px;line-height:1.5;color:${TEXT}">${i}</li>`)
+  `<ul style="margin:0 0 16px;padding-left:24px">${items
+    .map((i) => `<li style="margin:0 0 8px;font-size:16px;line-height:1.6;color:${TEXT}">${i}</li>`)
     .join('')}</ul>`;
 
 /** Numbered list with a bold lead-in per item ("1. Add your products. Upload…"). */
 export const numbered = (items: Array<[title: string, text: string]>): string =>
-  `<ol style="margin:0 0 14px;padding-left:22px">${items
+  `<ol style="margin:0 0 16px;padding-left:24px">${items
     .map(
       ([title, text]) =>
-        `<li style="margin:0 0 5px;font-size:14px;line-height:1.5;color:${TEXT}"><b>${title}</b> ${text}</li>`,
+        `<li style="margin:0 0 8px;font-size:16px;line-height:1.6;color:${TEXT}"><b>${title}</b> ${text}</li>`,
     )
     .join('')}</ol>`;
 
@@ -63,7 +63,7 @@ export const steps = (items: Array<[title: string, text: string]>): string =>
   `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 0 6px">${items
     .map(
       ([title, text], i) =>
-        `<tr><td style="vertical-align:top;padding:0 10px 14px 0;color:${TEXT};font-weight:bold;font-size:14px;width:16px">${i + 1}.</td><td style="padding-bottom:14px"><p style="margin:0;color:${TEXT};font-weight:bold;font-size:14px">${title}</p><p style="margin:2px 0 0;color:${TEXT};font-size:14px;line-height:1.5">${text}</p></td></tr>`,
+        `<tr><td style="vertical-align:top;padding:0 10px 16px 0;color:${TEXT};font-weight:bold;font-size:16px;width:20px">${i + 1}.</td><td style="padding-bottom:16px"><p style="margin:0;color:${TEXT};font-weight:bold;font-size:16px">${title}</p><p style="margin:2px 0 0;color:${TEXT};font-size:16px;line-height:1.6">${text}</p></td></tr>`,
     )
     .join('')}</table>`;
 
@@ -72,30 +72,30 @@ export const cards = (items: Array<[title: string, text: string]>): string =>
   `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 14px"><tr>${items
     .map(
       ([title, text]) =>
-        `<td style="vertical-align:top;width:${Math.floor(100 / items.length)}%;padding:4px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td style="border:1px solid #e5e5e5;padding:12px"><p style="margin:0 0 6px;color:${TEXT};font-weight:bold;font-size:13px">${title}</p><p style="margin:0;color:${TEXT};font-size:12px;line-height:1.5">${text}</p></td></tr></table></td>`,
+        `<td style="vertical-align:top;width:${Math.floor(100 / items.length)}%;padding:4px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td style="border:1px solid #e5e5e5;padding:14px"><p style="margin:0 0 6px;color:${TEXT};font-weight:bold;font-size:15px">${title}</p><p style="margin:0;color:${TEXT};font-size:14px;line-height:1.5">${text}</p></td></tr></table></td>`,
     )
     .join('')}</tr></table>`;
 
 /** The one call to action: a full-width blue button. */
 export const button = (label: string, href: string): string =>
-  `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:6px 0 18px"><tr><td align="center" style="background:${BLUE};padding:13px 16px"><a href="${escapeHtml(href)}" style="color:#ffffff;font-size:15px;font-weight:bold;text-decoration:none;display:block">${label}</a></td></tr></table>`;
+  `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:8px 0 22px"><tr><td align="center" style="background:${BLUE};padding:16px 18px"><a href="${escapeHtml(href)}" style="color:#ffffff;font-size:17px;font-weight:bold;text-decoration:none;display:block">${label}</a></td></tr></table>`;
 
 /** Large spaced code (Cognito substitutes {####}). */
 export const code = (value: string): string =>
-  `<p style="margin:4px 0 16px;font-size:32px;font-weight:bold;letter-spacing:8px;color:${TEXT};font-family:${FONT}">${value}</p>`;
+  `<p style="margin:4px 0 18px;font-size:38px;font-weight:bold;letter-spacing:9px;color:${TEXT};font-family:${FONT}">${value}</p>`;
 
 /** Five tappable star boxes, each a link (1 to 5). */
 export const starRow = (hrefFor: (rating: number) => string): string =>
   `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 0 14px"><tr>${[1, 2, 3, 4, 5]
     .map(
       (n) =>
-        `<td style="padding:0 6px 0 0;text-align:center"><a href="${escapeHtml(hrefFor(n))}" aria-label="${n} star${n > 1 ? 's' : ''}" style="display:block;width:44px;height:44px;border:1px solid #e5e5e5;text-align:center;line-height:44px;font-size:24px;color:#f59e0b;text-decoration:none">&#9733;</a><p style="margin:3px 0 0;font-size:11px;color:${FAINT}">${n}</p></td>`,
+        `<td style="padding:0 6px 0 0;text-align:center"><a href="${escapeHtml(hrefFor(n))}" aria-label="${n} star${n > 1 ? 's' : ''}" style="display:block;width:52px;height:52px;border:1px solid #e5e5e5;text-align:center;line-height:52px;font-size:28px;color:#f59e0b;text-decoration:none">&#9733;</a><p style="margin:4px 0 0;font-size:13px;color:${FAINT}">${n}</p></td>`,
     )
     .join('')}</tr></table>`;
 
 /** Dashed box showing a value to copy (the referral link). */
 export const copyBox = (label: string, value: string): string =>
-  `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:6px 0 10px"><tr><td style="border:1px dashed #93c5fd;background:#eff6ff;padding:12px 16px"><p style="margin:0 0 4px;color:${FAINT};font-size:12px">${label}</p><p style="margin:0;color:${TEXT};font-weight:bold;font-size:15px">${value}</p></td></tr></table>`;
+  `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:6px 0 10px"><tr><td style="border:1px dashed #93c5fd;background:#eff6ff;padding:14px 18px"><p style="margin:0 0 4px;color:${FAINT};font-size:14px">${label}</p><p style="margin:0;color:${TEXT};font-weight:bold;font-size:18px">${value}</p></td></tr></table>`;
 
 // ─── Page ───────────────────────────────────────────────────────────────────
 
@@ -122,17 +122,17 @@ export function plainEmail({ preheader = '', body, unsubscribeUrl, signature = t
 <meta name="color-scheme" content="light">
 <title>MerchOS</title>
 </head>
-<body style="margin:0;padding:0;background:#ffffff;font-family:${FONT}">
+<body style="margin:0;padding:0;background:#eeeeee;font-family:${FONT}">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0">${escapeHtml(preheader)}</div>
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#ffffff"><tr><td align="center">
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px"><tr><td style="padding:18px 20px 10px;text-align:left;font-family:${FONT}">
-<table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 0 22px"><tr><td style="vertical-align:middle;padding-right:8px"><img src="${LOGO_URL}" width="34" height="34" alt="" style="display:block;border:0"></td><td style="vertical-align:middle;font-size:24px;font-weight:bold;color:${BLUE_DARK};letter-spacing:-0.5px">MerchOS</td></tr></table>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#eeeeee"><tr><td align="center" style="padding:24px 8px">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff"><tr><td style="padding:32px 36px 16px;text-align:left;font-family:${FONT}">
+<table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 0 28px"><tr><td style="vertical-align:middle;padding-right:10px"><img src="${LOGO_URL}" width="44" height="44" alt="" style="display:block;border:0"></td><td style="vertical-align:middle;font-size:30px;font-weight:bold;color:${BLUE_DARK};letter-spacing:-0.5px">MerchOS</td></tr></table>
 ${body}
 ${signature ? para('Kind regards,<br>The MerchOS team') : ''}
-<hr style="border:0;border-top:1px solid #e5e5e5;margin:22px 0 12px">
-<p style="margin:0 0 6px;font-size:12px;line-height:1.5;color:${FAINT}">Questions? Chat with us on ${link(SITE_URL, 'merchos.co.za')} (Monday to Friday, 9am to 4pm) or email ${link(`mailto:${SUPPORT_EMAIL}`, SUPPORT_EMAIL)}.</p>
-${footerReason ? `<p style="margin:0 0 6px;font-size:12px;line-height:1.5;color:${FAINT}">${footerReason}</p>` : ''}
-<p style="margin:0 0 20px;font-size:12px;color:${FAINT}">MerchOS, South Africa</p>
+<hr style="border:0;border-top:1px solid #e5e5e5;margin:26px 0 14px">
+<p style="margin:0 0 8px;font-size:14px;line-height:1.5;color:${FAINT}">Questions? Chat with us on ${link(SITE_URL, 'merchos.co.za')} (Monday to Friday, 9am to 4pm) or email ${link(`mailto:${SUPPORT_EMAIL}`, SUPPORT_EMAIL)}.</p>
+${footerReason ? `<p style="margin:0 0 8px;font-size:14px;line-height:1.5;color:${FAINT}">${footerReason}</p>` : ''}
+<p style="margin:0 0 20px;font-size:14px;color:${FAINT}">MerchOS, South Africa</p>
 </td></tr></table>
 </td></tr></table>
 </body>
