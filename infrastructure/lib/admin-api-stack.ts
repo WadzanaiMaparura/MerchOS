@@ -241,11 +241,22 @@ export class AdminApiStack extends cdk.Stack {
     ]);
     billingFn.addEnvironment('INVOICE_BUCKET', invoicesBucket);
 
+    // Audit log (read only, Admin): staff actions from this table, plus review
+    // decisions and applied referral free months from the engagement table.
+    const auditFn = createFn('AuditRead', 'audit-read.ts', [
+      adminTableRead,
+      new iam.PolicyStatement({ actions: ['dynamodb:Query'], resources: [`${tableArn(engagementTable)}/index/*`] }),
+      readOthers,
+      listSellers,
+      kmsRead,
+    ]);
+
     // -----------------------------------------------------------------------
     // Routes (all staff-only)
     // -----------------------------------------------------------------------
 
     const routes: Array<[string, HttpMethod, lambdaNodejs.NodejsFunction]> = [
+      ['/admin/audit', HttpMethod.GET, auditFn],
       ['/admin/billing', HttpMethod.GET, billingFn],
       ['/admin/billing/{tenantId}', HttpMethod.GET, billingFn],
       ['/admin/billing/{tenantId}/invoices/{invoiceId}/pdf', HttpMethod.GET, billingFn],
