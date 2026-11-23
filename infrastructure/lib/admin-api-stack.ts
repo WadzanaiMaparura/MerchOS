@@ -230,11 +230,25 @@ export class AdminApiStack extends cdk.Stack {
       kmsWrite,
     ]);
 
+    // Billing (read only, Admin). Scans the billing table for subscriptions,
+    // invoices and payments; signs short download links for issued invoice PDFs.
+    const invoicesBucket = `merch-os-invoices-${env}-${account}`;
+    const billingFn = createFn('BillingRead', 'billing-read.ts', [
+      new iam.PolicyStatement({ actions: ['dynamodb:Scan', 'dynamodb:GetItem'], resources: [tableArn(billingTable)] }),
+      readOthers,
+      kmsRead,
+      new iam.PolicyStatement({ actions: ['s3:GetObject'], resources: [`arn:aws:s3:::${invoicesBucket}/invoices/*`] }),
+    ]);
+    billingFn.addEnvironment('INVOICE_BUCKET', invoicesBucket);
+
     // -----------------------------------------------------------------------
     // Routes (all staff-only)
     // -----------------------------------------------------------------------
 
     const routes: Array<[string, HttpMethod, lambdaNodejs.NodejsFunction]> = [
+      ['/admin/billing', HttpMethod.GET, billingFn],
+      ['/admin/billing/{tenantId}', HttpMethod.GET, billingFn],
+      ['/admin/billing/{tenantId}/invoices/{invoiceId}/pdf', HttpMethod.GET, billingFn],
       ['/admin/customers', HttpMethod.GET, readFn],
       ['/admin/customers/{tenantId}', HttpMethod.GET, readFn],
       ['/admin/customers/resend-verification', HttpMethod.POST, verifyFn],
