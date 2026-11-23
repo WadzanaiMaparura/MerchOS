@@ -17,6 +17,7 @@ import { ExportApiStack } from '../lib/export-api-stack';
 import { BillingApiStack } from '../lib/billing-api-stack';
 import { SupportChatStack } from '../lib/support-chat-stack';
 import { EngagementStack } from '../lib/engagement-stack';
+import { AdminApiStack } from '../lib/admin-api-stack';
 
 const app = new cdk.App();
 
@@ -167,5 +168,20 @@ const engagementStack = new EngagementStack(app, `MerchOS-Engagement-${env}`, {
 engagementStack.addDependency(foundationStack);
 engagementStack.addDependency(authStack);
 engagementStack.addDependency(productApiStack);
+
+// Admin dashboard backend (MerchOS staff: Admin, Support). Customers first;
+// reads the other services' tables by name, so deploy after them.
+const adminApiStack = new AdminApiStack(app, `MerchOS-AdminApi-${env}`, {
+  env: cdkEnv,
+  environment: env,
+  userPool: authStack.userPool,
+  platformKey: foundationStack.platformKey,
+  sellerClientId: authStack.sellerDashboardClient.userPoolClientId,
+});
+adminApiStack.addDependency(foundationStack);
+adminApiStack.addDependency(authStack);
+adminApiStack.addDependency(productApiStack);
+adminApiStack.addDependency(billingApiStack);
+adminApiStack.addDependency(engagementStack);
 
 app.synth();

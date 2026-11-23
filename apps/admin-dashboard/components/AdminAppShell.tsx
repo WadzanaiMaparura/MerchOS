@@ -4,7 +4,7 @@
  * AdminAppShell — Persistent layout for the Admin Dashboard.
  *
  * Provides:
- * - Sidebar with 7 nav items (Health, Tenants, Compliance, Taxonomy, Audit Log, Alerts, Billing)
+ * - Sidebar nav items (Health, Customers, Compliance, Taxonomy, Audit Log, Alerts, Billing, Support inbox, Reviews, Referrals)
  * - RBAC-based navigation filtering using @merch-os/rbac permission registry
  * - Sidebar collapse/expand toggle (icon-only when collapsed)
  * - Responsive hamburger menu at < 768px viewport
@@ -44,13 +44,6 @@ const UsersIcon = (
     <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
     <circle cx="9" cy="7" r="4" />
     <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
-  </svg>
-);
-
-const BuildingIcon = (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5" aria-hidden="true">
-    <path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4" />
-    <path d="M9 9v.01M9 12v.01M9 15v.01M9 18v.01" />
   </svg>
 );
 
@@ -132,8 +125,8 @@ const registry = new PermissionRegistry(defaultPermissionConfig);
  */
 export const ADMIN_NAV_ITEMS: NavigationItem[] = [
   { id: 'health', label: 'Health', href: '/health', requiredResource: 'infrastructure' },
-  { id: 'tenants', label: 'Tenants', href: '/tenants', requiredResource: 'tenants' },
-  { id: 'users', label: 'Users', href: '/users', requiredResource: 'users' },
+  // Customers replaces the old Tenants and Users pages (Support and Admin).
+  { id: 'customers', label: 'Customers', href: '/customers', requiredResource: 'users.search' },
   { id: 'compliance', label: 'Compliance', href: '/compliance', requiredResource: 'compliance' },
   { id: 'taxonomy', label: 'Taxonomy', href: '/taxonomy', requiredResource: 'taxonomy' },
   { id: 'audit-log', label: 'Audit Log', href: '/audit-log', requiredResource: 'audit-log' },
@@ -147,8 +140,7 @@ export const ADMIN_NAV_ITEMS: NavigationItem[] = [
 /** Icon map for admin nav items */
 const NAV_ICONS: Record<string, React.ReactNode> = {
   health: ActivityIcon,
-  tenants: BuildingIcon,
-  users: UsersIcon,
+  customers: UsersIcon,
   compliance: ShieldIcon,
   taxonomy: TreeIcon,
   'audit-log': FileTextIcon,

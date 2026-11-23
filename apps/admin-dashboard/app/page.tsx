@@ -15,7 +15,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!isResolved) return;
-    router.replace(platformRole === 'Support' ? '/support' : '/health');
+    router.replace(platformRole === 'Support' ? '/support' : '/customers');
   }, [isResolved, platformRole, router]);
 
   return null;
