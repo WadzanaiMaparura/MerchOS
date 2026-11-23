@@ -241,6 +241,11 @@ export class AuthApiStack extends cdk.Stack {
         resources: [props.platformKey.keyArn],
       }),
     ]);
+    // New self sign-ups are closed until launch (see AuthStack PreSignUp).
+    registerPendingFn.addEnvironment(
+      'SIGNUPS_OPEN',
+      this.node.tryGetContext('signupsOpen') === 'true' ? 'true' : 'false'
+    );
     // NOTE: the CommonJS bundling that this handler used to override locally is
     // now the shared default for ALL auth handlers (see defaultLambdaProps.bundling),
     // because the same require("util") ESM crash affects every logger-using

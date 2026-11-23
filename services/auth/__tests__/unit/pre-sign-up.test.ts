@@ -54,6 +54,36 @@ describe('pre-sign-up trigger', () => {
     ddbDocMock.reset();
     process.env['INVITATIONS_TABLE'] = 'merch-os-invitations-dev';
     process.env['AWS_REGION'] = 'eu-west-1';
+    process.env['SIGNUPS_OPEN'] = 'true';
+  });
+
+  describe('while sign-ups are closed', () => {
+    let handler: (e: PreSignUpTriggerEvent) => Promise<PreSignUpTriggerEvent>;
+    beforeEach(async () => {
+      process.env['SIGNUPS_OPEN'] = 'false';
+      ({ handler } = await import('../../triggers/pre-sign-up'));
+    });
+
+    it('refuses a new self sign-up with a clear message', async () => {
+      ddbDocMock.on(QueryCommand).resolves({ Items: [] });
+      await expect(handler(buildPreSignUpEvent())).rejects.toThrow(/not open for new sign-ups yet/);
+    });
+
+    it('still lets a genuinely invited team member register', async () => {
+      ddbDocMock.on(QueryCommand).resolves({
+        Items: [{ PK: 'TENANT#t1', SK: 'INVITE#invitee@example.com', email: 'invitee@example.com', tenantId: 't1', role: 'editor', status: 'pending', invitationId: 'inv-1', expiresAt: Math.floor(Date.now() / 1000) + 3600 }],
+      });
+      const event = buildPreSignUpEvent();
+      event.request.userAttributes['email'] = 'invitee@example.com';
+      await expect(handler(event)).resolves.toBe(event);
+    });
+
+    it('still allows staff-created accounts (AdminCreateUser)', async () => {
+      ddbDocMock.on(QueryCommand).resolves({ Items: [] });
+      const event = buildPreSignUpEvent();
+      (event as { triggerSource: string }).triggerSource = 'PreSignUp_AdminCreateUser';
+      await expect(handler(event)).resolves.toBe(event);
+    });
   });
 
   it('does NOT auto-confirm/verify an invited self-registrant (email verification required; PostConfirmation assigns identity)', async () => {
