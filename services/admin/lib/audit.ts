@@ -14,7 +14,23 @@ import { GetCommand, PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { config } from './config';
 import { db } from './data';
 
-export type AuditAction = 'resend-verification' | 'disable' | 'enable' | 'exempt' | 'remove-exempt';
+export type AuditAction =
+  | 'resend-verification'
+  | 'disable'
+  | 'enable'
+  | 'exempt'
+  | 'remove-exempt'
+  | 'alert-resolved'
+  | 'alert-note';
+
+/** Who/what a staff action was about: a customer, an unfinished sign-up, or an alert. */
+export type AuditSubject = { tenantId: string } | { userId: string } | { alertId: string; label: string };
+
+function subjectFields(subject: AuditSubject): { PK: string; fields: Record<string, string> } {
+  if ('tenantId' in subject) return { PK: `TENANT#${subject.tenantId}`, fields: { tenantId: subject.tenantId } };
+  if ('userId' in subject) return { PK: `USER#${subject.userId}`, fields: { userId: subject.userId } };
+  return { PK: `ALERT#${subject.alertId}`, fields: { alertId: subject.alertId, subjectLabel: subject.label } };
+}
 
 export interface AuditEntry {
   at: string;
@@ -25,12 +41,9 @@ export interface AuditEntry {
   detail?: string | undefined;
 }
 
-export async function recordAudit(
-  subject: { tenantId: string } | { userId: string },
-  entry: Omit<AuditEntry, 'at'>,
-): Promise<void> {
+export async function recordAudit(subject: AuditSubject, entry: Omit<AuditEntry, 'at'>): Promise<void> {
   const at = new Date().toISOString();
-  const PK = 'tenantId' in subject ? `TENANT#${subject.tenantId}` : `USER#${subject.userId}`;
+  const { PK, fields } = subjectFields(subject);
   await db().send(
     new PutCommand({
       TableName: config.adminTable,
@@ -39,14 +52,15 @@ export async function recordAudit(
         SK: `AUDIT#${at}#${randomBytes(4).toString('hex')}`,
         ...entry,
         at,
-        ...('tenantId' in subject ? { tenantId: subject.tenantId } : { userId: subject.userId }),
+        ...fields,
         GSI1PK: 'AUDIT',
         GSI1SK: at,
       },
     }),
   );
   // Never log the reason text (it may hold personal details).
-  console.info('Staff action', { ...subject, action: entry.action, by: entry.by });
+  const { label: _label, ...ids } = subject as { label?: string };
+  console.info('Staff action', { ...ids, action: entry.action, by: entry.by });
 }
 
 export async function listAudit(tenantId: string, limit = 50): Promise<AuditEntry[]> {

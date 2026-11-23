@@ -17,6 +17,8 @@
 import * as cdk from 'aws-cdk-lib';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as events from 'aws-cdk-lib/aws-events';
+import * as targets from 'aws-cdk-lib/aws-events-targets';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as kms from 'aws-cdk-lib/aws-kms';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
@@ -29,6 +31,7 @@ import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations
 import { Construct } from 'constructs';
 import * as path from 'path';
 import { adminDashboardOrigins } from './cors-origins';
+import { envSetting } from './env-config';
 
 export interface AdminApiStackProps extends cdk.StackProps {
   environment: string;
@@ -252,10 +255,79 @@ export class AdminApiStack extends cdk.Stack {
     ]);
 
     // -----------------------------------------------------------------------
+    // Health and Alerts
+    // -----------------------------------------------------------------------
+
+    // CloudWatch and Lambda read APIs do not support resource-level permissions.
+    const readMetrics = new iam.PolicyStatement({
+      actions: ['cloudwatch:GetMetricData', 'lambda:ListFunctions'],
+      resources: ['*'],
+    });
+    const alertsTableWrite = new iam.PolicyStatement({
+      actions: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem', 'dynamodb:ConditionCheckItem'],
+      resources: [this.table.tableArn],
+    });
+
+    const healthFn = createFn('HealthRead', 'health-read.ts', [readMetrics, listSellers, adminTableRead, kmsRead]);
+    // Payments shows "Not live yet" until checkout is switched on (same switch as the Billing API).
+    healthFn.addEnvironment('PAYMENTS_LIVE', this.node.tryGetContext('checkoutEnabled') === 'true' ? 'true' : 'false');
+
+    const alertsReadFn = createFn('AlertsRead', 'alerts-read.ts', [
+      adminTableRead,
+      listSellers,
+      kmsRead,
+      new iam.PolicyStatement({ actions: ['cloudwatch:DescribeAlarms'], resources: ['*'] }),
+    ]);
+    const alertsManageFn = createFn('AlertsManage', 'alerts-manage.ts', [alertsTableWrite, kmsWrite]);
+
+    // Every 15 minutes, plus every state change of the existing merch-os-* alarms.
+    const alertEmail = envSetting(this, env, 'alertEmail', 'admin@merchos.co.za');
+    const adminBaseUrl = envSetting(
+      this,
+      env,
+      'adminBaseUrl',
+      env === 'dev' ? 'https://admin.merchos.co.za' : `https://admin-${env}.merchos.io`,
+    );
+    const monitorFn = createFn('AlertsMonitor', 'alerts-monitor.ts', [
+      readMetrics,
+      adminTableRead,
+      alertsTableWrite,
+      kmsWrite,
+      new iam.PolicyStatement({
+        actions: ['ses:SendEmail'],
+        resources: [`arn:aws:ses:${region}:${account}:identity/merchos.co.za`],
+      }),
+    ]);
+    monitorFn.addEnvironment('ALERT_EMAIL', alertEmail);
+    monitorFn.addEnvironment('ALERT_FROM_EMAIL', 'MerchOS Alerts <noreply@merchos.co.za>');
+    monitorFn.addEnvironment('ADMIN_BASE_URL', adminBaseUrl);
+    new events.Rule(this, 'HealthCheckSchedule', {
+      ruleName: `merch-os-admin-health-check-${env}`,
+      description: 'Checks every area for errors and opens or closes alerts',
+      schedule: events.Schedule.rate(cdk.Duration.minutes(15)),
+      targets: [new targets.LambdaFunction(monitorFn, { retryAttempts: 2 })],
+    });
+    new events.Rule(this, 'AlarmStateChange', {
+      ruleName: `merch-os-admin-alarm-changes-${env}`,
+      description: 'Existing MerchOS alarms (payments, imports) open and close alerts',
+      eventPattern: {
+        source: ['aws.cloudwatch'],
+        detailType: ['CloudWatch Alarm State Change'],
+        detail: { alarmName: [{ prefix: 'merch-os-' }] },
+      },
+      targets: [new targets.LambdaFunction(monitorFn, { retryAttempts: 4 })],
+    });
+
+    // -----------------------------------------------------------------------
     // Routes (all staff-only)
     // -----------------------------------------------------------------------
 
     const routes: Array<[string, HttpMethod, lambdaNodejs.NodejsFunction]> = [
+      ['/admin/health', HttpMethod.GET, healthFn],
+      ['/admin/alerts', HttpMethod.GET, alertsReadFn],
+      ['/admin/alerts/unresolved-count', HttpMethod.GET, alertsReadFn],
+      ['/admin/alerts/{alertId}/resolve', HttpMethod.POST, alertsManageFn],
+      ['/admin/alerts/{alertId}/notes', HttpMethod.POST, alertsManageFn],
       ['/admin/audit', HttpMethod.GET, auditFn],
       ['/admin/billing', HttpMethod.GET, billingFn],
       ['/admin/billing/{tenantId}', HttpMethod.GET, billingFn],

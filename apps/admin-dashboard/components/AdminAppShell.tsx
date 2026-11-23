@@ -251,7 +251,7 @@ export function AdminAppShell({ children }: AdminAppShellProps) {
   const setMobileSidebarOpen = useAdminUIStore((s) => s.setMobileSidebarOpen);
 
   // Unresolved alert count for badge on Alerts nav item (Requirement 8.6).
-  // Only fetched for roles that can see alerts (Support cannot).
+  // Only fetched for roles that can see alerts (Admin, and Support view only).
   const canSeeAlerts =
     isResolved && !!platformRole && registry.hasPermission(platformRole, 'alerts', 'read').granted;
   const { data: unresolvedCount = 0 } = useUnresolvedAlertCount({ enabled: canSeeAlerts });

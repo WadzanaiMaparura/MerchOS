@@ -212,8 +212,17 @@ describe('Integration: End-to-end authorization flow', () => {
         { resource: 'billing', action: 'read' },
         { resource: 'products', action: 'create' },
         { resource: 'subscription', action: 'update' },
-        { resource: 'infrastructure', action: 'read' },
+        // Health and Alerts are view only for Support.
+        { resource: 'infrastructure', action: 'update' },
+        { resource: 'alerts', action: 'update' },
       ];
+
+      it.each([
+        { resource: 'infrastructure', action: 'read' },
+        { resource: 'alerts', action: 'read' },
+      ] as EndpointPermission[])('Support can view $resource ($action)', (endpoint) => {
+        expect(authorize(supportClaims, endpoint).authorized).toBe(true);
+      });
 
       it.each(deniedEndpoints)(
         'Support is denied $resource:$action',

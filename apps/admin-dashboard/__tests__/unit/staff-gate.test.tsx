@@ -25,6 +25,7 @@ vi.mock('../../hooks/useAdminAuth', () => ({
 vi.mock('../../components/AdminAppShell', () => ({
   ADMIN_NAV_ITEMS: [
     { id: 'health', label: 'Health', href: '/health', requiredResource: 'infrastructure' },
+    { id: 'billing', label: 'Billing', href: '/billing', requiredResource: 'billing' },
     { id: 'support', label: 'Support inbox', href: '/support', requiredResource: 'support-inbox' },
   ],
 }));
@@ -49,10 +50,17 @@ describe('StaffGate', () => {
 
   it('keeps Support out of admin-only pages', () => {
     role = 'Support';
-    pathname = '/health';
+    pathname = '/billing';
     page();
     expect(screen.queryByText('protected page')).toBeNull();
-    expect(replaceMock).toHaveBeenCalledWith('/access-denied?path=%2Fhealth');
+    expect(replaceMock).toHaveBeenCalledWith('/access-denied?path=%2Fbilling');
+  });
+
+  it('lets Support view Health (view only)', () => {
+    role = 'Support';
+    pathname = '/health';
+    page();
+    expect(screen.getByText('protected page')).toBeTruthy();
   });
 
   it('lets Support use the Support inbox', () => {
