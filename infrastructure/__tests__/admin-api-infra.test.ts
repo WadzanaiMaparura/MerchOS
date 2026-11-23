@@ -43,7 +43,7 @@ describe('Admin API stack', () => {
       JwtConfiguration: { Audience: ['admin-client-id'], Issuer: Match.anyValue() },
     });
     const routes = Object.values(t.findResources('AWS::ApiGatewayV2::Route')).map((r) => r['Properties'] as Record<string, unknown>);
-    expect(routes).toHaveLength(6);
+    expect(routes).toHaveLength(9);
     for (const r of routes) expect(r['AuthorizationType']).toBe('JWT');
   });
 
@@ -56,13 +56,18 @@ describe('Admin API stack', () => {
   });
 
   it('other services: read-only, except the trial entitlement write', () => {
-    for (const table of ['merch-os-tenants-dev', 'merch-os-billing-dev', 'merch-os-engagement-dev']) {
+    for (const table of ['merch-os-tenants-dev', 'merch-os-engagement-dev']) {
       expect(actionsOn(table).every((a) => ['dynamodb:GetItem', 'dynamodb:BatchGetItem', 'dynamodb:Query'].includes(a))).toBe(true);
     }
     expect(actionsOn('merch-os-products-dev')).not.toContain('dynamodb:DeleteItem');
     const all = statements().flatMap((s) => ([] as string[]).concat(s.Action));
     expect(all).not.toContain('cognito-idp:AdminDeleteUser');
     expect(all.some((a) => a.startsWith('dynamodb:Delete'))).toBe(false);
+  });
+
+  it('billing is read only: no writes to billing data or invoice files', () => {
+    expect(actionsOn('merch-os-billing-dev').every((a) => ['dynamodb:GetItem', 'dynamodb:BatchGetItem', 'dynamodb:Query', 'dynamodb:Scan'].includes(a))).toBe(true);
+    expect(actionsOn('merch-os-invoices-dev')).toEqual(['s3:GetObject']);
   });
 
   it('only the manage function can disable accounts', () => {

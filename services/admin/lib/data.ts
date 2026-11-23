@@ -156,6 +156,18 @@ export async function getEntitlements(tenantIds: string[]): Promise<Map<string, 
   return out;
 }
 
+/**
+ * New products this calendar month on a paid plan (ENTITLEMENT#month#<yyyyMM>).
+ * Only counted while the product limit is switched on; null when there is no counter.
+ */
+export async function getMonthUsage(tenantId: string, now: Date = new Date()): Promise<number | null> {
+  const yyyyMM = now.toISOString().slice(0, 7).replace('-', '');
+  const res = await db().send(
+    new GetCommand({ TableName: config.productsTable, Key: { PK: pk(tenantId), SK: `ENTITLEMENT#month#${yyyyMM}` } }),
+  );
+  return num(res.Item?.['productsUsed']) ?? null;
+}
+
 // ─── Billing ────────────────────────────────────────────────────────────────
 
 export interface SubscriptionInfo {
@@ -220,6 +232,8 @@ export interface EngagementInfo {
   referredByTenantId?: string | undefined;
   referralsMade: number;
   freeMonthsEarned: number;
+  /** Earned but not yet taken off a payment. */
+  freeMonthsOwed: number;
   review?: { rating: number; status: string; createdAt?: string | undefined } | undefined;
 }
 
@@ -252,6 +266,7 @@ export async function getEngagement(tenantId: string): Promise<EngagementInfo> {
     referredByTenantId: str(profile?.['referredByTenantId']),
     referralsMade: referrals.length,
     freeMonthsEarned: referrals.filter((r) => r['reward'] === 'EARNED' || r['reward'] === 'APPLIED').length,
+    freeMonthsOwed: referrals.filter((r) => r['reward'] === 'EARNED').length,
     review,
   };
 }

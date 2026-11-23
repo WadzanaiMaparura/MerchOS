@@ -23,6 +23,7 @@ import {
   type CustomerFilter,
   type CustomerRow,
 } from '../../../lib/customers';
+import { formatRand } from '../../../lib/format';
 
 const registry = new PermissionRegistry(defaultPermissionConfig);
 
@@ -70,7 +71,7 @@ const day = (iso?: string) =>
   iso ? new Date(iso).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
 const when = (iso?: string) =>
   iso ? new Date(iso).toLocaleString('en-ZA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
-const rand = (cents: number) => `R${(cents / 100).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
+const rand = formatRand;
 
 const btn =
   'inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
