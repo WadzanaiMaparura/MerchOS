@@ -43,7 +43,7 @@ describe('Admin API stack', () => {
       JwtConfiguration: { Audience: ['admin-client-id'], Issuer: Match.anyValue() },
     });
     const routes = Object.values(t.findResources('AWS::ApiGatewayV2::Route')).map((r) => r['Properties'] as Record<string, unknown>);
-    expect(routes).toHaveLength(9);
+    expect(routes).toHaveLength(10);
     for (const r of routes) expect(r['AuthorizationType']).toBe('JWT');
   });
 
@@ -68,6 +68,12 @@ describe('Admin API stack', () => {
   it('billing is read only: no writes to billing data or invoice files', () => {
     expect(actionsOn('merch-os-billing-dev').every((a) => ['dynamodb:GetItem', 'dynamodb:BatchGetItem', 'dynamodb:Query', 'dynamodb:Scan'].includes(a))).toBe(true);
     expect(actionsOn('merch-os-invoices-dev')).toEqual(['s3:GetObject']);
+  });
+
+  it('the audit log only reads', () => {
+    const audit = Object.entries(t.findResources('AWS::IAM::Policy')).find(([id]) => id.startsWith('AuditReadRole'))!;
+    const actions = JSON.stringify(audit[1]);
+    expect(actions).not.toMatch(/PutItem|UpdateItem|DeleteItem|AdminDisable|AdminEnable/);
   });
 
   it('only the manage function can disable accounts', () => {

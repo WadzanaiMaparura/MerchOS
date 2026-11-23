@@ -61,19 +61,34 @@ export function toSellerUser(u: UserType): SellerUser {
   };
 }
 
-/** Every seller account (Seller group), all pages. */
-export async function listSellerUsers(): Promise<SellerUser[]> {
-  const out: SellerUser[] = [];
+async function listGroup(group: string): Promise<UserType[]> {
+  const out: UserType[] = [];
   let token: string | undefined;
   for (let page = 0; page < 200; page++) {
     const res = await cognito().send(
-      new ListUsersInGroupCommand({ UserPoolId: config.userPoolId, GroupName: 'Seller', Limit: 60, ...(token ? { NextToken: token } : {}) }),
+      new ListUsersInGroupCommand({ UserPoolId: config.userPoolId, GroupName: group, Limit: 60, ...(token ? { NextToken: token } : {}) }),
     );
-    out.push(...(res.Users ?? []).map(toSellerUser));
+    out.push(...(res.Users ?? []));
     token = res.NextToken;
     if (!token) break;
   }
   return out;
+}
+
+/** Staff accounts (Admin or Support), by user id. */
+export async function listStaffIds(): Promise<Set<string>> {
+  const [admins, support] = await Promise.all([listGroup('Admin'), listGroup('Support')]);
+  return new Set([...admins, ...support].map((u) => u.Username ?? ''));
+}
+
+/**
+ * Every seller account (Seller group), all pages. Staff are never sellers here,
+ * even if their account is also in the Seller group (e.g. used to test the
+ * seller site): they are not customers and must never be disabled from Customers.
+ */
+export async function listSellerUsers(): Promise<SellerUser[]> {
+  const [sellers, staff] = await Promise.all([listGroup('Seller'), listStaffIds()]);
+  return sellers.filter((u) => !staff.has(u.Username ?? '')).map(toSellerUser);
 }
 
 /** People who started signing up but never entered the email code. */
