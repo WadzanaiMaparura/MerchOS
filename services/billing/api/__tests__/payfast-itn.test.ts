@@ -20,8 +20,13 @@ vi.mock('../../services/credit-ledger', () => ({
 vi.mock('../../../shared/middleware/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
+vi.mock('../../services/events', () => ({
+  emitSubscriptionActivated: vi.fn(),
+}));
 
 import { handler, setPaymentProvider } from '../handlers/payfast-itn';
+import * as events from '../../services/events';
+import { logger } from '../../../shared/middleware/logger';
 import * as store from '../../services/subscription-store';
 import * as ledger from '../../services/credit-ledger';
 import * as vouchers from '../../services/vouchers';
@@ -70,6 +75,37 @@ beforeEach(() => {
   vi.mocked(store.getCheckoutIntent).mockResolvedValue(growthIntent as never);
   vi.mocked(store.recordPayment).mockResolvedValue(true);
   vi.mocked(store.getPayment).mockResolvedValue({ mPaymentId: 'pay-1', applied: false });
+});
+
+describe('PayFast ITN: billing.subscription.activated', () => {
+  it('announces the activation after the payment is applied, without personal data', async () => {
+    expect(await body()).toBe('ok');
+    expect(events.emitSubscriptionActivated).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      planId: 'growth',
+      planName: 'Growth',
+      monthlyProducts: 1000,
+      mPaymentId: 'pay-1',
+      periodStart: expect.any(String),
+      periodEnd: expect.any(String),
+    });
+    expect(vi.mocked(store.markPaymentApplied).mock.invocationCallOrder[0]!).toBeLessThan(
+      vi.mocked(events.emitSubscriptionActivated).mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('a failure to publish does not fail or retry the payment', async () => {
+    vi.mocked(events.emitSubscriptionActivated).mockRejectedValueOnce(new Error('bus down'));
+    expect(await body()).toBe('ok');
+    expect(store.markPaymentApplied).toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith('Subscription event not published', expect.anything());
+  });
+
+  it('nothing is announced for a rejected notification', async () => {
+    verifyItn.mockResolvedValue({ valid: false, reason: 'bad signature' });
+    await body();
+    expect(events.emitSubscriptionActivated).not.toHaveBeenCalled();
+  });
 });
 
 describe('PayFast ITN ? invoice document', () => {

@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import TrainingSection, { TRAINING_HREF } from './components/TrainingSection';
+import { fillSlots, initials, useApprovedReviews } from '../components/engagement/reviews';
+import type { PublicReview } from '../components/engagement/engagement-api';
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 
@@ -39,7 +41,20 @@ const features = [
   },
 ];
 
-const testimonials = [
+/** A testimonial slot: a placeholder, or a real approved review (no photo). */
+interface Testimonial {
+  name: string;
+  category: string;
+  quote: string;
+  imageUrl?: string;
+  rating?: number;
+}
+
+/**
+ * Placeholder slots. Approved real reviews replace them in order (slot 1
+ * first) and the rest stay as they are; see components/engagement/reviews.ts.
+ */
+const TESTIMONIAL_SLOTS: Testimonial[] = [
   {
     name: 'Lerato M.',
     category: 'Electronics',
@@ -144,9 +159,9 @@ function XIcon() {
   );
 }
 
-function StarIcon() {
+function StarIcon({ filled = true }: { filled?: boolean }) {
   return (
-    <svg className="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+    <svg className={`w-4 h-4 ${filled ? 'text-yellow-400' : 'text-gray-200'}`} fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
       <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
     </svg>
   );
@@ -200,26 +215,42 @@ const featureIcons = [ProductStudioIcon, BulkListingIcon, MarketplaceReadyIcon];
 // ─── Page Component ──────────────────────────────────────────────────────────
 
 export default function MarketingPage() {
+  // Approved seller reviews fill the placeholder slots in order; same layout.
+  const approved = useApprovedReviews();
   return (
     <>
-      <HeroSection />
+      <HeroSection reviews={approved} />
       <WorkflowSection />
       <FeaturesSection />
       <TrainingSection variant="strip" />
-      <TestimonialsSection />
+      <TestimonialsSection reviews={approved} />
       <PricingSection />
     </>
   );
 }
 
-// ─── Customer Review Stack (data-driven, future backend integration) ─────────
+// ─── Customer Review Stack (data-driven) ─────────────────────────────────────
 
 interface CustomerReview {
   id: string;
   name: string;
   company?: string;
-  imageUrl: string;
+  /** Placeholders have a photo; real reviews show initials. */
+  imageUrl?: string;
   rating: number;
+}
+
+function ReviewAvatar({ name, imageUrl, className }: { name: string; imageUrl?: string; className: string }) {
+  if (imageUrl) return <img src={imageUrl} alt={name} className={`${className} object-cover`} />;
+  return (
+    <span
+      role="img"
+      aria-label={name}
+      className={`${className} inline-flex items-center justify-center bg-blue-100 text-[11px] font-semibold text-blue-700`}
+    >
+      {initials(name)}
+    </span>
+  );
 }
 
 const customerReviews: CustomerReview[] = [
@@ -230,17 +261,24 @@ const customerReviews: CustomerReview[] = [
   { id: '5', name: 'Sarah J.', company: 'SJ Lifestyle', imageUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=80&h=80&fit=crop&crop=face', rating: 5 },
 ];
 
-function CustomerReviewStack({ reviews }: { reviews: CustomerReview[] }) {
+function CustomerReviewStack({ reviews: approved }: { reviews: PublicReview[] }) {
+  const reviews = fillSlots(customerReviews, approved, (r) => ({
+    id: r.reviewId,
+    name: r.name,
+    company: r.label,
+    rating: r.rating,
+  })).slice(0, 5);
+  const average = reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length;
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
       {/* Overlapping avatars. shrink-0: on phones they were squeezed over the text */}
       <div className="flex shrink-0 -space-x-2.5">
-        {reviews.slice(0, 5).map((review) => (
-          <img
+        {reviews.map((review) => (
+          <ReviewAvatar
             key={review.id}
-            src={review.imageUrl}
-            alt={review.name}
-            className="w-9 h-9 rounded-full border-2 border-white object-cover shadow-sm"
+            name={review.name}
+            imageUrl={review.imageUrl}
+            className="w-9 h-9 rounded-full border-2 border-white shadow-sm"
           />
         ))}
       </div>
@@ -249,9 +287,9 @@ function CustomerReviewStack({ reviews }: { reviews: CustomerReview[] }) {
       <div className="min-w-0">
         <div className="flex items-center gap-1">
           {[...Array(5)].map((_, i) => (
-            <StarIcon key={i} />
+            <StarIcon key={i} filled={i < Math.round(average)} />
           ))}
-          <span className="text-sm font-semibold text-gray-700 ml-1.5">5.0</span>
+          <span className="text-sm font-semibold text-gray-700 ml-1.5">{average.toFixed(1)}</span>
         </div>
         <p className="text-sm text-gray-500 mt-0.5">Trusted by marketplace sellers across South Africa</p>
       </div>
@@ -271,7 +309,7 @@ const WORKS_WITH: Array<{ name: string; src?: string; h: string }> = [
   { name: 'WooCommerce', src: '/logos/woocommerce.svg', h: 'h-5' },
 ];
 
-function HeroSection() {
+function HeroSection({ reviews }: { reviews: PublicReview[] }) {
   return (
     <section className="relative overflow-x-clip pt-12 pb-10 sm:pt-16 sm:pb-14 lg:pt-16 lg:pb-16 bg-white">
       {/* Subtle background glow on right side */}
@@ -328,7 +366,7 @@ function HeroSection() {
 
             {/* Customer trust section */}
             <div className="mt-10">
-              <CustomerReviewStack reviews={customerReviews} />
+              <CustomerReviewStack reviews={reviews} />
             </div>
 
             {/* Works with */}
@@ -770,8 +808,15 @@ function FeaturesSection() {
 
 // ─── Testimonials Section ────────────────────────────────────────────────────
 
-function TestimonialsSection() {
+function TestimonialsSection({ reviews }: { reviews: PublicReview[] }) {
   const [activeIndex, setActiveIndex] = useState(0);
+  // Same four slots; approved reviews take them in order (no photo: initials).
+  const testimonials = fillSlots(TESTIMONIAL_SLOTS, reviews, (r) => ({
+    name: r.name,
+    category: r.label,
+    quote: r.quote,
+    rating: r.rating,
+  }));
 
   const handlePrev = () => {
     setActiveIndex((prev) => (prev === 0 ? testimonials.length - 1 : prev - 1));
@@ -798,8 +843,8 @@ function TestimonialsSection() {
         <div className="relative">
           {/* Desktop grid */}
           <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {testimonials.map((testimonial) => (
-              <TestimonialCard key={testimonial.name} testimonial={testimonial} />
+            {testimonials.map((testimonial, i) => (
+              <TestimonialCard key={i} testimonial={testimonial} />
             ))}
           </div>
 
@@ -846,7 +891,8 @@ function TestimonialsSection() {
   );
 }
 
-function TestimonialCard({ testimonial }: { testimonial: (typeof testimonials)[number] }) {
+function TestimonialCard({ testimonial }: { testimonial: Testimonial }) {
+  const rating = testimonial.rating ?? 5;
   return (
     <div className="rounded-2xl bg-white p-6 shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-gray-100 hover:-translate-y-1 hover:shadow-md transition-all duration-[250ms]">
       {/* Quote */}
@@ -855,18 +901,18 @@ function TestimonialCard({ testimonial }: { testimonial: (typeof testimonials)[n
       </p>
 
       {/* Stars */}
-      <div className="flex gap-0.5 mb-4">
+      <div className="flex gap-0.5 mb-4" role="img" aria-label={`${rating} out of 5 stars`}>
         {[...Array(5)].map((_, i) => (
-          <StarIcon key={i} />
+          <StarIcon key={i} filled={i < rating} />
         ))}
       </div>
 
       {/* Author */}
       <div className="flex items-center gap-3">
-        <img
-          src={testimonial.imageUrl}
-          alt={testimonial.name}
-          className="w-9 h-9 rounded-full object-cover border border-gray-100"
+        <ReviewAvatar
+          name={testimonial.name}
+          imageUrl={testimonial.imageUrl}
+          className="w-9 h-9 rounded-full border border-gray-100"
         />
         <div>
           <p className="text-sm font-semibold text-gray-900">{testimonial.name}</p>

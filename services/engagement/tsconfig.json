@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "outDir": "./dist",
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false
+  },
+  "include": ["handlers/**/*.ts", "lib/**/*.ts"],
+  "exclude": ["node_modules", "dist", "__tests__"]
+}

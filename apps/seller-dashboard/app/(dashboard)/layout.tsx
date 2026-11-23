@@ -13,6 +13,7 @@ import { NotificationProvider, NotificationHistoryDropdown } from '../components
 import { ErrorBoundaryWrapper } from './components/ErrorBoundaryWrapper';
 import { DashboardRouteGuard } from './components/DashboardRouteGuard';
 import { ProfileCompletionGate } from './components/ProfileCompletionGate';
+import { ReferralClaim } from '../components/engagement/ReferralClaim';
 
 // --- Permission Registry (singleton) ---
 const registry = new PermissionRegistry(defaultPermissionConfig);
@@ -69,6 +70,15 @@ const CreditCardIcon = (
   </svg>
 );
 
+const GiftIcon = (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+    <polyline points="20 12 20 22 4 22 4 12" />
+    <rect x="2" y="7" width="20" height="5" />
+    <line x1="12" y1="22" x2="12" y2="7" />
+    <path d="M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z" />
+  </svg>
+);
+
 /**
  * SELLER_NAV_ITEMS — Navigation items annotated with requiredResource
  * mapping to the permission registry resources for the Seller role.
@@ -82,6 +92,7 @@ const SELLER_NAV_ITEMS: NavigationItem[] = [
   { id: 'exports', label: 'Exports CSV', href: '/exports', icon: DownloadIcon, requiredResource: 'exports' },
   { id: 'settings', label: 'Settings', href: '/settings', icon: SettingsIcon, requiredResource: 'subscription' },
   { id: 'billing', label: 'Billing', href: '/billing', icon: CreditCardIcon, requiredResource: 'subscription' },
+  { id: 'referrals', label: 'Refer a seller', href: '/referrals', icon: GiftIcon, requiredResource: 'referrals' },
 ];
 
 // --- Helper: truncate string ---
@@ -368,6 +379,8 @@ export default function DashboardLayout({
               role="main"
             >
               <ContentLoadingIndicator />
+              {/* A referral link followed before sign-up is claimed once signed in. */}
+              <ReferralClaim ready={isPermissionsResolved} />
               <ProfileCompletionGate>
               <ErrorBoundaryWrapper>
                 <DashboardRouteGuard>

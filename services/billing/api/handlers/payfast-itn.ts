@@ -48,6 +48,7 @@ import { grantCredits } from '../../services/credit-ledger';
 import { recordVoucherRedemption } from '../../services/vouchers';
 import { issueInvoiceDocument } from '../../invoices/issue-invoice';
 import { markSubscribed } from '../../../shared/entitlements/trial-gate';
+import { emitSubscriptionActivated } from '../../services/events';
 
 let injectedProvider: PaymentProvider | undefined;
 
@@ -262,6 +263,26 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
 
   // Last step: only now is the payment considered fully applied.
   await markPaymentApplied(tenantId, mPaymentId);
+
+  // Tell the rest of the platform (welcome email, referral rewards). Best effort:
+  // the payment is applied and must not be retried because of this.
+  try {
+    await emitSubscriptionActivated({
+      tenantId,
+      planId: intent.planId,
+      planName: plan.name,
+      monthlyProducts: plan.monthlyProducts,
+      mPaymentId,
+      periodStart: now.toISOString(),
+      periodEnd: periodEnd.toISOString(),
+    });
+  } catch (error) {
+    logger.error('Subscription event not published', {
+      tenantId,
+      mPaymentId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   logger.info('Subscription activated via ITN', {
     tenantId,

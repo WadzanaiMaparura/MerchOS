@@ -370,6 +370,17 @@ export class BillingApiStack extends cdk.Stack {
       payfastItnLogGroup
     );
     payfastItnFn.addEnvironment('PRODUCTS_TABLE', productsTableName);
+    // billing.subscription.activated (welcome email, referral rewards). The bus is
+    // Foundation's, named by convention so this stack takes no new dependency.
+    const eventBusName = `merch-os-events-${env}`;
+    payfastItnFn.addEnvironment('EVENT_BUS_NAME', eventBusName);
+    payfastItnFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['events:PutEvents'],
+        resources: [`arn:aws:events:${region}:${this.account}:event-bus/${eventBusName}`],
+      })
+    );
 
     // Invoice PDF download: issues on demand if the webhook could not, then presigns.
     //
