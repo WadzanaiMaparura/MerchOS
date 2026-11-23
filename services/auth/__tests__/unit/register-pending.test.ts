@@ -76,6 +76,19 @@ describe('register-pending handler', () => {
     claimsSend.mockReset();
     claimsSend.mockResolvedValue({});
     process.env['TENANTS_TABLE'] = 'merch-os-tenants-test';
+    process.env['SIGNUPS_OPEN'] = 'true';
+  });
+
+  it('while sign-ups are closed: 403 SIGNUPS_CLOSED and nothing is looked up or stored', async () => {
+    process.env['SIGNUPS_OPEN'] = 'false';
+    const result = (await handler(buildEvent(VALID_BODY), {} as never, () => {})) as { statusCode: number; body: string };
+    expect(result.statusCode).toBe(403);
+    expect(JSON.parse(result.body).error.code).toBe('SIGNUPS_CLOSED');
+    expect(claimsSend).not.toHaveBeenCalled();
+    expect(createMock).not.toHaveBeenCalled();
+    delete process.env['SIGNUPS_OPEN'];
+    const unset = (await handler(buildEvent(VALID_BODY), {} as never, () => {})) as { statusCode: number };
+    expect(unset.statusCode).toBe(403); // closed unless explicitly opened
   });
 
   it('refuses (409) when the email, phone or business name already has an account, before creating anything', async () => {

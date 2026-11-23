@@ -37,6 +37,18 @@ export { InvitationLookupError, parseExpiryToEpochSeconds } from '../registratio
 
 const logger = new Logger({ serviceName: 'merch-os-pre-sign-up' });
 
+/**
+ * While the site is being built, new self sign-ups are closed. Invited team
+ * members (a genuine invitation) and staff-created accounts still go through.
+ * Open with SIGNUPS_OPEN=true (Auth stack context `signupsOpen=true`).
+ */
+export const SIGNUPS_CLOSED_MESSAGE =
+  'MerchOS is not open for new sign-ups yet. Contact info@merchos.co.za to hear when we launch.';
+
+export function signupsOpen(): boolean {
+  return process.env['SIGNUPS_OPEN'] === 'true';
+}
+
 export async function handler(
   event: PreSignUpTriggerEvent,
 ): Promise<PreSignUpTriggerEvent> {
@@ -90,6 +102,13 @@ export async function handler(
       triggerSource: event.triggerSource,
     });
     return event;
+  }
+
+  // Sign-ups closed: refuse new self sign-ups (Cognito shows the message).
+  // Staff-created accounts (PreSignUp_AdminCreateUser) are not self sign-ups.
+  if (event.triggerSource === 'PreSignUp_SignUp' && !signupsOpen()) {
+    logger.info('Self sign-up refused: sign-ups are closed');
+    throw new Error(SIGNUPS_CLOSED_MESSAGE);
   }
 
   // Self sign-up: successful lookup, no invitation. Defer identity assignment

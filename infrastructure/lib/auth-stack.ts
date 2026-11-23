@@ -405,6 +405,9 @@ export class AuthStack extends cdk.Stack {
       entry: path.join(triggersPath, 'pre-sign-up.ts'),
       role: preSignUpRole as unknown as iam.IRole,
     });
+    // New self sign-ups are closed until launch. Open with --context signupsOpen=true
+    // (and the same on the AuthApi stack, plus NEXT_PUBLIC_SIGNUPS_OPEN on the site).
+    preSignUpFn.addEnvironment('SIGNUPS_OPEN', this.node.tryGetContext('signupsOpen') === 'true' ? 'true' : 'false');
 
     // PostConfirmation trigger — records session, emits event
     const postConfirmationRole = new iam.Role(this, 'PostConfirmationRole', {

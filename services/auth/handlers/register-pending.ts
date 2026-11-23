@@ -62,6 +62,21 @@ async function baseHandler(
     };
   }
 
+  // While the site is being built, collect no sign-up details at all.
+  // (Invited team members get their account from invite-user, not this route.)
+  if (process.env['SIGNUPS_OPEN'] !== 'true') {
+    return {
+      statusCode: 403,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        error: {
+          code: 'SIGNUPS_CLOSED',
+          message: 'MerchOS is not open for new sign-ups yet. Contact info@merchos.co.za to hear when we launch.',
+        },
+      }),
+    };
+  }
+
   const { fullName, email, phoneNumber, organisationName, marketingConsent } =
     event.body;
 
