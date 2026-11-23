@@ -213,9 +213,10 @@ export async function tenantForReferralCode(code: string): Promise<string | null
 
 /**
  *  PENDING     signed up through the link, not paying yet
- *  SUBSCRIBED  paying; qualifies after 14 days if still subscribed
- *  QUALIFIED   stayed 14 days: the referrer has earned one free month
- *  LAPSED      stopped paying within the 14 days (no reward)
+ *  SUBSCRIBED  paying; qualifies once 14 days have passed, still subscribed,
+ *              and at least 10 products added (actively using MerchOS)
+ *  QUALIFIED   the referrer has earned one free month
+ *  LAPSED      stopped paying, or still under 10 products 90 days after paying (no reward)
  */
 export type ReferralStatus = 'PENDING' | 'SUBSCRIBED' | 'QUALIFIED' | 'LAPSED';
 export const REFERRAL_STATUSES: readonly ReferralStatus[] = ['PENDING', 'SUBSCRIBED', 'QUALIFIED', 'LAPSED'];
@@ -234,6 +235,11 @@ export interface Referral {
   qualifyAt?: string | undefined;
   qualifiedAt?: string | undefined;
   lapsedAt?: string | undefined;
+  /** Why it lapsed: stopped paying, or not actively using MerchOS in time. */
+  lapseReason?: 'stopped-paying' | 'not-active' | undefined;
+  /** Products the referred seller had at the last check (activity rule). */
+  productsAtLastCheck?: number | undefined;
+  lastCheckedAt?: string | undefined;
   reward?: RewardStatus | undefined;
   rewardAppliedAt?: string | undefined;
   rewardAppliedBy?: string | undefined;

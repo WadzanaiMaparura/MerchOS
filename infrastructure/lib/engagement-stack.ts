@@ -288,6 +288,16 @@ export class EngagementStack extends cdk.Stack {
       resources: [schedulerRole.roleArn],
       conditions: { StringEquals: { 'iam:PassedToService': 'scheduler.amazonaws.com' } },
     });
+    // The referral check re-schedules itself weekly while the referred seller
+    // has under 10 products. Its own ARN is built from the name (a token would
+    // make the function depend on itself).
+    for (const s of [createSchedules, passSchedulerRole]) scheduledFn.addToRolePolicy(s);
+    scheduledFn.addEnvironment(
+      'SCHEDULED_FUNCTION_ARN',
+      `arn:aws:lambda:${region}:${account}:function:merch-os-engagement-scheduled-${env}`,
+    );
+    scheduledFn.addEnvironment('SCHEDULER_ROLE_ARN', schedulerRole.roleArn);
+    scheduledFn.addEnvironment('SCHEDULE_GROUP', scheduleGroupName);
 
     const onEventFn = createFn(
       'OnEvent',

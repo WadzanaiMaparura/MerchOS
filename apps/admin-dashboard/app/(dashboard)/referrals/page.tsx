@@ -14,9 +14,14 @@ import { ENGAGEMENT_API_URL, engagementApi, type AdminReferral } from '../../../
 
 const STATUS: Record<AdminReferral['status'], { label: string; tone: string }> = {
   PENDING: { label: 'On free trial', tone: 'bg-gray-100 text-gray-700' },
-  SUBSCRIBED: { label: 'Subscribed, counting 14 days', tone: 'bg-blue-50 text-blue-700' },
+  SUBSCRIBED: { label: 'Subscribed, not qualified yet', tone: 'bg-blue-50 text-blue-700' },
   QUALIFIED: { label: 'Qualified', tone: 'bg-green-50 text-green-700' },
-  LAPSED: { label: 'Stopped within 14 days', tone: 'bg-amber-50 text-amber-800' },
+  LAPSED: { label: 'Did not qualify', tone: 'bg-amber-50 text-amber-800' },
+};
+
+const LAPSE_REASON: Record<NonNullable<AdminReferral['lapseReason']>, string> = {
+  'stopped-paying': 'Stopped paying',
+  'not-active': 'Under 10 products after 90 days',
 };
 
 const day = (iso?: string) =>
@@ -60,7 +65,8 @@ function Referrals() {
       <div>
         <h1 className="text-2xl font-semibold text-gray-900">Referrals</h1>
         <p className="mt-1 text-sm text-gray-600">
-          One free month for each referred seller who subscribes and stays subscribed for 14 days. Free months owed:{' '}
+          One free month for each referred seller who subscribes, stays subscribed for 14 days and is actively using
+          MerchOS (at least 10 products, checked weekly up to 90 days after paying). Free months owed:{' '}
           <strong>{owed}</strong>. Until checkout applies them automatically, take the free month off the referrer&apos;s
           next payment, then mark it as applied.
         </p>
@@ -112,8 +118,16 @@ function Referrals() {
                   <td className="px-4 py-2 text-gray-700">{day(r.claimedAt)}</td>
                   <td className="px-4 py-2">
                     <span className={`rounded px-2 py-0.5 text-xs ${s.tone}`}>{s.label}</span>
-                    {r.status === 'SUBSCRIBED' && r.qualifyAt && (
-                      <span className="block text-xs text-gray-500">Qualifies {day(r.qualifyAt)}</span>
+                    {r.status === 'SUBSCRIBED' && r.qualifyAt && r.productsAtLastCheck === undefined && (
+                      <span className="block text-xs text-gray-500">First check {day(r.qualifyAt)}</span>
+                    )}
+                    {r.status === 'SUBSCRIBED' && r.productsAtLastCheck !== undefined && (
+                      <span className="block text-xs text-gray-500">
+                        {r.productsAtLastCheck} of 10 products ({day(r.lastCheckedAt)}), checked weekly
+                      </span>
+                    )}
+                    {r.status === 'LAPSED' && r.lapseReason && (
+                      <span className="block text-xs text-gray-500">{LAPSE_REASON[r.lapseReason]}</span>
                     )}
                   </td>
                   <td className="px-4 py-2">

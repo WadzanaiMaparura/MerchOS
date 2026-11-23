@@ -91,7 +91,7 @@ describe('lifecycle email templates', () => {
     const { html } = all['referral']!;
     expect(html).toContain('merchos.co.za/r/THANDI7K');
     expect(html).toContain('Copy my link');
-    expect(html).toContain('stays subscribed for 14 days. There is no limit.');
+    expect(html).toContain('stays subscribed for 14 days and is actively using MerchOS (at least 10 products added within 90 days of subscribing). There is no limit.');
   });
 
   it('escapes seller-supplied values', () => {

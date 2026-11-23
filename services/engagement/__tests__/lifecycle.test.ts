@@ -43,13 +43,13 @@ vi.mock('../lib/mailer', () => ({
   }),
 }));
 
-const schedules = vi.hoisted(() => [] as Array<{ step: string; tenantId: string; referrerTenantId?: string; at: string }>);
+const schedules = vi.hoisted(() => [] as Array<{ step: string; tenantId: string; referrerTenantId?: string; attempt?: number; at: string }>);
 vi.mock('../lib/schedule', async () => {
   const actual = await vi.importActual<typeof import('../lib/schedule')>('../lib/schedule');
   return {
     ...actual,
-    scheduleStep: vi.fn(async (e: { step: 'tips'; tenantId: string; referrerTenantId?: string }, from: Date = new Date()) => {
-      schedules.push({ ...e, at: actual.dueDate(e.step, from).toISOString() });
+    scheduleStep: vi.fn(async (e: { step: 'tips'; tenantId: string; referrerTenantId?: string; attempt?: number }, from: Date = new Date()) => {
+      schedules.push({ ...e, at: actual.dueDate(e.step, from, e.attempt ?? 0).toISOString() });
     }),
   };
 });
@@ -209,15 +209,44 @@ describe('referral reward', () => {
       at: '2026-12-06T10:00:00.000Z',
     });
     accounts.subscribed.add(TENANT);
+    accounts.products.set(TENANT, 10);
     expect(await runStep({ step: 'qualify', tenantId: TENANT, referrerTenantId: REFERRER })).toBe('qualified');
     expect(await fakeStore.getReferral(REFERRER, TENANT)).toMatchObject({ status: 'QUALIFIED', reward: 'EARNED' });
     // Running again (retry) changes nothing.
     expect(await runStep({ step: 'qualify', tenantId: TENANT, referrerTenantId: REFERRER })).toBe('skipped');
   });
 
+  it('still paying but under 10 products: no reward yet, checked again in a week', async () => {
+    await onSubscriptionActivated(activated());
+    accounts.subscribed.add(TENANT);
+    accounts.products.set(TENANT, 6);
+    schedules.length = 0;
+    expect(await runStep({ step: 'qualify', tenantId: TENANT, referrerTenantId: REFERRER })).toBe('waiting');
+    expect(await fakeStore.getReferral(REFERRER, TENANT)).toMatchObject({ status: 'SUBSCRIBED', productsAtLastCheck: 6 });
+    expect((await fakeStore.getReferral(REFERRER, TENANT))?.reward).toBeUndefined();
+    expect(schedules).toEqual([
+      expect.objectContaining({ step: 'qualify', tenantId: TENANT, referrerTenantId: REFERRER, attempt: 1 }),
+    ]);
+    // A week later they have 10: the free month is earned.
+    accounts.products.set(TENANT, 12);
+    expect(await runStep({ step: 'qualify', tenantId: TENANT, referrerTenantId: REFERRER, attempt: 1 })).toBe('qualified');
+  });
+
+  it('still under 10 products 90 days after paying: does not qualify', async () => {
+    await onSubscriptionActivated(activated({ periodStart: '2026-01-01T10:00:00.000Z' }));
+    accounts.subscribed.add(TENANT);
+    accounts.products.set(TENANT, 3);
+    schedules.length = 0;
+    expect(await runStep({ step: 'qualify', tenantId: TENANT, referrerTenantId: REFERRER, attempt: 11 })).toBe('lapsed');
+    expect(await fakeStore.getReferral(REFERRER, TENANT)).toMatchObject({ status: 'LAPSED', lapseReason: 'not-active' });
+    expect(schedules).toHaveLength(0);
+  });
+
   it('stopped paying within 14 days: no reward', async () => {
     await onSubscriptionActivated(activated());
+    accounts.products.set(TENANT, 50);
     expect(await runStep({ step: 'qualify', tenantId: TENANT, referrerTenantId: REFERRER })).toBe('lapsed');
+    expect(await fakeStore.getReferral(REFERRER, TENANT)).toMatchObject({ status: 'LAPSED', lapseReason: 'stopped-paying' });
     expect((await fakeStore.getReferral(REFERRER, TENANT))?.reward).toBeUndefined();
   });
 

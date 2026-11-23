@@ -12,9 +12,9 @@ import { fetchMyReferrals, type MyReferrals } from '../../components/engagement/
 
 const STATUS_LABEL: Record<MyReferrals['referrals'][number]['status'], string> = {
   PENDING: 'Signed up, on free trial',
-  SUBSCRIBED: 'Subscribed, counting 14 days',
+  SUBSCRIBED: 'Subscribed, not qualified yet',
   QUALIFIED: 'Qualified: free month earned',
-  LAPSED: 'Stopped within 14 days',
+  LAPSED: 'Did not qualify',
 };
 
 export default function ReferralsPage() {
@@ -104,13 +104,13 @@ export default function ReferralsPage() {
             products free, no card needed.
           </li>
           <li>
-            <span className="font-semibold text-gray-900">3. You get a month free.</span> When they subscribe and stay
-            for 14 days, your next monthly payment is skipped.
+            <span className="font-semibold text-gray-900">3. You get a month free.</span> When they subscribe, stay for
+            14 days and add at least 10 products, your next monthly payment is skipped.
           </li>
         </ol>
         <p className="mt-4 text-xs text-gray-500">
-          One free month for each seller who subscribes through your link and stays subscribed for 14 days. There is no
-          limit. Free months are applied to your next payments in order.
+          One free month for each seller who subscribes through your link, stays subscribed for 14 days and is actively
+          using MerchOS (at least 10 products added within 90 days of subscribing). There is no limit. Free months are applied to your next payments in order.
         </p>
       </Card>
 
