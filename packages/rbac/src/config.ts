@@ -20,6 +20,8 @@ export const defaultPermissionConfig: PermissionRegistryConfig = {
         { resource: 'analytics', actions: ['read'] },
         { resource: 'exports', actions: ['create', 'read'] },
         { resource: 'subscription', actions: ['read', 'update'] },
+        // Own referral link and referral progress; claim a link at sign-up.
+        { resource: 'referrals', actions: ['create', 'read'] },
       ],
     },
     {
@@ -33,6 +35,8 @@ export const defaultPermissionConfig: PermissionRegistryConfig = {
         { resource: 'users.verification', actions: ['create'] }, // resend verification email
         // Live chat inbox: answer, resolve and delete (POPIA) conversations.
         { resource: 'support-inbox', actions: ['read', 'update', 'delete'] },
+        // Seller reviews: approve before they show on the website.
+        { resource: 'reviews', actions: ['read', 'update', 'delete'] },
       ],
     },
     {
@@ -62,6 +66,9 @@ export const defaultPermissionConfig: PermissionRegistryConfig = {
         { resource: 'alerts', actions: ['read', 'update'] },
         { resource: 'audit-log', actions: ['read'] },
         { resource: 'support-inbox', actions: ['read', 'update', 'delete'] },
+        { resource: 'reviews', actions: ['read', 'update', 'delete'] },
+        // Referral rewards: see earned free months, mark them applied.
+        { resource: 'referrals', actions: ['create', 'read', 'update'] },
       ],
     },
   ],

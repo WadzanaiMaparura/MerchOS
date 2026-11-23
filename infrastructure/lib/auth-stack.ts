@@ -138,9 +138,15 @@ export class AuthStack extends cdk.Stack {
       // sandbox only verified recipient addresses receive mail; production
       // access (sandbox exit) is required before unverified sellers can receive
       // OTPs. See docs: SES sandbox exit request.
+      //
+      // Security codes come from noreply@ (lifecycle email comes from info@,
+      // see EngagementStack). Authorised by the verified merchos.co.za domain
+      // identity; replies go to the support mailbox.
       email: cognito.UserPoolEmail.withSES({
-        fromEmail: 'admin@merchos.co.za',
+        fromEmail: 'noreply@merchos.co.za',
         fromName: 'MerchOS',
+        replyTo: 'info@merchos.co.za',
+        sesVerifiedDomain: 'merchos.co.za',
         sesRegion: 'eu-west-1',
       }),
       // Threat Protection ENFORCED: risk-score every auth operation and BLOCK

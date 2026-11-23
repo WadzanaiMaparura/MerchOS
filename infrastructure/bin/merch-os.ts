@@ -16,6 +16,7 @@ import { ProductIntelligenceStack } from '../lib/product-intelligence-stack';
 import { ExportApiStack } from '../lib/export-api-stack';
 import { BillingApiStack } from '../lib/billing-api-stack';
 import { SupportChatStack } from '../lib/support-chat-stack';
+import { EngagementStack } from '../lib/engagement-stack';
 
 const app = new cdk.App();
 
@@ -152,5 +153,19 @@ const supportChatStack = new SupportChatStack(app, `MerchOS-SupportChat-${env}`,
 });
 supportChatStack.addDependency(foundationStack);
 supportChatStack.addDependency(authStack);
+
+// Lifecycle emails, seller reviews (approved before they show) and referrals.
+// Listens on the platform bus for auth.user.registered and
+// billing.subscription.activated; reads Cognito, tenants and products.
+const engagementStack = new EngagementStack(app, `MerchOS-Engagement-${env}`, {
+  env: cdkEnv,
+  environment: env,
+  userPool: authStack.userPool,
+  platformKey: foundationStack.platformKey,
+  sellerClientId: authStack.sellerDashboardClient.userPoolClientId,
+});
+engagementStack.addDependency(foundationStack);
+engagementStack.addDependency(authStack);
+engagementStack.addDependency(productApiStack);
 
 app.synth();

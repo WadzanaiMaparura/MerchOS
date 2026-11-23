@@ -37,8 +37,17 @@ describe('branded Cognito emails', () => {
   it('upgrades the plain sign-in code email', async () => {
     const out = await handler(event('CustomMessage_Authentication'));
     expect(out.response.emailSubject).toBe('Your MerchOS sign-in code');
-    expect(out.response.emailMessage).toContain('Your sign-in code');
+    expect(out.response.emailMessage).toContain('finish signing in to MerchOS');
+    expect(out.response.emailMessage).toContain('expires in 3 minutes');
     expect(out.response.emailMessage).toContain('(SAST)');
+  });
+
+  it('uses the plain layout: M logo, no coloured bands, signed by the team', async () => {
+    const html = (await handler(event('CustomMessage_ForgotPassword'))).response.emailMessage ?? '';
+    expect(html).toContain('https://merchos.co.za/email/merchos-m.png');
+    expect(html).toContain('The MerchOS team');
+    expect(html).not.toContain('background-color: #2563eb');
+    expect(html).not.toMatch(/\u2014/); // no em dashes
   });
 
   it('invitations include the username placeholder', async () => {
