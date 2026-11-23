@@ -43,7 +43,7 @@ describe('Admin API stack', () => {
       JwtConfiguration: { Audience: ['admin-client-id'], Issuer: Match.anyValue() },
     });
     const routes = Object.values(t.findResources('AWS::ApiGatewayV2::Route')).map((r) => r['Properties'] as Record<string, unknown>);
-    expect(routes).toHaveLength(15);
+    expect(routes).toHaveLength(34);
     for (const r of routes) expect(r['AuthorizationType']).toBe('JWT');
   });
 
@@ -89,6 +89,14 @@ describe('Admin API stack', () => {
     t.hasResourceProperties('AWS::Lambda::Function', {
       FunctionName: 'merch-os-admin-alertsmonitor-dev',
       Environment: { Variables: Match.objectLike({ ALERT_EMAIL: 'admin@merchos.co.za' }) },
+    });
+  });
+
+  it('team goals only read the live chat data, and chat messages expire', () => {
+    expect(actionsOn('merch-os-support-chat-dev')).toEqual(['dynamodb:Query']);
+    t.hasResourceProperties('AWS::DynamoDB::Table', {
+      TableName: 'merch-os-admin-dev',
+      TimeToLiveSpecification: { AttributeName: 'expiresAt', Enabled: true },
     });
   });
 

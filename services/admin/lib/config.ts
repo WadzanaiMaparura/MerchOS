@@ -30,4 +30,8 @@ export const config = {
   get engagementTable(): string {
     return required('ENGAGEMENT_TABLE');
   },
+  /** Live chat table (read only): resolved chats count towards a team goal. */
+  get chatTable(): string {
+    return required('CHAT_TABLE');
+  },
 };

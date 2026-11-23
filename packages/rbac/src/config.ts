@@ -40,6 +40,9 @@ export const defaultPermissionConfig: PermissionRegistryConfig = {
         // Health and Alerts, view only ("is something down?"). Resolving is Admin.
         { resource: 'infrastructure', actions: ['read'] },
         { resource: 'alerts', actions: ['read'] },
+        // Staff Library (read only) and Team: announcements, goals, team chat.
+        { resource: 'library', actions: ['read'] },
+        { resource: 'team', actions: ['read'] },
       ],
     },
     {
@@ -64,8 +67,10 @@ export const defaultPermissionConfig: PermissionRegistryConfig = {
         { resource: 'billing', actions: ['create', 'read', 'update', 'delete'] },
         { resource: 'infrastructure', actions: ['read', 'update'] },
         { resource: 'tenants', actions: ['create', 'read', 'update', 'delete'] },
-        { resource: 'compliance', actions: ['create', 'read', 'update', 'delete'] },
-        { resource: 'taxonomy', actions: ['create', 'read', 'update', 'delete'] },
+        // Staff Library (write) and Team (announcements, goals). Replace the
+        // unused Compliance and Taxonomy pages.
+        { resource: 'library', actions: ['read', 'update'] },
+        { resource: 'team', actions: ['read', 'update'] },
         { resource: 'alerts', actions: ['read', 'update'] },
         { resource: 'audit-log', actions: ['read'] },
         { resource: 'support-inbox', actions: ['read', 'update', 'delete'] },

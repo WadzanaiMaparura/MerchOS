@@ -29,7 +29,15 @@ export type AuditActionType =
   | 'review-rejected'
   | 'free-month-applied'
   | 'alert-resolved'
-  | 'alert-note';
+  | 'alert-note'
+  | 'article-created'
+  | 'article-updated'
+  | 'article-deleted'
+  | 'announcement-posted'
+  | 'announcement-deleted'
+  | 'goal-created'
+  | 'goal-updated'
+  | 'goal-deleted';
 
 export const AUDIT_ACTIONS: Record<AuditActionType, string> = {
   'resend-verification': 'Resent verification email',
@@ -42,6 +50,14 @@ export const AUDIT_ACTIONS: Record<AuditActionType, string> = {
   'free-month-applied': 'Marked referral free month applied',
   'alert-resolved': 'Resolved an alert',
   'alert-note': 'Added a note to an alert',
+  'article-created': 'Added a Library article',
+  'article-updated': 'Edited a Library article',
+  'article-deleted': 'Deleted a Library article',
+  'announcement-posted': 'Posted an announcement',
+  'announcement-deleted': 'Deleted an announcement',
+  'goal-created': 'Set a team goal',
+  'goal-updated': 'Updated a team goal',
+  'goal-deleted': 'Deleted a team goal',
 };
 
 export interface AuditEvent {
@@ -146,7 +162,7 @@ export async function loadAudit(query: AuditQuery): Promise<{ events: AuditEvent
       byId: String(i['by'] ?? ''),
       byRole: str(i['byRole']),
       tenantId: str(i['tenantId']),
-      subject: str(i['tenantId']) ? undefined : str(i['subjectLabel']) ? `Alert: ${i['subjectLabel']}` : 'Unfinished sign-up',
+      subject: str(i['tenantId']) ? undefined : str(i['subjectLabel']) ? (str(i['alertId']) ? `Alert: ${i['subjectLabel']}` : str(i['subjectLabel'])) : 'Unfinished sign-up',
       reason: str(i['reason']),
       detail: str(i['detail']),
     });

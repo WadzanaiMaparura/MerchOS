@@ -21,15 +21,32 @@ export type AuditAction =
   | 'exempt'
   | 'remove-exempt'
   | 'alert-resolved'
-  | 'alert-note';
+  | 'alert-note'
+  | 'article-created'
+  | 'article-updated'
+  | 'article-deleted'
+  | 'announcement-posted'
+  | 'announcement-deleted'
+  | 'goal-created'
+  | 'goal-updated'
+  | 'goal-deleted';
 
-/** Who/what a staff action was about: a customer, an unfinished sign-up, or an alert. */
-export type AuditSubject = { tenantId: string } | { userId: string } | { alertId: string; label: string };
+/**
+ * Who/what a staff action was about: a customer, an unfinished sign-up, an
+ * alert, or another record (library article, announcement, goal) by its key.
+ */
+export type AuditSubject =
+  | { tenantId: string }
+  | { userId: string }
+  | { alertId: string; label: string }
+  | { ref: string; label: string };
 
 function subjectFields(subject: AuditSubject): { PK: string; fields: Record<string, string> } {
   if ('tenantId' in subject) return { PK: `TENANT#${subject.tenantId}`, fields: { tenantId: subject.tenantId } };
   if ('userId' in subject) return { PK: `USER#${subject.userId}`, fields: { userId: subject.userId } };
-  return { PK: `ALERT#${subject.alertId}`, fields: { alertId: subject.alertId, subjectLabel: subject.label } };
+  if ('alertId' in subject) return { PK: `ALERT#${subject.alertId}`, fields: { alertId: subject.alertId, subjectLabel: subject.label } };
+  // Own partition, so deleting the record (e.g. an announcement) never deletes its history.
+  return { PK: `REF#${subject.ref}`, fields: { ref: subject.ref, subjectLabel: subject.label } };
 }
 
 export interface AuditEntry {

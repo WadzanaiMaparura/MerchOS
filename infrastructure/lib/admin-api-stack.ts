@@ -86,6 +86,8 @@ export class AdminApiStack extends cdk.Stack {
       encryption: dynamodb.TableEncryption.CUSTOMER_MANAGED,
       encryptionKey: props.platformKey,
       pointInTimeRecovery: true,
+      // Team chat messages expire after 12 months.
+      timeToLiveAttribute: 'expiresAt',
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
     this.table.addGlobalSecondaryIndex({
@@ -319,10 +321,50 @@ export class AdminApiStack extends cdk.Stack {
     });
 
     // -----------------------------------------------------------------------
+    // Library and Team (announcements, goals, team chat)
+    // -----------------------------------------------------------------------
+
+    const libraryReadFn = createFn('LibraryRead', 'library-read.ts', [adminTableRead, listSellers, kmsRead]);
+    const libraryManageFn = createFn('LibraryManage', 'library-manage.ts', [adminTableRead, alertsTableWrite, kmsWrite]);
+    // Goals that count themselves read reviews (engagement) and resolved chats (live chat), read only.
+    const chatTable = `merch-os-support-chat-${env}`;
+    const teamFn = createFn('TeamApi', 'team-api.ts', [
+      adminTableRead,
+      alertsTableWrite,
+      listSellers,
+      kmsWrite,
+      new iam.PolicyStatement({
+        actions: ['dynamodb:Query'],
+        resources: [`${tableArn(engagementTable)}/index/*`, `${tableArn(chatTable)}/index/*`],
+      }),
+    ]);
+    teamFn.addEnvironment('CHAT_TABLE', chatTable);
+    const teamManageFn = createFn('TeamManage', 'team-manage.ts', [adminTableRead, alertsTableWrite, listSellers, kmsWrite]);
+
+    // -----------------------------------------------------------------------
     // Routes (all staff-only)
     // -----------------------------------------------------------------------
 
     const routes: Array<[string, HttpMethod, lambdaNodejs.NodejsFunction]> = [
+      ['/admin/library', HttpMethod.GET, libraryReadFn],
+      ['/admin/library/{articleId}', HttpMethod.GET, libraryReadFn],
+      ['/admin/library', HttpMethod.POST, libraryManageFn],
+      ['/admin/library/{articleId}', HttpMethod.PUT, libraryManageFn],
+      ['/admin/library/{articleId}', HttpMethod.DELETE, libraryManageFn],
+      ['/admin/team/unread', HttpMethod.GET, teamFn],
+      ['/admin/team/announcements', HttpMethod.GET, teamFn],
+      ['/admin/team/announcements/{id}/read', HttpMethod.POST, teamFn],
+      ['/admin/team/goals', HttpMethod.GET, teamFn],
+      ['/admin/team/goals/{id}/progress', HttpMethod.PUT, teamFn],
+      ['/admin/team/chat', HttpMethod.GET, teamFn],
+      ['/admin/team/chat/{channel}/messages', HttpMethod.GET, teamFn],
+      ['/admin/team/chat/{channel}/messages', HttpMethod.POST, teamFn],
+      ['/admin/team/chat/{channel}/read', HttpMethod.POST, teamFn],
+      ['/admin/team/announcements', HttpMethod.POST, teamManageFn],
+      ['/admin/team/announcements/{id}', HttpMethod.DELETE, teamManageFn],
+      ['/admin/team/goals', HttpMethod.POST, teamManageFn],
+      ['/admin/team/goals/{id}', HttpMethod.PUT, teamManageFn],
+      ['/admin/team/goals/{id}', HttpMethod.DELETE, teamManageFn],
       ['/admin/health', HttpMethod.GET, healthFn],
       ['/admin/alerts', HttpMethod.GET, alertsReadFn],
       ['/admin/alerts/unresolved-count', HttpMethod.GET, alertsReadFn],
