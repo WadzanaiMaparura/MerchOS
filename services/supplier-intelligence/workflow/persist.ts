@@ -125,10 +125,16 @@ async function persist(input: WorkflowInput) {
   }
   const blocked = outcome.jobResults.blockedByTrial ?? 0;
   if (blocked > 0) {
-    // Not a failure: the import created what the free trial allows.
+    // Not a failure: the import created what the seller's trial or plan allows.
+    const reason = outcome.jobResults.blockedReason ?? 'TRIAL_LIMIT_REACHED';
     errors.push({
-      code: 'TRIAL_LIMIT_REACHED',
-      message: `${blocked} product(s) were not imported because your free trial limit was reached. Subscribe to import the rest.`,
+      code: reason,
+      message:
+        reason === 'PLAN_PAUSED'
+          ? `${blocked} product(s) were not imported because your plan is paused. Pay on the Billing page, then import the rest.`
+          : reason === 'PLAN_LIMIT_REACHED'
+            ? `${blocked} product(s) were not imported because this month's plan allowance is used up. Upgrade your plan, or import the rest next month.`
+            : `${blocked} product(s) were not imported because your free trial limit was reached. Subscribe to import the rest.`,
     });
   }
   if (errors.length > (job.errors?.length ?? 0)) fields['errors'] = errors;

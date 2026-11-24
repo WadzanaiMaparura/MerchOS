@@ -6,6 +6,7 @@
  *   POST   /admin/reviews/{reviewId}/approve    shows it on the website (needs the seller's consent)
  *   POST   /admin/reviews/{reviewId}/reject
  *   DELETE /admin/reviews/{reviewId}            POPIA erasure
+ *   GET    /admin/feedback                      why sellers left (the day-60 email answers)
  *
  * referralsHandler  RBAC `referrals` update (Admin)
  *   GET    /admin/referrals
@@ -15,6 +16,7 @@
 import middy from '@middy/core';
 import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 import { rbacMiddleware } from '../../shared/middleware/rbac';
+import { LEAVE_REASONS } from '../lib/billing-templates';
 import { badRequest, conflict, json, notFound, serverError, type HttpResult } from '../lib/http';
 import {
   REVIEW_STATUSES,
@@ -23,6 +25,7 @@ import {
   getProfile,
   getReview,
   listAllReferrals,
+  listFeedback,
   listReviews,
   markRewardApplied,
   type ReviewStatus,
@@ -52,6 +55,17 @@ async function reviewsRoute(event: APIGatewayProxyEventV2): Promise<HttpResult> 
   if (event.routeKey.includes('{reviewId}') && (!id || !UUID.test(id))) return badRequest('Invalid review id');
 
   switch (event.routeKey) {
+    case 'GET /admin/feedback': {
+      const answers = await listFeedback();
+      const names = await businessNames(answers.map((a) => a.tenantId));
+      return json(200, {
+        feedback: answers.map((a) => ({
+          ...a,
+          label: LEAVE_REASONS.find(([id]) => id === a.reason)?.[1] ?? a.reason,
+          businessName: names.get(a.tenantId) ?? '',
+        })),
+      });
+    }
     case 'GET /admin/reviews': {
       const status = (event.queryStringParameters?.['status'] ?? 'PENDING').toUpperCase() as ReviewStatus;
       if (!REVIEW_STATUSES.includes(status)) return badRequest('Unknown status');

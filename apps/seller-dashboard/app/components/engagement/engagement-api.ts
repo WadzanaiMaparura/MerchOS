@@ -70,6 +70,13 @@ export const submitReview = (input: ReviewSubmission) =>
 export const unsubscribe = (token: string) =>
   call<{ unsubscribed: boolean }>('/unsubscribe', { method: 'POST', body: JSON.stringify({ token }) });
 
+// ─── Why did you leave? (public, signed link) ───────────────────────────────
+
+export type LeaveReason = 'too_expensive' | 'no_time' | 'business_quiet' | 'other_tool' | 'other';
+
+export const sendLeaveFeedback = (input: { token: string; reason: LeaveReason; comment?: string }) =>
+  call<{ saved: boolean }>('/feedback', { method: 'POST', body: JSON.stringify(input) });
+
 // ─── Referrals (signed in) ──────────────────────────────────────────────────
 
 export interface MyReferrals {

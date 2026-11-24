@@ -38,6 +38,15 @@ describe('billing rules', () => {
     expect(isProblem({ mPaymentId: 'p', applied: true, createdAt: '2026-11-01T00:00:00Z' }, NOW)).toBe(false);
   });
 
+  it('lapsed customers show where they are in the payment cycle', () => {
+    const at = (end: string) =>
+      toRow(T1, { subscription: sub({ currentPeriodEnd: end }), invoices: [], payments: [] }, 'x', NOW)!.stage;
+    expect(at('2026-11-22T00:00:00Z')).toBe('grace'); // 1 day late
+    expect(at('2026-11-10T00:00:00Z')).toBe('paused');
+    expect(at('2026-10-01T00:00:00Z')).toBe('closed');
+    expect(at('2026-11-28T00:00:00Z')).toBe('due_soon');
+  });
+
   it('renewing within 7 days', () => {
     const soon = toRow(T1, { subscription: sub({ currentPeriodEnd: '2026-11-28T00:00:00Z' }), invoices: [], payments: [] }, 'x', NOW)!;
     const later = toRow(T1, { subscription: sub(), invoices: [], payments: [] }, 'x', NOW)!;

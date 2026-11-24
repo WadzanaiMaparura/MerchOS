@@ -2,6 +2,8 @@
  * The lifecycle rules shared by the event and scheduled handlers.
  */
 
+import { MARKETING_BILLING_STEPS, type BillingStep } from './billing-cycle';
+import type { LeaveReason } from './billing-templates';
 import { config, getTokenSecret } from './config';
 import { sendEmail } from './mailer';
 import { candidateCode } from './referral-code';
@@ -15,9 +17,20 @@ export type EmailKey =
   | 'training'
   | 'subscription-welcome'
   | 'review-request'
-  | 'referral-invite';
+  | 'referral-invite'
+  /** Payment cycle, once per paid period: "<step>#<paidUntil>" (see billing-cycle.ts). */
+  | `${BillingStep}#${string}`
+  /** Coming back after the plan was paused or closed, once per return. */
+  | `welcome-back#${string}`;
 
-export const MARKETING_EMAILS: ReadonlySet<EmailKey> = new Set(['review-request', 'referral-invite']);
+export const MARKETING_EMAILS: ReadonlySet<string> = new Set(['review-request', 'referral-invite']);
+
+/** True for marketing email keys (unsubscribe respected), including the win-back steps. */
+export function isMarketingKey(key: EmailKey): boolean {
+  if (MARKETING_EMAILS.has(key)) return true;
+  const step = key.split('#')[0] as BillingStep;
+  return key.includes('#') && MARKETING_BILLING_STEPS.has(step);
+}
 
 /** A review request goes only to sellers with at least this many products. */
 export const REVIEW_MIN_PRODUCTS = 5;
@@ -36,7 +49,7 @@ export async function sendOnce(
   email: RenderedEmail,
   listUnsubscribeUrl?: string,
 ): Promise<SendOutcome> {
-  if (MARKETING_EMAILS.has(key) && profile.marketingOptOut) return 'opted-out';
+  if (isMarketingKey(key) && profile.marketingOptOut) return 'opted-out';
   if (!(await claimSend(profile.tenantId, key))) return 'duplicate';
   let messageId: string | undefined;
   try {
@@ -64,6 +77,12 @@ export async function unsubscribeLinks(tenantId: string): Promise<UnsubscribeLin
     page: `${config.siteUrl}/unsubscribe?t=${token}`,
     oneClick: `${config.apiUrl}/unsubscribe?t=${token}`,
   };
+}
+
+/** The "why did you leave?" page for one answer (the page asks before saving it). */
+export async function feedbackLink(tenantId: string): Promise<(reason: LeaveReason) => string> {
+  const token = encodeURIComponent(issueToken('feedback', tenantId, await getTokenSecret()));
+  return (reason) => `${config.siteUrl}/feedback?t=${token}&r=${reason}`;
 }
 
 export async function reviewLink(tenantId: string): Promise<(rating: number) => string> {

@@ -63,18 +63,28 @@ describe('Engagement stack', () => {
     const all = routes();
     const admin = all.filter((p) => String(p['RouteKey']).includes(' /admin/'));
     const seller = all.filter((p) => String(p['RouteKey']).includes(' /referrals/'));
-    const open = all.filter((p) => /^(GET|POST) \/(reviews|unsubscribe)/.test(String(p['RouteKey'])));
-    expect(admin).toHaveLength(6);
+    const open = all.filter((p) => /^(GET|POST) \/(reviews|unsubscribe|feedback)/.test(String(p['RouteKey'])));
+    expect(admin).toHaveLength(7);
     expect(seller).toHaveLength(2);
     for (const p of [...admin, ...seller]) expect(p['AuthorizationType']).toBe('JWT');
     // Public by design: signed links, origin check and rate limits in the handler.
     expect(open.map((p) => p['RouteKey']).sort()).toEqual([
       'GET /reviews',
       'GET /reviews/invite',
+      'POST /feedback',
       'POST /reviews',
       'POST /unsubscribe',
     ]);
     for (const p of open) expect(p['AuthorizationType'] ?? 'NONE').toBe('NONE');
+  });
+
+  it('payment-cycle emails are off unless switched on', () => {
+    for (const name of ['merch-os-engagement-scheduled-dev', 'merch-os-engagement-onevent-dev']) {
+      t.hasResourceProperties('AWS::Lambda::Function', {
+        FunctionName: name,
+        Environment: { Variables: Match.objectLike({ BILLING_LIFECYCLE: 'false' }) },
+      });
+    }
   });
 
   it('only allows our own site and admin origins', () => {

@@ -11,6 +11,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AdminRouteGuard } from '../../../components/AdminRouteGuard';
 import { ADMIN_API_URL } from '../../../lib/customers';
 import { billingApi, type BillingFilter, type BillingRow, type BillingStatus } from '../../../lib/billing';
+import { ENGAGEMENT_API_URL, engagementApi } from '../../../lib/engagement';
 import { formatNumber, formatRand } from '../../../lib/format';
 
 const FILTERS: Array<{ id: BillingFilter; label: string }> = [
@@ -26,6 +27,16 @@ const STATUS: Record<BillingStatus, { label: string; tone: string }> = {
   lapsed: { label: 'Lapsed', tone: 'bg-red-100 text-red-800' },
   problem: { label: 'Payment problem', tone: 'bg-amber-100 text-amber-800' },
 };
+
+/** Lapsed customers show where they are in the payment cycle. */
+function statusOf(r: BillingRow): { label: string; tone: string } {
+  if (r.status === 'lapsed') {
+    if (r.stage === 'grace') return { label: 'Overdue (grace)', tone: 'bg-amber-100 text-amber-800' };
+    if (r.stage === 'paused') return { label: 'Paused', tone: 'bg-red-100 text-red-800' };
+    if (r.stage === 'closed') return { label: 'Closed', tone: 'bg-gray-200 text-gray-800' };
+  }
+  return STATUS[r.status];
+}
 
 const rand = formatRand;
 const day = (iso?: string) =>
@@ -172,15 +183,16 @@ function Billing() {
                         '—'
                       )}
                     </td>
-                    <td className="px-3 py-2"><Badge tone={STATUS[r.status].tone}>{STATUS[r.status].label}</Badge></td>
+                    <td className="px-3 py-2"><Badge tone={statusOf(r).tone}>{statusOf(r).label}</Badge></td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
           <p className="mt-2 text-xs text-gray-500">
-            Lapsed: the paid period ended with no new payment. Payment problem: PayFast sent a payment that was not fully
-            applied within 15 minutes, so someone should check it.
+            Overdue (grace): up to 3 days late, everything still works. Paused: day 3 to 37, no new products or listings.
+            Closed: from day 37, the seller can only sign in to pay. Payment problem: PayFast sent a payment that was not
+            fully applied within 15 minutes, so someone should check it.
           </p>
         </div>
 
@@ -192,7 +204,44 @@ function Billing() {
           </div>
         )}
       </div>
+
+      {ENGAGEMENT_API_URL && <WhyTheyLeft />}
     </div>
+  );
+}
+
+/** Answers to the "why did you leave?" email (sent 60 days after a plan ran out). */
+function WhyTheyLeft() {
+  const q = useQuery({ queryKey: ['leave-feedback'], queryFn: engagementApi.feedback });
+  const counts = new Map<string, number>();
+  for (const f of q.data ?? []) counts.set(f.label, (counts.get(f.label) ?? 0) + 1);
+  return (
+    <section aria-labelledby="why-left" className="rounded-lg border border-gray-200 bg-white">
+      <div className="border-b border-gray-100 px-4 py-3">
+        <h2 id="why-left" className="font-semibold text-gray-900">Why sellers left</h2>
+        <p className="text-xs text-gray-500">Answers to the email sent 60 days after a plan ran out.</p>
+      </div>
+      <div className="px-4 py-3 text-sm">
+        {q.isLoading && <p className="text-gray-500">Loading…</p>}
+        {q.isError && <p role="alert" className="text-red-700">{(q.error as Error).message}</p>}
+        {q.data?.length === 0 && <p className="text-gray-500">No answers yet.</p>}
+        {counts.size > 0 && (
+          <p className="mb-2 text-gray-700">
+            {[...counts].map(([label, n]) => `${label}: ${n}`).join(' · ')}
+          </p>
+        )}
+        <ul className="divide-y divide-gray-100">
+          {q.data?.map((f) => (
+            <li key={f.tenantId} className="py-2">
+              <span className="font-medium text-gray-900">{f.businessName || 'A seller'}</span>
+              <span className="text-gray-500"> · {day(f.at)}</span>
+              <span className="block text-gray-800">{f.label}</span>
+              {f.comment && <span className="block text-gray-600">&ldquo;{f.comment}&rdquo;</span>}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
   );
 }
 
@@ -236,7 +285,7 @@ function BillingPanel({ row, onClose }: { row: BillingRow; onClose: () => void }
           <p className="mt-0.5 text-xs text-gray-500">
             {row.sellerId} · {row.planName} plan{row.since ? ` since ${day(row.since)}` : ''}
           </p>
-          <p className="mt-1"><Badge tone={STATUS[row.status].tone}>{STATUS[row.status].label}</Badge></p>
+          <p className="mt-1"><Badge tone={statusOf(row).tone}>{statusOf(row).label}</Badge></p>
         </div>
         <button type="button" onClick={onClose} className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
           Close
@@ -250,7 +299,7 @@ function BillingPanel({ row, onClose }: { row: BillingRow; onClose: () => void }
         <>
           <Section title="Subscription">
             <Row k="Plan">{d.planName} · {rand(d.priceCents)} a month</Row>
-            <Row k="Paid until">{day(d.paidUntil) || '—'}{d.status === 'paid' ? ' (renews then)' : ''}</Row>
+            <Row k="Paid until">{day(d.paidUntil) || '—'}{d.status === 'paid' ? ' (next payment due then)' : ''}</Row>
             {limit !== null && (
               <Row k="This month">
                 {used === null ? (

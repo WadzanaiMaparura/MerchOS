@@ -38,8 +38,22 @@ import type {
 const CONFIRM_POLL_MS = 3000;
 /** Stop polling (and tell the user) if confirmation takes this long. */
 const CONFIRM_TIMEOUT_MS = 120_000;
-/** sessionStorage key remembering which plan the buyer was paying for. */
+/** sessionStorage key remembering which plan the buyer was paying for (and the paid-until before). */
 const PENDING_PLAN_KEY = 'merchos.billing.pendingPlan';
+
+/** Reads the pending checkout: JSON { planId, previousEnd }, or a bare plan id (older tabs). */
+function readPendingCheckout(raw: string | null): { planId: PlanId | null; previousEnd: string | null } {
+  if (!raw) return { planId: null, previousEnd: null };
+  try {
+    const v = JSON.parse(raw) as { planId?: unknown; previousEnd?: unknown };
+    return {
+      planId: typeof v.planId === 'string' ? (v.planId as PlanId) : null,
+      previousEnd: typeof v.previousEnd === 'string' && v.previousEnd ? v.previousEnd : null,
+    };
+  } catch {
+    return { planId: raw as PlanId, previousEnd: null };
+  }
+}
 
 /**
  * Launch gate. Purchase actions stay hidden until prices are final. Off unless
@@ -161,27 +175,38 @@ function BillingContent() {
   const [pollIntervalMs, setPollIntervalMs] = useState<number | false>(false);
   const [confirmTimedOut, setConfirmTimedOut] = useState(false);
 
+  // The paid-until before checkout: a renewal of the same plan is only confirmed once it moves.
+  const [pendingEnd, setPendingEnd] = useState<string | null>(null);
+  const [renewRequested, setRenewRequested] = useState(false);
+
   useEffect(() => {
-    const param = new URLSearchParams(window.location.search).get('checkout');
+    const params = new URLSearchParams(window.location.search);
+    const param = params.get('checkout');
     if (param === 'success') {
       setCheckout('success');
       setPollIntervalMs(CONFIRM_POLL_MS);
       try {
-        setPendingPlan((sessionStorage.getItem(PENDING_PLAN_KEY) as PlanId | null) ?? null);
+        const pending = readPendingCheckout(sessionStorage.getItem(PENDING_PLAN_KEY));
+        setPendingPlan(pending.planId);
+        setPendingEnd(pending.previousEnd);
       } catch {
         /* sessionStorage unavailable — fall back to "any active plan" */
       }
     } else if (param === 'cancelled') {
       setCheckout('cancelled');
     }
+    // From the reminder emails and banners: open the plans with the current one ready to pay.
+    if (params.get('renew') === '1') setRenewRequested(true);
   }, []);
 
   const { data: billingData } = useBilling({ refetchIntervalMs: pollIntervalMs });
 
-  // Confirmed = active AND (if we know what they were buying) on that plan.
+  // Confirmed = active AND (if we know what they were buying) on that plan AND,
+  // for a renewal, the paid-until has moved on.
   const isConfirmed =
     billingData?.subscriptionStatus === 'active' &&
-    (pendingPlan === null || billingData.planId === pendingPlan);
+    (pendingPlan === null || billingData.planId === pendingPlan) &&
+    (pendingEnd === null || billingData.currentPeriodEnd !== pendingEnd);
 
   useEffect(() => {
     if (checkout === 'success' && isConfirmed) {
@@ -224,6 +249,17 @@ function BillingContent() {
   const plans: PlanCatalogueEntry[] = billing.plans ?? [];
   const credits = billing.credits;
   const selectedPlanEntry = plans.find((p) => p.planId === selectedPlan);
+  const account = billingData?.account;
+  const lapsed = account?.stage === 'grace' || account?.stage === 'paused' || account?.stage === 'closed';
+  const renewing = !!selectedPlan && selectedPlan === billing.planId && billing.subscriptionStatus === 'active';
+
+  // ?renew=1 (emails, banners): open the plans once they have loaded.
+  useEffect(() => {
+    if (renewRequested && billingData) {
+      setShowPlanChange(true);
+      setRenewRequested(false);
+    }
+  }, [renewRequested, billingData]);
 
   const handlePdfDownload = async (invoice: InvoiceSummary) => {
     setPdfError((prev) => ({ ...prev, [invoice.invoiceId]: false }));
@@ -260,7 +296,10 @@ function BillingContent() {
           // Remember what they are buying so the return trip can confirm THAT plan,
           // then hand the browser to PayFast's hosted payment page.
           try {
-            sessionStorage.setItem(PENDING_PLAN_KEY, chosen);
+            sessionStorage.setItem(
+              PENDING_PLAN_KEY,
+              JSON.stringify({ planId: chosen, previousEnd: billing.currentPeriodEnd || null }),
+            );
           } catch {
             /* ignore */
           }
@@ -458,6 +497,14 @@ function BillingContent() {
             Choose a plan. You&apos;ll be taken to PayFast to pay securely, and your plan changes as
             soon as the payment is confirmed. Prices are in South African Rand.
           </p>
+          {CHECKOUT_ENABLED && account?.comeback && (
+            <div className="mb-4">
+              <Alert variant="success" title={`${account.comeback.percentOff}% off your first month back`}>
+                The discount is applied automatically when you continue to PayFast, until{' '}
+                {formatDate(account.comeback.endsAt)}. No code needed.
+              </Alert>
+            </div>
+          )}
           {!CHECKOUT_ENABLED && (
             <Alert variant="info" title="Online payments are opening soon">
               Plan pricing is being finalised, so subscribing isn&apos;t available yet. You can
@@ -524,6 +571,17 @@ function BillingContent() {
                     {isCurrent && (
                       <p className="mt-4 text-center text-sm font-medium text-blue-700">Current Plan</p>
                     )}
+                    {isCurrent && selfService && CHECKOUT_ENABLED && (
+                      <button
+                        onClick={() => {
+                          setSelectedPlan(plan.planId);
+                          setConfirmOpen(true);
+                        }}
+                        className="mt-2 w-full rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                      >
+                        {lapsed ? 'Pay now' : 'Pay for next month'}
+                      </button>
+                    )}
                     {!isCurrent && selfService && !CHECKOUT_ENABLED && (
                       <p className="mt-4 text-center text-sm text-gray-500">Available soon</p>
                     )}
@@ -576,11 +634,21 @@ function BillingContent() {
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         title="Continue to payment"
-        description={`You're about to subscribe to the ${selectedPlanEntry?.name ?? ''} plan${
-          selectedPlanEntry?.priceZARCents != null
-            ? ` for ${formatZAR(selectedPlanEntry.priceZARCents)} per month`
-            : ''
-        }. You'll be redirected to PayFast to complete payment securely. Your plan changes as soon as the payment is confirmed.`}
+        description={
+          renewing
+            ? `You're about to pay for ${lapsed ? 'a new month' : 'your next month'} of the ${selectedPlanEntry?.name ?? ''} plan${
+                selectedPlanEntry?.priceZARCents != null ? ` (${formatZAR(selectedPlanEntry.priceZARCents)})` : ''
+              }. ${
+                lapsed
+                  ? 'It starts as soon as the payment is confirmed.'
+                  : 'It starts when your current month ends, so paying early never costs you days.'
+              } You'll be redirected to PayFast to pay securely.`
+            : `You're about to subscribe to the ${selectedPlanEntry?.name ?? ''} plan${
+                selectedPlanEntry?.priceZARCents != null
+                  ? ` for ${formatZAR(selectedPlanEntry.priceZARCents)} per month`
+                  : ''
+              }. You'll be redirected to PayFast to complete payment securely. Your plan changes as soon as the payment is confirmed.`
+        }
         confirmLabel="Continue to PayFast"
         cancelLabel="Cancel"
         onConfirm={handlePlanChangeConfirm}

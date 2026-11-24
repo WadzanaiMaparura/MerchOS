@@ -4,6 +4,7 @@
  *   review       the star buttons in the review email: lets one tenant leave
  *                one review, without signing in
  *   unsubscribe  the marketing-email unsubscribe link
+ *   feedback     the "why did you leave?" answers (one tenant, one answer)
  *
  * Format: <purpose>.<tenantId>.<expiresAtEpochSeconds>.<base64url signature>
  * The purpose is inside the signature, so a review link cannot be replayed as
@@ -12,14 +13,15 @@
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
-export type TokenPurpose = 'review' | 'unsubscribe';
+export type TokenPurpose = 'review' | 'unsubscribe' | 'feedback';
 
-const PURPOSE_CODE: Record<TokenPurpose, string> = { review: 'rv', unsubscribe: 'un' };
+const PURPOSE_CODE: Record<TokenPurpose, string> = { review: 'rv', unsubscribe: 'un', feedback: 'fb' };
 
-/** Review links stay valid for 60 days; unsubscribe links for 2 years. */
+/** Review and "why did you leave" links stay valid for 60 days; unsubscribe links for 2 years. */
 export const TOKEN_TTL_SECONDS: Record<TokenPurpose, number> = {
   review: 60 * 24 * 60 * 60,
   unsubscribe: 2 * 365 * 24 * 60 * 60,
+  feedback: 60 * 24 * 60 * 60,
 };
 
 const TENANT_ID = /^[A-Za-z0-9-]{8,64}$/;

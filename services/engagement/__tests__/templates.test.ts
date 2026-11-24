@@ -16,7 +16,7 @@ const unsub = 'https://merchos.co.za/unsubscribe?t=abc';
 
 const all: Record<string, RenderedEmail> = {
   trial: trialWelcome({ siteUrl: site, firstName: 'Thandi', businessName: 'Thandi Home Goods', email: 'thandi@example.co.za', trialProducts: 15 }),
-  subscribed: subscriptionWelcome({ siteUrl: site, firstName: 'Thandi', planName: 'Growth', monthlyProducts: 1000, existingProducts: 12, billingDay: 22 }),
+  subscribed: subscriptionWelcome({ siteUrl: site, firstName: 'Thandi', planName: 'Growth', monthlyProducts: 1000, existingProducts: 12, paidUntil: '2026-12-22T10:00:00.000Z' }),
   tips: tips({ siteUrl: site, firstName: 'Thandi' }),
   training: training({ siteUrl: site, firstName: 'Thandi' }),
   review: reviewRequest({ firstName: 'Thandi', listings: 48, starUrl: (n) => `${site}/review?t=x&r=${n}`, unsubscribeUrl: unsub }),
@@ -59,21 +59,25 @@ describe('lifecycle email templates', () => {
     expect(html).toContain('Start my first listing');
   });
 
-  it('subscription welcome shows the plan, kept products and billing day', () => {
+  it('subscription welcome shows the plan, kept products and the paid-until date (no automatic renewal)', () => {
     const { html } = all['subscribed']!;
     expect(html).toContain('<b>Growth plan</b> is now active');
     expect(html).toContain('1,000 new products a month');
     expect(html).toContain('Your 12 trial products and listings are all still in your account');
-    expect(html).toContain('resets on the 22nd of each month');
+    expect(html).toContain('resets on the 1st of each month');
+    expect(html).toContain('paid until <b>22 December 2026</b>');
+    expect(html).toContain('We never charge you automatically');
+    expect(html).not.toMatch(/renews/i);
     expect(html).toContain('Go to my dashboard');
   });
 
   it('subscription welcome without trial products or a fixed allowance', () => {
-    const { html } = subscriptionWelcome({ siteUrl: site, planName: 'Enterprise', monthlyProducts: null, existingProducts: 0, billingDay: 31 });
+    const { html } = subscriptionWelcome({ siteUrl: site, planName: 'Enterprise', monthlyProducts: null, existingProducts: 0, paidUntil: '2026-12-31T10:00:00.000Z' });
     expect(html).toContain('Hello');
     expect(html).not.toContain('trial products');
     expect(html).toContain('New products as agreed for your plan');
-    expect(html).toContain('the 31st of each month (or the last day of shorter months)');
+    expect(html).not.toContain('resets on');
+    expect(html).toContain('31 December 2026');
   });
 
   it('training asks them to reply for a call, without naming staff', () => {

@@ -11,7 +11,7 @@
 
 import middy from '@middy/core';
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
-import type { BillingOverview } from '@merch-os/types';
+import type { BillingAccountState, BillingOverview } from '@merch-os/types';
 
 import { rbacMiddleware } from '../../../shared/middleware/rbac';
 import {
@@ -21,7 +21,14 @@ import {
 import { logger } from '../../../shared/middleware/logger';
 import { getPlan, PLAN_CATALOGUE } from '../../config/plans';
 import { getBalance } from '../../services/credit-ledger';
-import { getSubscription } from '../../services/subscription-store';
+import { getSubscription, type SubscriptionRecord } from '../../services/subscription-store';
+import { getEntitlement } from '../../../shared/entitlements/trial-gate';
+import {
+  billingStage,
+  comebackOffer,
+  isBillingLifecycleOn,
+  stageDates,
+} from '../../../shared/entitlements/billing-stage';
 import { mapErrorToResponse, ApiErrors } from '../error-mapper';
 
 /** Current billing month in YYYYMM (UTC). */
@@ -29,6 +36,49 @@ function currentBillingMonth(d = new Date()): string {
   const y = d.getUTCFullYear();
   const m = (d.getUTCMonth() + 1).toString().padStart(2, '0');
   return `${y}${m}`;
+}
+
+/**
+ * The payment-cycle stage. Read from the entitlement (it also knows "free
+ * unlimited" accounts, which never pause); falls back to the subscription's
+ * paid-until if the entitlement cannot be read.
+ */
+export async function accountState(
+  tenantId: string,
+  subscription: SubscriptionRecord | null,
+  now: Date = new Date(),
+): Promise<BillingAccountState> {
+  let entitlement: { status: string; subscribedUntil?: string } | null = null;
+  try {
+    entitlement = await getEntitlement(tenantId);
+  } catch (error) {
+    logger.warn('Billing stage: entitlement not readable, using the subscription', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+  const source =
+    entitlement ??
+    (subscription?.status === 'active' && subscription.currentPeriodEnd
+      ? { status: 'subscribed', subscribedUntil: subscription.currentPeriodEnd }
+      : null);
+  const stage = billingStage(source, now);
+  const paidUntil = source?.subscribedUntil;
+  const dates = paidUntil && stage !== 'exempt' ? stageDates(paidUntil) : undefined;
+  const offer = comebackOffer(subscription?.currentPeriodEnd, subscription?.comebackUsedAt, now);
+  return {
+    stage,
+    lifecycleEnabled: isBillingLifecycleOn(),
+    ...(subscription?.planId ? { lastPlanId: subscription.planId } : {}),
+    ...(dates
+      ? {
+          paidUntil: dates.paidUntil,
+          graceEndsAt: dates.graceEndsAt,
+          closesAt: dates.closesAt,
+          dataKeptUntil: dates.dataKeptUntil,
+        }
+      : {}),
+    ...(offer && isBillingLifecycleOn() ? { comeback: offer } : {}),
+  };
 }
 
 async function baseHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
@@ -78,6 +128,7 @@ async function baseHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayPro
       // The plan catalogue (ZAR, integer cents) so the plan picker renders the
       // real prices/allowances instead of hardcoded copies that can drift.
       plans: Object.values(PLAN_CATALOGUE),
+      account: await accountState(tenantId, subscription),
     };
 
     return {

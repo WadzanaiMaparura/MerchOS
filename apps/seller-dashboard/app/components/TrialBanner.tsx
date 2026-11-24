@@ -64,5 +64,11 @@ export function describeProductError(err: unknown, fallback: string): string {
   if (e?.code === 'TRIAL_LIMIT_REACHED' || e?.code === 'TRIAL_NOT_ACTIVATED') {
     return e.message || 'Your free trial limit has been reached. Subscribe to continue.';
   }
+  if (e?.code === 'PLAN_PAUSED') {
+    return e.message || 'Your plan is paused. Pay on the Billing page to add products and write listings again.';
+  }
+  if (e?.code === 'PLAN_LIMIT_REACHED') {
+    return e.message || "You've added all the new products in your plan this month.";
+  }
   return e?.message || fallback;
 }

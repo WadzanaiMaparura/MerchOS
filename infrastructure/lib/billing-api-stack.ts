@@ -81,6 +81,8 @@ export class BillingApiStack extends cdk.Stack {
     // Launch gate for starting checkouts. Closed unless explicitly opened
     // (prices are placeholders until finalised).
     const checkoutEnabled = envFlag(this, env, 'checkoutEnabled');
+    // Payment reminders, pause/close stages and the comeback offer (billing-stage.ts). Off until switched on.
+    const billingLifecycle = envFlag(this, env, 'billingLifecycle');
     // Where PayFast sends the buyer back to when the client sends no returnUrl.
     const appBaseUrl = envSetting(
       this,
@@ -215,6 +217,7 @@ export class BillingApiStack extends cdk.Stack {
       ...issuerEnv,
       PAYFAST_MODE: payfastMode,
       CHECKOUT_ENABLED: checkoutEnabled,
+      BILLING_LIFECYCLE: billingLifecycle,
       APP_BASE_URL: appBaseUrl,
       // Where PayFast may return the buyer (change-plan refuses anything else).
       ALLOWED_RETURN_ORIGINS: sellerDashboardOrigins(env).join(','),
@@ -370,6 +373,16 @@ export class BillingApiStack extends cdk.Stack {
       payfastItnLogGroup
     );
     payfastItnFn.addEnvironment('PRODUCTS_TABLE', productsTableName);
+    // GET /billing reports the payment-cycle stage from the same entitlement
+    // (it knows "free unlimited" accounts). Read only, one item per request.
+    getBillingFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['dynamodb:GetItem'],
+        resources: [`arn:aws:dynamodb:${region}:${this.account}:table/${productsTableName}`],
+      }),
+    );
+    getBillingFn.addEnvironment('PRODUCTS_TABLE', productsTableName);
     // billing.subscription.activated (welcome email, referral rewards). The bus is
     // Foundation's, named by convention so this stack takes no new dependency.
     const eventBusName = `merch-os-events-${env}`;

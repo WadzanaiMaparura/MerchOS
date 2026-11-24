@@ -42,6 +42,10 @@ export interface SubscriptionRecord {
   priceZARCents?: number | null;
   currentPeriodStart?: string; // ISO 8601
   currentPeriodEnd?: string; // ISO 8601
+  /** Paid-until before the payment that set this record (comeback detection). */
+  previousPeriodEnd?: string;
+  /** When the one-time comeback discount was used (never offered again). */
+  comebackUsedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -55,6 +59,8 @@ export interface UpsertSubscriptionInput {
   priceZARCents?: number | null;
   currentPeriodStart?: string;
   currentPeriodEnd?: string;
+  previousPeriodEnd?: string;
+  comebackUsedAt?: string;
 }
 
 /** Reads the tenant's current subscription, or null if none exists. */
@@ -80,6 +86,7 @@ export async function upsertSubscription(
 ): Promise<SubscriptionRecord> {
   const now = new Date().toISOString();
   const existing = await getSubscription(tenantId);
+  const comebackUsedAt = input.comebackUsedAt ?? existing?.comebackUsedAt;
 
   const record: SubscriptionRecord = {
     tenantId,
@@ -95,6 +102,9 @@ export async function upsertSubscription(
     ...(input.currentPeriodEnd !== undefined
       ? { currentPeriodEnd: input.currentPeriodEnd }
       : {}),
+    ...(input.previousPeriodEnd !== undefined ? { previousPeriodEnd: input.previousPeriodEnd } : {}),
+    // Once used, the comeback discount stays used.
+    ...(comebackUsedAt ? { comebackUsedAt } : {}),
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
@@ -197,6 +207,8 @@ export interface CheckoutIntent {
   voucherCode?: string;
   listPriceCents?: number;
   discountCents?: number;
+  /** The one-time comeback discount was applied (instead of a voucher). */
+  offer?: 'comeback';
   createdAt: string;
 }
 
@@ -209,6 +221,7 @@ export async function createCheckoutIntent(
     voucherCode?: string;
     listPriceCents?: number;
     discountCents?: number;
+    offer?: 'comeback';
   }
 ): Promise<CheckoutIntent> {
   const now = new Date();
@@ -220,6 +233,7 @@ export async function createCheckoutIntent(
     ...(input.voucherCode ? { voucherCode: input.voucherCode } : {}),
     ...(input.listPriceCents !== undefined ? { listPriceCents: input.listPriceCents } : {}),
     ...(input.discountCents !== undefined ? { discountCents: input.discountCents } : {}),
+    ...(input.offer ? { offer: input.offer } : {}),
     createdAt: now.toISOString(),
   };
   const client = createTenantDynamoClient(tenantId);

@@ -38,6 +38,8 @@ import { createLiveItnChecks } from '../../providers/payfast-itn-checks';
 import type { PaymentProvider } from '../../providers/payment-provider';
 import {
   getCheckoutIntent,
+  getSubscription,
+  type SubscriptionRecord,
   upsertSubscription,
   recordPayment,
   getPayment,
@@ -69,6 +71,65 @@ function ack(note: string): APIGatewayProxyResultV2 {
     statusCode: 200,
     headers: { 'Content-Type': 'text/plain' },
     body: note,
+  };
+}
+
+export interface PaidPeriod {
+  /** Start of the month this payment buys. */
+  start: string;
+  /** End of it (the new paid-until). */
+  end: string;
+  /** What the subscription shows as the current period start. */
+  currentPeriodStart: string;
+  /** Paid-until before this payment, if there was one. */
+  previousPeriodEnd?: string;
+}
+
+const plusOneMonth = (iso: string): string => {
+  const d = new Date(iso);
+  d.setUTCMonth(d.getUTCMonth() + 1);
+  return d.toISOString();
+};
+
+/**
+ * The month a payment buys.
+ *  - Renewing the SAME plan before it runs out adds a month to the current end,
+ *    so paying early (after the 7-day reminder) never loses days.
+ *  - A new plan (upgrade/downgrade), or paying after the end, starts now.
+ *  - A resumed ITN (same payment already applied to the subscription) reuses
+ *    what was recorded, so a retry can never add a second month.
+ */
+export function paidPeriod(
+  existing: SubscriptionRecord | null,
+  planId: string,
+  mPaymentId: string,
+  now: Date,
+): PaidPeriod {
+  if (existing && existing.mPaymentId === mPaymentId && existing.currentPeriodEnd) {
+    const end = existing.currentPeriodEnd;
+    const start = new Date(end);
+    start.setUTCMonth(start.getUTCMonth() - 1);
+    return {
+      start: start.toISOString(),
+      end,
+      currentPeriodStart: existing.currentPeriodStart ?? start.toISOString(),
+      ...(existing.previousPeriodEnd ? { previousPeriodEnd: existing.previousPeriodEnd } : {}),
+    };
+  }
+  const nowIso = now.toISOString();
+  const previousPeriodEnd = existing?.currentPeriodEnd;
+  const extends_ =
+    !!existing &&
+    existing.status === 'active' &&
+    existing.planId === planId &&
+    !!previousPeriodEnd &&
+    previousPeriodEnd > nowIso;
+  const start = extends_ ? previousPeriodEnd! : nowIso;
+  return {
+    start,
+    end: plusOneMonth(start),
+    currentPeriodStart: extends_ ? (existing!.currentPeriodStart ?? nowIso) : nowIso,
+    ...(previousPeriodEnd ? { previousPeriodEnd } : {}),
   };
 }
 
@@ -180,8 +241,10 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
   // Apply. Each step is idempotent so a resume is safe. Errors propagate (5xx)
   // so PayFast retries and the resume path completes the job.
   const now = new Date();
-  const periodEnd = new Date(now);
-  periodEnd.setUTCMonth(periodEnd.getUTCMonth() + 1);
+  const existing = await getSubscription(tenantId);
+  const period = paidPeriod(existing, intent.planId, mPaymentId, now);
+  const periodStart = new Date(period.start);
+  const periodEnd = new Date(period.end);
 
   await upsertSubscription(tenantId, {
     planId: intent.planId,
@@ -192,8 +255,10 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     // List price of the plan; what was actually paid (after any voucher) is on
     // the invoice and the payment record.
     priceZARCents: plan.priceZARCents,
-    currentPeriodStart: now.toISOString(),
-    currentPeriodEnd: periodEnd.toISOString(),
+    currentPeriodStart: period.currentPeriodStart,
+    currentPeriodEnd: period.end,
+    ...(period.previousPeriodEnd ? { previousPeriodEnd: period.previousPeriodEnd } : {}),
+    ...(intent.offer === 'comeback' ? { comebackUsedAt: existing?.comebackUsedAt ?? now.toISOString() } : {}),
   });
 
   if (plan.monthlyCredits !== null) {
@@ -225,7 +290,7 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     invoiceId: mPaymentId,
     planId: intent.planId,
     amountCents: expectedCents,
-    periodStart: now.toISOString(),
+    periodStart: periodStart.toISOString(),
     periodEnd: periodEnd.toISOString(),
     provider: 'payfast',
     providerRef: mPaymentId,
@@ -273,8 +338,9 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
       planName: plan.name,
       monthlyProducts: plan.monthlyProducts,
       mPaymentId,
-      periodStart: now.toISOString(),
+      periodStart: periodStart.toISOString(),
       periodEnd: periodEnd.toISOString(),
+      ...(period.previousPeriodEnd ? { previousPeriodEnd: period.previousPeriodEnd } : {}),
     });
   } catch (error) {
     logger.error('Subscription event not published', {

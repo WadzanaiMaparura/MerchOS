@@ -706,7 +706,8 @@ export function useRegenerateAttribute(): UseMutationResult<
 export interface TrialUsage {
   /** False until the free-trial limit is switched on for the platform. */
   enforced: boolean;
-  status: 'not_started' | 'trial' | 'subscribed' | 'exempt';
+  /** 'paused' = a paid plan ran out more than 3 days ago (no new products until paid). */
+  status: 'not_started' | 'trial' | 'subscribed' | 'exempt' | 'paused';
   productsUsed: number;
   productLimit: number;
   remaining: number;

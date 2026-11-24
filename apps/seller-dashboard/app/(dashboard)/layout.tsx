@@ -14,6 +14,7 @@ import { ErrorBoundaryWrapper } from './components/ErrorBoundaryWrapper';
 import { DashboardRouteGuard } from './components/DashboardRouteGuard';
 import { ProfileCompletionGate } from './components/ProfileCompletionGate';
 import { ReferralClaim } from '../components/engagement/ReferralClaim';
+import { BillingStageBanner, ClosedAccountGate } from '../components/BillingStageNotice';
 
 // --- Permission Registry (singleton) ---
 const registry = new PermissionRegistry(defaultPermissionConfig);
@@ -383,9 +384,13 @@ export default function DashboardLayout({
               <ReferralClaim ready={isPermissionsResolved} />
               <ProfileCompletionGate>
               <ErrorBoundaryWrapper>
-                <DashboardRouteGuard>
-                  {children}
-                </DashboardRouteGuard>
+                {/* Payment due / overdue / paused (off until the payment cycle is switched on). */}
+                <BillingStageBanner />
+                <ClosedAccountGate>
+                  <DashboardRouteGuard>
+                    {children}
+                  </DashboardRouteGuard>
+                </ClosedAccountGate>
               </ErrorBoundaryWrapper>
               </ProfileCompletionGate>
             </main>

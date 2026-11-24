@@ -14,6 +14,7 @@
 
 import { ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { PLAN_CATALOGUE } from '../../billing/config/plans';
+import { billingStage, type BillingStage } from '../../shared/entitlements/billing-stage';
 import { config } from './config';
 import { sellerIdOf } from './customers';
 import { db, getTenantInfos } from './data';
@@ -67,6 +68,8 @@ export interface BillingRow {
   since?: string | undefined;
   lastPayment?: { amountCents: number; at?: string | undefined; voucherCode?: string | undefined } | undefined;
   status: BillingStatus;
+  /** Where the seller is in the payment cycle (grace, paused, closed once lapsed). */
+  stage: BillingStage;
   /** Payments PayFast sent that were not fully applied (needs a look). */
   problems: number;
 }
@@ -186,6 +189,7 @@ export function toRow(tenantId: string, b: TenantBilling, businessName: string |
     since: str(s['createdAt']),
     lastPayment: last ? { amountCents: last.amountCents, at: last.createdAt, voucherCode: last.voucherCode } : undefined,
     status: problems > 0 ? 'problem' : active ? 'paid' : 'lapsed',
+    stage: s['status'] === 'active' ? billingStage({ status: 'subscribed', subscribedUntil: paidUntil }, now) : 'none',
     problems,
   };
 }
