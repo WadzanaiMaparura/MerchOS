@@ -198,21 +198,6 @@ export type {
   DeleteUserPayload,
 } from './hooks/useAdminUsers';
 
-// Admin Compliance hooks
-export {
-  adminComplianceKeys,
-  useComplianceChannels,
-  useComplianceRuleSet,
-  useSaveComplianceRules,
-} from './hooks/useAdminCompliance';
-
-// Admin Taxonomy hooks
-export {
-  adminTaxonomyKeys,
-  useTaxonomyList,
-  useTriggerTaxonomyRefresh,
-} from './hooks/useAdminTaxonomy';
-
 // Admin Audit Log hooks
 export {
   adminAuditKeys,

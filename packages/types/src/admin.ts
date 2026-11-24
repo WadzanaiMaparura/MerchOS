@@ -72,43 +72,6 @@ export interface HealthSummary {
   productsProcessedToday: number;
 }
 
-/** Summary of a compliance channel for list views. */
-export interface ComplianceChannelSummary {
-  channelId: string;
-  channelName: string;
-  version: string;
-  updatedAt: string; // ISO 8601
-}
-
-/** Full compliance rule set including schema and current values. */
-export interface ComplianceRuleSet {
-  channelId: string;
-  channelName: string;
-  version: string;
-  updatedAt: string;
-  rules: Record<string, unknown>;
-  jsonSchema: Record<string, unknown>;
-}
-
-/** Payload for saving compliance rules. */
-export interface SaveCompliancePayload {
-  channelId: string;
-  rules: Record<string, unknown>;
-}
-
-/** Taxonomy status values. */
-export type TaxonomyStatusValue = 'CURRENT' | 'STALE' | 'REFRESHING';
-
-/** Channel taxonomy status information. */
-export interface TaxonomyStatus {
-  channelId: string;
-  channelName: string;
-  version: string;
-  lastRefreshDate: string; // ISO 8601
-  nodeCount: number;
-  status: TaxonomyStatusValue;
-}
-
 /** A single audit event record. */
 export interface AuditEvent {
   eventId: string;

@@ -4,7 +4,8 @@
  * AdminAppShell — Persistent layout for the Admin Dashboard.
  *
  * Provides:
- * - Sidebar nav items (Health, Customers, Compliance, Taxonomy, Audit Log, Alerts, Billing, Support inbox, Reviews, Referrals)
+ * - Sidebar nav items (Health, Customers, Library, Team, Audit Log, Alerts, Billing, Support inbox, Reviews, Referrals)
+ * - Unread badge on Team (announcements + team chat), refreshed every minute
  * - RBAC-based navigation filtering using @merch-os/rbac permission registry
  * - Sidebar collapse/expand toggle (icon-only when collapsed)
  * - Responsive hamburger menu at < 768px viewport
@@ -24,6 +25,9 @@ import { useIsFetching, useIsMutating } from '@tanstack/react-query';
 import { Sidebar } from '@merch-os/ui';
 import type { SidebarItem } from '@merch-os/ui';
 import { useUnresolvedAlertCount } from '@merch-os/api-client';
+import { useQuery } from '@tanstack/react-query';
+import { ADMIN_API_URL } from '../lib/customers';
+import { teamApi } from '../lib/team';
 import { PermissionRegistry, defaultPermissionConfig, filterNavigationItems } from '@merch-os/rbac';
 import type { NavigationItem } from '@merch-os/rbac';
 import { useAdminAuth } from '../hooks/useAdminAuth';
@@ -47,15 +51,17 @@ const UsersIcon = (
   </svg>
 );
 
-const ShieldIcon = (
+const BookIcon = (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5" aria-hidden="true">
-    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    <path d="M4 19.5A2.5 2.5 0 016.5 17H20V3H6.5A2.5 2.5 0 004 5.5v14z" />
+    <path d="M4 19.5A2.5 2.5 0 006.5 22H20v-5" />
   </svg>
 );
 
-const TreeIcon = (
+const MegaphoneIcon = (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5" aria-hidden="true">
-    <path d="M5 22h14M5 22V7l7-4 7 4v15M9 22V12h6v10" />
+    <path d="M3 11v2a1 1 0 001 1h3l5 4V6L7 10H4a1 1 0 00-1 1z" />
+    <path d="M16 8a5 5 0 010 8M19 5a9 9 0 010 14" />
   </svg>
 );
 
@@ -127,8 +133,10 @@ export const ADMIN_NAV_ITEMS: NavigationItem[] = [
   { id: 'health', label: 'Health', href: '/health', requiredResource: 'infrastructure' },
   // Customers replaces the old Tenants and Users pages (Support and Admin).
   { id: 'customers', label: 'Customers', href: '/customers', requiredResource: 'users.search' },
-  { id: 'compliance', label: 'Compliance', href: '/compliance', requiredResource: 'compliance' },
-  { id: 'taxonomy', label: 'Taxonomy', href: '/taxonomy', requiredResource: 'taxonomy' },
+  // Library (rules and things to know) and Team (announcements, goals, chat)
+  // replace the unused Compliance and Taxonomy pages.
+  { id: 'library', label: 'Library', href: '/library', requiredResource: 'library' },
+  { id: 'team', label: 'Team', href: '/team', requiredResource: 'team' },
   { id: 'audit-log', label: 'Audit Log', href: '/audit-log', requiredResource: 'audit-log' },
   { id: 'alerts', label: 'Alerts', href: '/alerts', requiredResource: 'alerts' },
   { id: 'billing', label: 'Billing', href: '/billing', requiredResource: 'billing' },
@@ -141,8 +149,8 @@ export const ADMIN_NAV_ITEMS: NavigationItem[] = [
 const NAV_ICONS: Record<string, React.ReactNode> = {
   health: ActivityIcon,
   customers: UsersIcon,
-  compliance: ShieldIcon,
-  taxonomy: TreeIcon,
+  library: BookIcon,
+  team: MegaphoneIcon,
   'audit-log': FileTextIcon,
   alerts: AlertIcon,
   billing: CreditCardIcon,
@@ -256,6 +264,18 @@ export function AdminAppShell({ children }: AdminAppShellProps) {
     isResolved && !!platformRole && registry.hasPermission(platformRole, 'alerts', 'read').granted;
   const { data: unresolvedCount = 0 } = useUnresolvedAlertCount({ enabled: canSeeAlerts });
 
+  // Unread announcements and team chat messages, for the Team badge.
+  const canSeeTeam =
+    isResolved && !!platformRole && registry.hasPermission(platformRole, 'team', 'read').granted;
+  const { data: teamUnread } = useQuery({
+    queryKey: ['team', 'unread'],
+    queryFn: teamApi.unread,
+    enabled: canSeeTeam && !!ADMIN_API_URL,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  const teamUnreadCount = teamUnread?.total ?? 0;
+
   // Filter nav items based on the user's platform role (Requirements 8.1, 8.2, 8.3)
   const permittedNavItems = useMemo<NavigationItem[]>(() => {
     if (!isResolved || !platformRole) return [];
@@ -269,9 +289,14 @@ export function AdminAppShell({ children }: AdminAppShellProps) {
       href: item.href,
       icon: NAV_ICONS[item.id] ?? ActivityIcon,
       active: pathname === item.href || pathname.startsWith(item.href + '/'),
-      badge: item.id === 'alerts' && unresolvedCount > 0 ? unresolvedCount : undefined,
+      badge:
+        item.id === 'alerts' && unresolvedCount > 0
+          ? unresolvedCount
+          : item.id === 'team' && teamUnreadCount > 0
+            ? teamUnreadCount
+            : undefined,
     }));
-  }, [permittedNavItems, pathname, unresolvedCount]);
+  }, [permittedNavItems, pathname, unresolvedCount, teamUnreadCount]);
 
   const handleNavigate = (href: string) => {
     router.push(href);

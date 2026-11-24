@@ -154,8 +154,8 @@ describe('Integration: End-to-end authorization flow', () => {
         { resource: 'infrastructure', action: 'read' },
         { resource: 'infrastructure', action: 'update' },
         { resource: 'tenants', action: 'read' },
-        { resource: 'compliance', action: 'read' },
-        { resource: 'taxonomy', action: 'read' },
+        { resource: 'library', action: 'read' },
+        { resource: 'team', action: 'read' },
         { resource: 'alerts', action: 'read' },
         { resource: 'audit-log', action: 'read' },
         { resource: 'processing-jobs', action: 'read' },
@@ -212,9 +212,11 @@ describe('Integration: End-to-end authorization flow', () => {
         { resource: 'billing', action: 'read' },
         { resource: 'products', action: 'create' },
         { resource: 'subscription', action: 'update' },
-        // Health and Alerts are view only for Support.
+        // Health and Alerts are view only for Support; Library and Team are written by Admin.
         { resource: 'infrastructure', action: 'update' },
         { resource: 'alerts', action: 'update' },
+        { resource: 'library', action: 'update' },
+        { resource: 'team', action: 'update' },
       ];
 
       it.each([
@@ -276,10 +278,10 @@ describe('Integration: End-to-end authorization flow', () => {
         { resource: 'tenants', action: 'read' },
         { resource: 'tenants', action: 'update' },
         { resource: 'tenants', action: 'delete' },
-        { resource: 'compliance', action: 'create' },
-        { resource: 'compliance', action: 'read' },
-        { resource: 'taxonomy', action: 'create' },
-        { resource: 'taxonomy', action: 'read' },
+        { resource: 'library', action: 'read' },
+        { resource: 'library', action: 'update' },
+        { resource: 'team', action: 'read' },
+        { resource: 'team', action: 'update' },
         { resource: 'alerts', action: 'read' },
         { resource: 'alerts', action: 'update' },
         { resource: 'audit-log', action: 'read' },

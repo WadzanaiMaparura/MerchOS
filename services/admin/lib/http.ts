@@ -16,6 +16,7 @@ const error = (statusCode: number, code: string, message: string): HttpResult =>
   json(statusCode, { error: { code, message } });
 
 export const badRequest = (message: string): HttpResult => error(400, 'BAD_REQUEST', message);
+export const forbidden = (message: string): HttpResult => error(403, 'FORBIDDEN', message);
 export const notFound = (message = 'Not found'): HttpResult => error(404, 'NOT_FOUND', message);
 export const conflict = (message: string): HttpResult => error(409, 'CONFLICT', message);
 export const serverError = (): HttpResult => error(500, 'INTERNAL', 'Something went wrong. Please try again.');
