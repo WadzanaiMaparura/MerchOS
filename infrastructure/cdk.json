@@ -21,7 +21,7 @@
         "billingAlarmEmail": "admin@merchos.co.za",
         "appBaseUrl": "https://merchos.co.za",
         "checkoutEnabled": "false",
-        "trialEnforcement": "false",
+        "trialEnforcement": "true",
         "billingLifecycle": "false",
         "cardSubscriptions": "false",
         "billingApiDomain": "api.merchos.co.za",
