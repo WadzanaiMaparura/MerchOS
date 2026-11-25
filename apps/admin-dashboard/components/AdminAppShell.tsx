@@ -6,6 +6,8 @@
  * Provides:
  * - Sidebar nav items (Health, Customers, Library, Team, Audit Log, Alerts, Billing, Support inbox, Reviews, Referrals)
  * - Unread badge on Team (announcements + team chat), refreshed every minute
+ * - Live chat connection for inbox staff on every page (presence stays on),
+ *   a waiting-chats badge on Support inbox and a "new chat" pop-up elsewhere
  * - RBAC-based navigation filtering using @merch-os/rbac permission registry
  * - Sidebar collapse/expand toggle (icon-only when collapsed)
  * - Responsive hamburger menu at < 768px viewport
@@ -28,6 +30,8 @@ import { useUnresolvedAlertCount } from '@merch-os/api-client';
 import { useQuery } from '@tanstack/react-query';
 import { ADMIN_API_URL } from '../lib/customers';
 import { teamApi } from '../lib/team';
+import { supportApi } from '../lib/support-chat';
+import { NewChatToast, SupportConnectionProvider, supportChatConfigured } from './SupportConnection';
 import { PermissionRegistry, defaultPermissionConfig, filterNavigationItems } from '@merch-os/rbac';
 import type { NavigationItem } from '@merch-os/rbac';
 import { useAdminAuth } from '../hooks/useAdminAuth';
@@ -276,6 +280,18 @@ export function AdminAppShell({ children }: AdminAppShellProps) {
   });
   const teamUnreadCount = teamUnread?.total ?? 0;
 
+  // Support inbox: one connection for the whole dashboard (presence stays on
+  // across pages), and a badge with the number of chats waiting.
+  const canUseInbox =
+    isResolved && !!platformRole && registry.hasPermission(platformRole, 'support-inbox', 'read').granted;
+  const { data: waitingChats } = useQuery({
+    queryKey: ['support', 'list', 'WAITING'],
+    queryFn: () => supportApi.list('WAITING'),
+    enabled: canUseInbox && supportChatConfigured(),
+    refetchInterval: 30_000,
+  });
+  const waitingCount = waitingChats?.length ?? 0;
+
   // Filter nav items based on the user's platform role (Requirements 8.1, 8.2, 8.3)
   const permittedNavItems = useMemo<NavigationItem[]>(() => {
     if (!isResolved || !platformRole) return [];
@@ -294,9 +310,11 @@ export function AdminAppShell({ children }: AdminAppShellProps) {
           ? unresolvedCount
           : item.id === 'team' && teamUnreadCount > 0
             ? teamUnreadCount
-            : undefined,
+            : item.id === 'support' && waitingCount > 0
+              ? waitingCount
+              : undefined,
     }));
-  }, [permittedNavItems, pathname, unresolvedCount, teamUnreadCount]);
+  }, [permittedNavItems, pathname, unresolvedCount, teamUnreadCount, waitingCount]);
 
   const handleNavigate = (href: string) => {
     router.push(href);
@@ -312,6 +330,8 @@ export function AdminAppShell({ children }: AdminAppShellProps) {
   const displayEmail = truncate(operatorEmail, 30);
 
   return (
+    <SupportConnectionProvider enabled={canUseInbox}>
+    <NewChatToast />
     <div className="flex h-screen overflow-hidden bg-gray-50">
       {/* Mobile overlay */}
       {mobileSidebarOpen && (
@@ -422,6 +442,7 @@ export function AdminAppShell({ children }: AdminAppShellProps) {
         </main>
       </div>
     </div>
+    </SupportConnectionProvider>
   );
 }
 

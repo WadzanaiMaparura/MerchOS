@@ -4,8 +4,8 @@
  * Support inbox — live chats from the website and seller dashboard.
  *
  * Tabs: Waiting · Active · Missed/offline · Resolved. The Online switch (plus
- * this page staying open) is what makes the chat bubble show "online" to
- * visitors during Mon–Fri 9am–4pm SAST. Alerts: in-page (sound + banner +
+ * any admin tab staying open: the connection lives in the app shell) is what
+ * makes the chat bubble show "online" to visitors during Mon–Fri 9am–4pm SAST. Alerts: in-page (sound + banner +
  * tab title), browser push (Enable alerts) and email to the support mailbox.
  */
 
@@ -13,14 +13,15 @@ import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } fr
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AdminRouteGuard } from '../../../components/AdminRouteGuard';
+import { useSupportConnection } from '../../../components/SupportConnection';
 import {
   SUPPORT_CHAT_API_URL,
   SUPPORT_CHAT_WS_URL,
   SupportApiError,
   currentPushSubscription,
   disablePushAlerts,
+  chime,
   enablePushAlerts,
-  openAgentSocket,
   pushSupported,
   supportApi,
   type AgentEvent,
@@ -55,28 +56,6 @@ function formatTime(iso: string): string {
   return new Date(iso).toLocaleString('en-ZA', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' });
 }
 
-/** Short two-tone chime for a new waiting chat (no audio file needed). */
-function chime(): void {
-  try {
-    const AudioCtx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    [880, 1320].forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0.15, ctx.currentTime + i * 0.18);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.18 + 0.3);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(ctx.currentTime + i * 0.18);
-      osc.stop(ctx.currentTime + i * 0.18 + 0.3);
-    });
-    setTimeout(() => void ctx.close(), 1000);
-  } catch {
-    // Browsers block audio until the page has been interacted with.
-  }
-}
-
 const btn =
   'inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
 const btnPrimary = `${btn} bg-blue-600 text-white hover:bg-blue-700`;
@@ -108,13 +87,14 @@ function SupportInbox() {
   const selectedId = params?.get('c') ?? null;
 
   const [tab, setTab] = useState<ConversationStatus>('WAITING');
-  const [socketUp, setSocketUp] = useState(false);
+  // The dashboard-wide connection (stays open on every admin page).
+  const connection = useSupportConnection();
+  const socketUp = connection.connected;
   const [visitorOnline, setVisitorOnline] = useState<Record<string, boolean>>({});
   const [visitorTyping, setVisitorTyping] = useState<Record<string, number>>({});
   const [incoming, setIncoming] = useState<Conversation | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const socketRef = useRef<ReturnType<typeof openAgentSocket> | null>(null);
   const seenWaiting = useRef<Set<string>>(new Set());
 
   const presence = useQuery({ queryKey: keys.presence, queryFn: supportApi.presence, refetchInterval: 60_000 });
@@ -191,13 +171,7 @@ function SupportInbox() {
     [queryClient],
   );
 
-  useEffect(() => {
-    socketRef.current = openAgentSocket(onEvent, (up) => {
-      setSocketUp(up);
-      if (up) void queryClient.invalidateQueries({ queryKey: ['support'] });
-    });
-    return () => socketRef.current?.close();
-  }, [onEvent, queryClient]);
+  useEffect(() => connection.subscribe(onEvent), [connection, onEvent]);
 
   // Already-waiting chats at load time are not "new".
   useEffect(() => {
@@ -224,7 +198,7 @@ function SupportInbox() {
       : p.me.online && !socketUp
         ? 'Reconnecting… visitors may see you as offline.'
         : p.me.online
-          ? 'Visitors can chat with you now.'
+          ? 'Visitors can chat with you now. You stay online on every admin page while a MerchOS Admin tab is open.'
           : 'You are offline. Visitors see the leave-details form.';
 
   return (
@@ -363,7 +337,7 @@ function SupportInbox() {
             id={selectedId}
             visitorOnline={visitorOnline[selectedId] ?? false}
             visitorTyping={Date.now() - (visitorTyping[selectedId] ?? 0) < 5000}
-            onTyping={() => socketRef.current?.typing(selectedId)}
+            onTyping={() => connection.typing(selectedId)}
             onClosed={() => select(null)}
           />
         ) : (

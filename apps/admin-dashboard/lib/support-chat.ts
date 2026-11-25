@@ -112,6 +112,28 @@ export const supportApi = {
     call<{ ok: true }>('/support/push-subscriptions', { method: 'DELETE', body: JSON.stringify({ endpoint }) }),
 };
 
+/** Short two-tone chime for a new waiting chat (no audio file needed). */
+export function chime(): void {
+  try {
+    const AudioCtx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    [880, 1320].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.15, ctx.currentTime + i * 0.18);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.18 + 0.3);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(ctx.currentTime + i * 0.18);
+      osc.stop(ctx.currentTime + i * 0.18 + 0.3);
+    });
+    setTimeout(() => void ctx.close(), 1000);
+  } catch {
+    // Browsers block audio until the page has been interacted with.
+  }
+}
+
 /** Heartbeat interval: presence counts an inbox as open for 3 minutes. */
 export const HEARTBEAT_MS = 60_000;
 
@@ -136,7 +158,11 @@ export function openAgentSocket(
     try {
       token = await accessToken();
     } catch {
+      // Keep trying (e.g. the session was refreshing): giving up here left the
+      // inbox offline until the page was reloaded.
       onStatus(false);
+      attempt += 1;
+      retry = setTimeout(() => void connect(), Math.min(30_000, 1000 * 2 ** attempt));
       return;
     }
     const ws = new WebSocket(`${SUPPORT_CHAT_WS_URL}?role=agent&token=${encodeURIComponent(token)}`);
