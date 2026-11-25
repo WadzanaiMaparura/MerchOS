@@ -60,8 +60,9 @@ describe('Billing page', () => {
     const user = userEvent.setup();
     const open = vi.spyOn(window, 'open').mockImplementation(() => null);
     renderPage();
-    await user.click(await screen.findByRole('button', { name: 'Thandi Home Goods' }));
-    expect(await screen.findByText(/312 of 1,000 new products/)).toBeTruthy();
+    // Longer waits: under a busy full-suite run the 1 s default sometimes ran out.
+    await user.click(await screen.findByRole('button', { name: 'Thandi Home Goods' }, { timeout: 5000 }));
+    expect(await screen.findByText(/312 of 1,000 new products/, {}, { timeout: 5000 })).toBeTruthy();
     expect(screen.getByText('PDF pending')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: /PDF for INV-16752/ }));
     await waitFor(() => expect(api.invoicePdf).toHaveBeenCalledWith(TENANT, 'pay-2'));

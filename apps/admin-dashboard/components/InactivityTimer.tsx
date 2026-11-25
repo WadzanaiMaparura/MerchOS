@@ -3,11 +3,11 @@
 /**
  * InactivityTimer — Mounts the inactivity timeout for admin sessions.
  *
- * Admins are signed out after 30 minutes without activity. Support staff wait
- * on the live-chat inbox for chats to arrive, and a 30-minute idle sign-out
- * would silently take them offline (the inbox heartbeat stops), so the
- * Support role gets a working day (8 hours). Support can only reach the
- * Support inbox, which limits what an unattended session exposes.
+ * Staff are signed out after a working day (8 hours) without activity. Both
+ * Admin and Support can answer live chats, and a shorter idle sign-out would
+ * silently take them offline (the inbox heartbeat stops). By decision (Nov
+ * 2026) Admin gets the same 8 hours as Support. Sign-in still needs MFA, and
+ * every staff action is in the Audit log.
  * Renders nothing to the DOM.
  *
  * Requirements: 1.9
@@ -15,19 +15,17 @@
 
 import { useAdminAuth } from '../hooks/useAdminAuth';
 import { useInactivityTimeout } from '../hooks/useInactivityTimeout';
-import { usePlatformRole } from '../hooks/usePlatformRole';
 
-export const ADMIN_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
-export const SUPPORT_IDLE_TIMEOUT_MS = 8 * 60 * 60 * 1000;
+export const STAFF_IDLE_TIMEOUT_MS = 8 * 60 * 60 * 1000;
+/** @deprecated kept for older imports; Admin and Support share one timeout. */
+export const ADMIN_IDLE_TIMEOUT_MS = STAFF_IDLE_TIMEOUT_MS;
+/** @deprecated kept for older imports; Admin and Support share one timeout. */
+export const SUPPORT_IDLE_TIMEOUT_MS = STAFF_IDLE_TIMEOUT_MS;
 
 export function InactivityTimer() {
   const { logout } = useAdminAuth();
-  const { platformRole } = usePlatformRole();
 
-  useInactivityTimeout({
-    timeoutMs: platformRole === 'Support' ? SUPPORT_IDLE_TIMEOUT_MS : ADMIN_IDLE_TIMEOUT_MS,
-    onTimeout: logout,
-  });
+  useInactivityTimeout({ timeoutMs: STAFF_IDLE_TIMEOUT_MS, onTimeout: logout });
 
   return null;
 }
