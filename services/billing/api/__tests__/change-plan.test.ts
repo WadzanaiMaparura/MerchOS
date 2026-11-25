@@ -1,6 +1,7 @@
 ﻿import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../services/subscription-store', () => ({
+  getSubscription: vi.fn(async () => null),
   createCheckoutIntent: vi.fn(),
 }));
 vi.mock('../../services/vouchers', async (orig) => ({
@@ -167,5 +168,57 @@ describe('POST /billing/plan return URLs (no open redirect via PayFast)', () => 
     const { status } = await call({ planId: 'starter', cancelUrl: 'https://evil.example/' });
     expect(status).toBe(400);
     expect(initiateCheckout).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /billing/plan comeback offer (50% off the first month back)', () => {
+  const lapsed = (over: Record<string, unknown> = {}) =>
+    ({
+      tenantId: 'tenant-1',
+      planId: 'growth',
+      status: 'active',
+      provider: 'payfast',
+      // Paid until 95 days ago: inside the 14-day window that opens on day 90.
+      currentPeriodEnd: new Date(Date.now() - 95 * 86_400_000).toISOString(),
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      ...over,
+    }) as never;
+
+  beforeEach(() => {
+    process.env['BILLING_LIFECYCLE'] = 'true';
+  });
+
+  it('is applied automatically in the window, and recorded on the intent', async () => {
+    vi.mocked(store.getSubscription).mockResolvedValue(lapsed());
+    const { status } = await call({ planId: 'growth' });
+    expect(status).toBe(200);
+    expect(initiateCheckout).toHaveBeenCalledWith(expect.objectContaining({ amountCents: 44950 }));
+    expect(store.createCheckoutIntent).toHaveBeenCalledWith(
+      'tenant-1',
+      expect.objectContaining({ priceZARCents: 44950, listPriceCents: 89900, discountCents: 44950, offer: 'comeback' }),
+    );
+  });
+
+  it('is not applied once used, outside the window, or while switched off', async () => {
+    for (const [sub, flag] of [
+      [lapsed({ comebackUsedAt: '2026-05-01T00:00:00.000Z' }), 'true'],
+      [lapsed({ currentPeriodEnd: new Date(Date.now() - 60 * 86_400_000).toISOString() }), 'true'],
+      [lapsed(), 'false'],
+    ] as const) {
+      vi.clearAllMocks();
+      process.env['BILLING_LIFECYCLE'] = flag;
+      vi.mocked(store.getSubscription).mockResolvedValue(sub);
+      await call({ planId: 'growth' });
+      expect(initiateCheckout).toHaveBeenCalledWith(expect.objectContaining({ amountCents: 89900 }));
+    }
+  });
+
+  it('a voucher typed in takes the place of the comeback offer', async () => {
+    vi.mocked(store.getSubscription).mockResolvedValue(lapsed());
+    vi.mocked(vouchers.resolveVoucher).mockResolvedValue({ voucherCode: 'V', listPriceCents: 89900, discountCents: 10000, finalCents: 79900 });
+    await call({ planId: 'growth', voucherCode: 'V' });
+    expect(initiateCheckout).toHaveBeenCalledWith(expect.objectContaining({ amountCents: 79900 }));
+    expect(store.createCheckoutIntent).toHaveBeenCalledWith('tenant-1', expect.not.objectContaining({ offer: 'comeback' }));
   });
 });

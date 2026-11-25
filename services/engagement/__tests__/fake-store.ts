@@ -5,7 +5,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import type { NewReview, Profile, Referral, ReferralStatus, Review } from '../lib/store';
+import type { LeaveFeedback, NewReview, Profile, Referral, ReferralStatus, Review } from '../lib/store';
 
 export const mem = {
   profiles: new Map<string, Profile>(),
@@ -14,7 +14,9 @@ export const mem = {
   referrals: new Map<string, Referral>(),
   reviews: new Map<string, Review>(),
   reviewed: new Set<string>(),
+  feedback: new Map<string, LeaveFeedback>(),
   reset() {
+    this.feedback.clear();
     this.profiles.clear();
     this.sent.clear();
     this.codes.clear();
@@ -110,4 +112,6 @@ export const fakeStore = {
     mem.reviewed.delete(r.tenantId);
   },
   withinRateLimit: async () => true,
+  saveFeedback: async (f: LeaveFeedback) => void mem.feedback.set(f.tenantId, { ...f }),
+  listFeedback: async () => [...mem.feedback.values()],
 };

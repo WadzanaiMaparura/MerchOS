@@ -68,6 +68,29 @@ export interface BillingOverview {
   credits?: CreditBalance;
   /** The purchasable plan catalogue (ZAR) for the plan picker. */
   plans?: PlanCatalogueEntry[];
+  /** Where the seller is in the payment cycle (reminders, pause, closing). */
+  account?: BillingAccountState;
+}
+
+/**
+ * none: never paid (trial). paid: more than 7 days left. due_soon: last 7 days.
+ * grace: up to 3 days late, everything works. paused: day 3 to 37, no new
+ * products or listings. closed: from day 37, only the Welcome back page.
+ */
+export type BillingStage = 'none' | 'exempt' | 'paid' | 'due_soon' | 'grace' | 'paused' | 'closed';
+
+export interface BillingAccountState {
+  stage: BillingStage;
+  /** False until reminders, pausing and closing are switched on for the platform. */
+  lifecycleEnabled: boolean;
+  /** The plan the seller last paid for (pre-selected when they pay again). */
+  lastPlanId?: PlanId;
+  paidUntil?: string;
+  graceEndsAt?: string;
+  closesAt?: string;
+  dataKeptUntil?: string;
+  /** The one-time comeback discount, while it applies. */
+  comeback?: { percentOff: number; endsAt: string };
 }
 
 /** A plan entry exposed to the frontend plan picker / pricing table. */

@@ -101,3 +101,30 @@ describe('Billing payment monitoring', () => {
     });
   });
 });
+
+describe('Billing payment cycle (reminders, pause, close)', () => {
+  it('is off unless switched on, and GET /billing may only read the entitlement', () => {
+    const t = synth();
+    t.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'merch-os-billing-getbilling-dev',
+      Environment: {
+        Variables: Match.objectLike({ BILLING_LIFECYCLE: 'false', PRODUCTS_TABLE: 'merch-os-products-dev' }),
+      },
+    });
+    t.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: 'dynamodb:GetItem',
+            Resource: 'arn:aws:dynamodb:eu-west-1:123456789012:table/merch-os-products-dev',
+          }),
+        ]),
+      },
+    });
+    const on = synth({ billingLifecycle: 'true' });
+    on.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'merch-os-billing-changeplan-dev',
+      Environment: { Variables: Match.objectLike({ BILLING_LIFECYCLE: 'true' }) },
+    });
+  });
+});

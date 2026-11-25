@@ -2,9 +2,11 @@
  * EventBridge consumer (bus merch-os-events-<env>).
  *
  *   auth.user.registered            (merch-os.auth)     trial welcome now; tips day 2, training day 5
- *   billing.subscription.activated  (merch-os.billing)  first payment only: subscription welcome now;
- *                                                       review day 30, referral day 35; and a
- *                                                       referred seller's 14-day referral check
+ *   billing.subscription.activated  (merch-os.billing)  every payment: this period's payment-cycle
+ *                                                       emails (billing-cycle.ts), and "welcome back"
+ *                                                       after a pause. First payment only: subscription
+ *                                                       welcome now; review day 30, referral day 35; and
+ *                                                       a referred seller's 14-day referral check
  *
  * Both events can be delivered more than once (and auth.user.registered has two
  * emitters), so every step is idempotent: emails have a sent marker and
@@ -13,11 +15,13 @@
 
 import type { EventBridgeEvent } from 'aws-lambda';
 import { z } from 'zod';
+import { GRACE_DAYS, isBillingLifecycleOn } from '../../shared/entitlements/billing-stage';
 import { TRIAL_PRODUCT_LIMIT } from '../../shared/entitlements/trial-gate';
 import { countProducts, ensureProfile, getUser } from '../lib/accounts';
+import { welcomeBack } from '../lib/billing-templates';
 import { config } from '../lib/config';
 import { ensureReferralCode, sendOnce } from '../lib/lifecycle';
-import { scheduleStep } from '../lib/schedule';
+import { scheduleBillingSteps, scheduleStep } from '../lib/schedule';
 import { markFirstSubscription, transitionReferral, wasSent } from '../lib/store';
 import { subscriptionWelcome, trialWelcome } from '../lib/templates';
 
@@ -33,7 +37,14 @@ const activatedSchema = z.object({
   monthlyProducts: z.number().int().positive().nullable(),
   periodStart: z.string().datetime(),
   periodEnd: z.string().datetime(),
+  previousPeriodEnd: z.string().datetime().optional(),
 });
+
+/** Paid again after the plan had been paused (or closed): past the grace period. */
+export function isComeback(previousPeriodEnd: string | undefined, paidAt: Date): boolean {
+  if (!previousPeriodEnd) return false;
+  return paidAt.getTime() >= Date.parse(previousPeriodEnd) + GRACE_DAYS * 24 * 60 * 60 * 1000;
+}
 
 export async function onRegistered(detail: unknown): Promise<void> {
   const parsed = registeredSchema.safeParse(detail);
@@ -94,6 +105,30 @@ export async function onSubscriptionActivated(detail: unknown): Promise<void> {
     }
   }
 
+  // Every payment books this paid period's reminders and, if it is not renewed,
+  // the pause, closing and win-back emails. Each checks at send time.
+  await scheduleBillingSteps(d.tenantId, d.periodEnd, d.planId);
+
+  // Back after a pause or closing: a "welcome back" (once per return).
+  if (isComeback(d.previousPeriodEnd, new Date()) && isBillingLifecycleOn()) {
+    const user = await getUser(profile.userId);
+    if (user?.enabled) {
+      await sendOnce(
+        profile,
+        user.email,
+        `welcome-back#${d.periodEnd}`,
+        welcomeBack({
+          siteUrl: config.siteUrl,
+          firstName: profile.firstName,
+          planName: d.planName,
+          monthlyProducts: d.monthlyProducts,
+          productCount: await countProducts(d.tenantId),
+          paidUntil: d.periodEnd,
+        }),
+      );
+    }
+  }
+
   // Only the first activation sends the welcome and starts the subscriber
   // track. A retry after a failed first attempt still finds the welcome unsent.
   const first = await markFirstSubscription(d.tenantId, d.planId, d.periodStart);
@@ -112,7 +147,7 @@ export async function onSubscriptionActivated(detail: unknown): Promise<void> {
       planName: d.planName,
       monthlyProducts: d.monthlyProducts,
       existingProducts,
-      billingDay: new Date(d.periodStart).getUTCDate(),
+      paidUntil: d.periodEnd,
     }),
   );
   const from = new Date(d.periodStart);

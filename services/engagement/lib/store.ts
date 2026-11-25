@@ -5,6 +5,7 @@
  *   TENANT#<id>          PROFILE               who to email + lifecycle state (opt-out, subscribedAt, referral)
  *   TENANT#<id>          SENT#<emailKey>       one marker per lifecycle email (never sent twice)
  *   TENANT#<id>          REVIEW                pointer: this tenant has left its one review
+ *   TENANT#<id>          FEEDBACK              why the seller left (GSI1: FEEDBACK / <at>)
  *   TENANT#<referrer>    REFERRAL#<referred>   a referral (GSI1: REFERRALS / <claimedAt>)
  *   REFCODE#<code>       META                  referral code -> owning tenant
  *   REVIEW#<id>          META                  a review (GSI1: REVIEWS#<status> / <sortKey>)
@@ -380,6 +381,43 @@ export async function listAllReferrals(limit = 200): Promise<Referral[]> {
     }),
   );
   return (out.Items ?? []) as Referral[];
+}
+
+// ─── Why sellers left (one answer per tenant; a later answer replaces it) ───
+
+export interface LeaveFeedback {
+  tenantId: string;
+  reason: string;
+  comment?: string | undefined;
+  at: string;
+}
+
+export async function saveFeedback(f: LeaveFeedback): Promise<void> {
+  await db().send(
+    new PutCommand({
+      TableName: config.table,
+      Item: { PK: tenantPK(f.tenantId), SK: 'FEEDBACK', ...f, GSI1PK: 'FEEDBACK', GSI1SK: f.at },
+    }),
+  );
+}
+
+export async function listFeedback(limit = 200): Promise<LeaveFeedback[]> {
+  const out = await db().send(
+    new QueryCommand({
+      TableName: config.table,
+      IndexName: 'GSI1',
+      KeyConditionExpression: 'GSI1PK = :pk',
+      ExpressionAttributeValues: { ':pk': 'FEEDBACK' },
+      ScanIndexForward: false,
+      Limit: limit,
+    }),
+  );
+  return (out.Items ?? []).map((i) => ({
+    tenantId: String(i['tenantId']),
+    reason: String(i['reason']),
+    ...(typeof i['comment'] === 'string' ? { comment: i['comment'] } : {}),
+    at: String(i['at']),
+  }));
 }
 
 // ─── Reviews ─────────────────────────────────────────────────────────────────

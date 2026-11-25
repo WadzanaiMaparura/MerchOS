@@ -25,6 +25,8 @@ import {
   markSubscribed,
   getTrialUsage,
   PlanLimitReachedError,
+  PlanPausedError,
+  effectiveStatus,
   monthKey,
   monthCounterSK,
   monthProductSK,
@@ -124,7 +126,7 @@ describe('reserveProductSlot', () => {
     expect(counter.Update.UpdateExpression).toBe('ADD #used :one');
     // The cap is checked INSIDE the write, which is what makes concurrent creates safe.
     expect(counter.Update.ConditionExpression).toBe(
-      '(#status = :active OR (#status = :subscribed AND #until <= :now)) AND (attribute_not_exists(#used) OR #used < #limit)',
+      '#status = :active AND (attribute_not_exists(#used) OR #used < #limit)',
     );
     expect(marker.Put.Item).toMatchObject({ PK: 'TENANT#tenant-1', SK: trialProductSK('p1'), productId: 'p1' });
     expect(marker.Put.ConditionExpression).toBe('attribute_not_exists(SK)');
@@ -317,14 +319,40 @@ describe('subscriptions', () => {
   const future = new Date(Date.now() + 86_400_000).toISOString();
   const past = new Date(Date.now() - 86_400_000).toISOString();
 
-  it('a paid-up subscription is unlimited; a lapsed one is capped like the trial', async () => {
+  const daysAgo = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString();
+
+  it('a paid-up subscription is unlimited, and still is during the 3-day grace period', async () => {
     get.mockResolvedValue(entitlement({ status: 'subscribed', subscribedUntil: future }));
     expect(await reserveProductSlot(T, 'p1', ON)).toBe('unlimited');
 
-    get.mockResolvedValue(entitlement({ status: 'subscribed', subscribedUntil: past, productsUsed: 15 }));
-    transactWrite.mockRejectedValue(cancelled('ConditionalCheckFailed', 'None'));
-    await expect(reserveProductSlot(T, 'p1', ON)).rejects.toBeInstanceOf(TrialLimitReachedError);
-    await expect(assertCanGenerate(T, undefined, ON)).rejects.toBeInstanceOf(TrialLimitReachedError);
+    get.mockResolvedValue(entitlement({ status: 'subscribed', subscribedUntil: past })); // 1 day ago: grace
+    expect(await reserveProductSlot(T, 'p1', ON)).toBe('unlimited');
+    await expect(assertCanGenerate(T, 'p1', ON)).resolves.toBeUndefined();
+    expect(transactWrite).not.toHaveBeenCalled();
+  });
+
+  it('after the grace period the plan is paused: no new products, no new listings, and no free trial again', async () => {
+    get.mockResolvedValue(entitlement({ status: 'subscribed', subscribedUntil: daysAgo(4), productsUsed: 2 }));
+    const err = await reserveProductSlot(T, 'p1', ON).catch((e) => e);
+    expect(err).toBeInstanceOf(PlanPausedError);
+    expect(err.code).toBe('PLAN_PAUSED');
+    expect(err.status).toBe(402);
+    expect(isTrialError(err)).toBe(true);
+    await expect(assertCanGenerate(T, 'p1', ON)).rejects.toBeInstanceOf(PlanPausedError);
+    await expect(assertCanGenerate(T, undefined, ON)).rejects.toBeInstanceOf(PlanPausedError);
+    // The unused trial slots are not handed out again.
+    expect(transactWrite).not.toHaveBeenCalled();
+    expect(await reserveProductSlots(T, ['a', 'b'], ON)).toEqual({ allowed: [], blocked: ['a', 'b'], reason: 'PLAN_PAUSED' });
+  });
+
+  it('effectiveStatus: paid, grace, then lapsed; exempt and trial unchanged', () => {
+    const e = (over: Record<string, unknown>) => ({ status: 'subscribed', productsUsed: 0, productLimit: 15, ...over }) as never;
+    expect(effectiveStatus(e({ subscribedUntil: future }))).toBe('subscribed');
+    expect(effectiveStatus(e({ subscribedUntil: daysAgo(2.9) }))).toBe('subscribed');
+    expect(effectiveStatus(e({ subscribedUntil: daysAgo(3.01) }))).toBe('lapsed');
+    expect(effectiveStatus(e({ subscribedUntil: undefined }))).toBe('subscribed');
+    expect(effectiveStatus(e({ status: 'exempt', subscribedUntil: daysAgo(90) }))).toBe('exempt');
+    expect(effectiveStatus(e({ status: 'active' }))).toBe('active');
   });
 
   it('bulk import by a subscribed seller costs one read, not one per product', async () => {
@@ -370,9 +398,9 @@ describe('getTrialUsage', () => {
     get.mockResolvedValue(entitlement({ productsUsed: 17 }));
     expect(await getTrialUsage(T, ON)).toMatchObject({ status: 'trial', productsUsed: 17, remaining: 0 });
   });
-  it('a lapsed subscription reads as the trial', async () => {
+  it('a lapsed subscription reads as paused', async () => {
     get.mockResolvedValue(entitlement({ status: 'subscribed', subscribedUntil: '2000-01-01T00:00:00.000Z', productsUsed: 4 }));
-    expect(await getTrialUsage(T, ON)).toMatchObject({ status: 'trial', remaining: 11 });
+    expect(await getTrialUsage(T, ON)).toMatchObject({ status: 'paused' });
   });
 });
 

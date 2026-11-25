@@ -52,6 +52,8 @@ export type {
   PlanCatalogueEntry,
   InvoiceStatus,
   InvoiceSummary,
+  BillingStage,
+  BillingAccountState,
 } from './billing';
 
 // Export DTOs

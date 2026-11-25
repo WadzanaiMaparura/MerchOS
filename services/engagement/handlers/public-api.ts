@@ -5,8 +5,9 @@
  *   GET  /reviews/invite?t=    who a review link is for (prefills the form)
  *   POST /reviews              leave the one review a tenant may leave (goes to PENDING)
  *   POST /unsubscribe?t=       stop marketing emails (page button, or RFC 8058 one-click)
+ *   POST /feedback             why a seller left (the day-60 email), one answer per seller
  *
- * POST /reviews also requires one of our own origins; one-click unsubscribe is
+ * POST /reviews and /feedback also require one of our own origins; one-click unsubscribe is
  * posted by mail providers (no Origin), so it relies on the token alone.
  */
 
@@ -29,7 +30,8 @@ import {
   type HttpResult,
 } from '../lib/http';
 import { sendEmail } from '../lib/mailer';
-import { createReview, hasReviewed, listReviews, setMarketingOptOut, withinRateLimit } from '../lib/store';
+import { LEAVE_REASONS, feedbackAlert, type LeaveReason } from '../lib/billing-templates';
+import { createReview, hasReviewed, listReviews, saveFeedback, setMarketingOptOut, withinRateLimit } from '../lib/store';
 import { reviewAlert } from '../lib/templates';
 import { verifyToken, type TokenPurpose } from '../lib/tokens';
 
@@ -129,6 +131,40 @@ async function submit(event: APIGatewayProxyEventV2): Promise<HttpResult> {
   return json(201, { reviewId: review.reviewId, status: review.status });
 }
 
+const feedbackSchema = z.object({
+  token: z.string().min(10).max(200),
+  reason: z.enum(LEAVE_REASONS.map(([id]) => id) as [LeaveReason, ...LeaveReason[]]),
+  comment: z.string().trim().max(1000).optional(),
+});
+
+/** "Why did you leave?" (the day-60 email). One answer per seller; a later one replaces it. */
+async function feedback(event: APIGatewayProxyEventV2): Promise<HttpResult> {
+  if (!config.sellerOrigins.includes(header(event, 'origin') ?? '')) return forbidden('Not allowed');
+  if (!(await withinRateLimit('feedback', sourceIp(event), 10, 3600))) {
+    return tooMany('Too many attempts. Please try again later.');
+  }
+  const parsed = feedbackSchema.safeParse(readJson(event));
+  if (!parsed.success) return badRequest(firstIssue(parsed.error));
+  const tenant = await tokenTenant('feedback', parsed.data.token);
+  if (typeof tenant !== 'string') return tenant;
+  const profile = await ensureProfile(tenant);
+  if (!profile) return notFound('This account no longer exists.');
+
+  const comment = parsed.data.comment || undefined;
+  await saveFeedback({ tenantId: tenant, reason: parsed.data.reason, ...(comment ? { comment } : {}), at: new Date().toISOString() });
+  try {
+    const label = LEAVE_REASONS.find(([id]) => id === parsed.data.reason)?.[1] ?? parsed.data.reason;
+    await sendEmail({
+      to: config.supportEmail,
+      ...feedbackAlert({ adminUrl: config.adminBaseUrl, reason: label, comment, businessName: profile.businessName, email: profile.email }),
+    });
+  } catch (error) {
+    console.error('Feedback alert not sent', { error: (error as Error).message });
+  }
+  console.info('Leave feedback received', { reason: parsed.data.reason });
+  return json(201, { saved: true });
+}
+
 async function unsubscribe(event: APIGatewayProxyEventV2): Promise<HttpResult> {
   let token = event.queryStringParameters?.['t'];
   if (!token) {
@@ -154,6 +190,8 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<HttpResult
         return await submit(event);
       case 'POST /unsubscribe':
         return await unsubscribe(event);
+      case 'POST /feedback':
+        return await feedback(event);
       default:
         return notFound();
     }

@@ -435,6 +435,7 @@ export async function persistProducts(
   const allowedIds = new Set(gate.allowed);
   const allowedProducts = resolved.filter((r) => allowedIds.has(r.resolvedId));
   const blockedByTrial = resolved.length - allowedProducts.length;
+  const blockedWhy = blockedReasonText(gate.reason);
 
   const productItems: Record<string, unknown>[] = allowedProducts.map(
     ({ record, importMetadata, resolvedId }) =>
@@ -489,7 +490,7 @@ export async function persistProducts(
     duplicates: 0,
     validationFailed: 0,
     ...params.resultCounts,
-    ...(blockedByTrial > 0 ? { blockedByTrial } : {}),
+    ...(blockedByTrial > 0 ? { blockedByTrial, ...(gate.reason ? { blockedReason: gate.reason } : {}) } : {}),
   };
 
   // ---------------------------------------------------------------------------
@@ -512,7 +513,7 @@ export async function persistProducts(
       currentStep: failureError
         ? `Completed with errors — ${failed} record(s) failed`
         : blockedByTrial > 0
-          ? `Completed: ${persisted} imported, ${blockedByTrial} not imported because the free trial limit was reached`
+          ? `Completed: ${persisted} imported, ${blockedByTrial} not imported because ${blockedWhy}`
           : 'Completed',
     },
   });
@@ -537,4 +538,16 @@ export async function persistProducts(
     failureError,
     jobResults,
   };
+}
+
+/** Seller-facing reason in the import progress text ("... not imported because ..."). */
+function blockedReasonText(reason: string | undefined): string {
+  switch (reason) {
+    case 'PLAN_PAUSED':
+      return 'your plan is paused';
+    case 'PLAN_LIMIT_REACHED':
+      return "this month's plan allowance is used up";
+    default:
+      return 'the free trial limit was reached';
+  }
 }

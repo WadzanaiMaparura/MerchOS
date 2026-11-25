@@ -30,8 +30,9 @@
  *    with the PayFast card-verification work); until then creation is refused.
  *
  * SUBSCRIPTIONS: billing calls markSubscribed() when a payment lands, recording
- * `subscribedUntil` (the paid period end). A subscription past that date counts
- * as the trial again, so a lapsed seller is capped without any cancellation hook.
+ * `subscribedUntil` (the paid period end). Up to GRACE_DAYS past that date it
+ * still counts as paid; after that the plan is paused (PlanPausedError) without
+ * any cancellation hook. See billing-stage.ts for the full cycle.
  *
  * COUNTING RULES
  *  - A slot is reserved atomically (counter bump + marker, one transaction) with
@@ -42,6 +43,7 @@
  */
 import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import { createTenantDynamoClient, tenantPK } from "../utils/dynamo-client";
+import { GRACE_DAYS } from "./billing-stage";
 
 export const TRIAL_PRODUCT_LIMIT = 15;
 export const ENTITLEMENT_SK = "ENTITLEMENT#trial";
@@ -75,13 +77,20 @@ export const monthCounterSK = (yyyyMM: string): string => `ENTITLEMENT#month#${y
 export const monthProductSK = (yyyyMM: string, productId: string): string =>
   `ENTITLEMENT#month#${yyyyMM}#PRODUCT#${productId}`;
 
+/** What applies right now: the stored status, or 'lapsed' for a paid plan that has run out. */
+export type EffectiveStatus = EntitlementStatus | "lapsed";
+
 /**
- * The status that applies right now: a subscription whose paid period has
- * ended is treated as the trial again ('active').
+ * The status that applies right now (see billing-stage.ts):
+ *  - a paid period that ended less than GRACE_DAYS ago still counts as paid
+ *  - after that the plan is 'lapsed' (paused, then closed): no new products and
+ *    no new listings until the seller pays again. A lapsed seller does NOT fall
+ *    back to the free trial (that would hand out 15 more free products).
  */
-export function effectiveStatus(e: Entitlement, now: Date = new Date()): EntitlementStatus {
-  if (e.status === "subscribed" && e.subscribedUntil && e.subscribedUntil <= now.toISOString()) {
-    return "active";
+export function effectiveStatus(e: Entitlement, now: Date = new Date()): EffectiveStatus {
+  if (e.status === "subscribed" && e.subscribedUntil) {
+    const until = Date.parse(e.subscribedUntil);
+    if (!Number.isNaN(until) && until + GRACE_DAYS * 24 * 60 * 60 * 1000 <= now.getTime()) return "lapsed";
   }
   return e.status;
 }
@@ -123,14 +132,27 @@ export class PlanLimitReachedError extends Error {
   }
 }
 
-export type TrialError = TrialNotActivatedError | TrialLimitReachedError | PlanLimitReachedError;
+/** The paid plan ran out more than GRACE_DAYS ago: paused until the seller pays again. */
+export class PlanPausedError extends Error {
+  readonly code = "PLAN_PAUSED";
+  readonly status = 402;
+  constructor() {
+    super(
+      "Your plan is paused because the last payment was not made. Your products are safe. Pay on the Billing page to add products and write listings again.",
+    );
+    this.name = "PlanPausedError";
+  }
+}
+
+export type TrialError = TrialNotActivatedError | TrialLimitReachedError | PlanLimitReachedError | PlanPausedError;
 
 /** True for every entitlement refusal (all map to HTTP 402 with their code). */
 export function isTrialError(error: unknown): error is TrialError {
   return (
     error instanceof TrialNotActivatedError ||
     error instanceof TrialLimitReachedError ||
-    error instanceof PlanLimitReachedError
+    error instanceof PlanLimitReachedError ||
+    error instanceof PlanPausedError
   );
 }
 
@@ -342,7 +364,8 @@ async function ensureEntitlement(
 export interface TrialUsage {
   enforced: boolean;
   /** 'not_started' = no product created yet (the trial starts with the first one). */
-  status: "not_started" | "trial" | "subscribed" | "exempt";
+  /** 'paused' = a paid plan ran out (past the grace period). */
+  status: "not_started" | "trial" | "subscribed" | "exempt" | "paused";
   /** What productsUsed/productLimit count: the one-off trial, or this calendar month. */
   period: "trial" | "month";
   productsUsed: number;
@@ -375,7 +398,15 @@ export async function getTrialUsage(
   }
   return {
     enforced,
-    status: !e ? "not_started" : s === "active" ? "trial" : s === "subscribed" ? "subscribed" : "exempt",
+    status: !e
+      ? "not_started"
+      : s === "active"
+        ? "trial"
+        : s === "subscribed"
+          ? "subscribed"
+          : s === "lapsed"
+            ? "paused"
+            : "exempt",
     period,
     productsUsed,
     productLimit,
@@ -501,6 +532,7 @@ export async function reserveProductSlot(
   const entitlement = await ensureEntitlement(tenantId, options);
   if (!entitlement) throw new TrialNotActivatedError();
   const status = effectiveStatus(entitlement);
+  if (status === "lapsed") throw new PlanPausedError();
   if (status === "subscribed") {
     // Paid plans sell a number of NEW products per month.
     return entitlement.monthlyProductLimit !== undefined
@@ -521,20 +553,17 @@ export async function reserveProductSlot(
               Key: { PK: pk, SK: ENTITLEMENT_SK },
               UpdateExpression: "ADD #used :one",
               // The cap is enforced IN the write: two concurrent creates cannot both pass.
-              // A lapsed subscription (paid period over) is capped like the trial.
+              // Only trial sellers use this counter (a lapsed plan is refused above).
               ConditionExpression:
-                "(#status = :active OR (#status = :subscribed AND #until <= :now)) AND (attribute_not_exists(#used) OR #used < #limit)",
+                "#status = :active AND (attribute_not_exists(#used) OR #used < #limit)",
               ExpressionAttributeNames: {
                 "#used": "productsUsed",
                 "#status": "status",
                 "#limit": "productLimit",
-                "#until": "subscribedUntil",
               },
               ExpressionAttributeValues: {
                 ":one": 1,
                 ":active": "active",
-                ":subscribed": "subscribed",
-                ":now": new Date().toISOString(),
               },
             },
           },
@@ -569,6 +598,7 @@ export async function reserveProductSlot(
           // Subscribed between our read and write: count against the plan instead.
           return reserveMonthlySlot(tenantId, productId, fresh.monthlyProductLimit, options);
         }
+        if (fresh && effectiveStatus(fresh) === "lapsed") throw new PlanPausedError();
         if (fresh && effectiveStatus(fresh) !== "active") return "unlimited";
         throw new TrialLimitReachedError();
       }
@@ -581,7 +611,7 @@ export interface ReserveManyResult {
   allowed: string[];
   blocked: string[];
   /** Why the blocked ones were blocked (absent when none were). */
-  reason?: "TRIAL_LIMIT_REACHED" | "TRIAL_NOT_ACTIVATED" | "PLAN_LIMIT_REACHED";
+  reason?: "TRIAL_LIMIT_REACHED" | "TRIAL_NOT_ACTIVATED" | "PLAN_LIMIT_REACHED" | "PLAN_PAUSED";
 }
 
 /**
@@ -689,7 +719,10 @@ export async function assertCanGenerate(
   if (!isTrialEnforced(options)) return;
   const entitlement = await ensureEntitlement(tenantId, options);
   if (!entitlement) throw new TrialNotActivatedError();
-  if (effectiveStatus(entitlement) !== "active") return;
+  const status = effectiveStatus(entitlement);
+  // Paused: the seller can still edit by hand, but no new listings are written.
+  if (status === "lapsed") throw new PlanPausedError();
+  if (status !== "active") return;
 
   if (productId) {
     if (await isTrialProduct(tenantId, productId, tableFor(options))) return;

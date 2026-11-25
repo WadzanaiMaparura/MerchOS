@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 vi.mock('../../services/subscription-store', () => ({
   getCheckoutIntent: vi.fn(),
+  getSubscription: vi.fn(async () => null),
   upsertSubscription: vi.fn(),
   recordPayment: vi.fn(),
   getPayment: vi.fn(),
@@ -24,7 +25,7 @@ vi.mock('../../services/events', () => ({
   emitSubscriptionActivated: vi.fn(),
 }));
 
-import { handler, setPaymentProvider } from '../handlers/payfast-itn';
+import { handler, paidPeriod, setPaymentProvider } from '../handlers/payfast-itn';
 import * as events from '../../services/events';
 import { logger } from '../../../shared/middleware/logger';
 import * as store from '../../services/subscription-store';
@@ -75,6 +76,7 @@ beforeEach(() => {
   vi.mocked(store.getCheckoutIntent).mockResolvedValue(growthIntent as never);
   vi.mocked(store.recordPayment).mockResolvedValue(true);
   vi.mocked(store.getPayment).mockResolvedValue({ mPaymentId: 'pay-1', applied: false });
+  vi.mocked(store.getSubscription).mockResolvedValue(null);
 });
 
 describe('PayFast ITN: billing.subscription.activated', () => {
@@ -317,5 +319,86 @@ describe('PayFast ITN — idempotency and recovery', () => {
 
     await expect(handler(event)).rejects.toThrow('dynamo down');
     expect(store.markPaymentApplied).not.toHaveBeenCalled();
+  });
+});
+
+describe('PayFast ITN: which month a payment buys', () => {
+  beforeEach(() => {
+    vi.mocked(ledger.grantCredits).mockResolvedValue(undefined as never);
+  });
+  const sub = (over: Record<string, unknown> = {}) =>
+    ({
+      tenantId: 'tenant-1',
+      planId: 'growth',
+      status: 'active',
+      provider: 'payfast',
+      mPaymentId: 'pay-0',
+      currentPeriodStart: '2026-11-22T10:00:00.000Z',
+      currentPeriodEnd: '2026-12-22T10:00:00.000Z',
+      createdAt: '2026-11-22T10:00:00.000Z',
+      updatedAt: '2026-11-22T10:00:00.000Z',
+      ...over,
+    }) as never;
+
+  it('renewing the same plan early adds a month to the current end (no days lost)', () => {
+    const p = paidPeriod(sub(), 'growth', 'pay-1', new Date('2026-12-18T08:00:00.000Z'));
+    expect(p).toEqual({
+      start: '2026-12-22T10:00:00.000Z',
+      end: '2027-01-22T10:00:00.000Z',
+      currentPeriodStart: '2026-11-22T10:00:00.000Z',
+      previousPeriodEnd: '2026-12-22T10:00:00.000Z',
+    });
+  });
+
+  it('a different plan, or paying after the end, starts now', () => {
+    const now = new Date('2026-12-18T08:00:00.000Z');
+    expect(paidPeriod(sub(), 'professional', 'pay-1', now).start).toBe(now.toISOString());
+    const late = new Date('2027-02-01T08:00:00.000Z');
+    expect(paidPeriod(sub(), 'growth', 'pay-1', late)).toMatchObject({
+      start: late.toISOString(),
+      end: '2027-03-01T08:00:00.000Z',
+      previousPeriodEnd: '2026-12-22T10:00:00.000Z',
+    });
+    expect(paidPeriod(null, 'growth', 'pay-1', now)).toEqual({
+      start: now.toISOString(),
+      end: '2027-01-18T08:00:00.000Z',
+      currentPeriodStart: now.toISOString(),
+    });
+  });
+
+  it('a resumed ITN for the same payment never adds a second month', () => {
+    const applied = sub({ mPaymentId: 'pay-1', currentPeriodEnd: '2027-01-22T10:00:00.000Z', previousPeriodEnd: '2026-12-22T10:00:00.000Z' });
+    expect(paidPeriod(applied, 'growth', 'pay-1', new Date('2026-12-18T08:05:00.000Z'))).toMatchObject({
+      end: '2027-01-22T10:00:00.000Z',
+      previousPeriodEnd: '2026-12-22T10:00:00.000Z',
+    });
+  });
+
+  it('the handler extends the subscription, invoice and paid-until, and announces the previous end', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-12-18T08:00:00.000Z'));
+    try {
+      vi.mocked(store.getSubscription).mockResolvedValue(sub());
+      expect(await body()).toBe('ok');
+      expect(store.upsertSubscription).toHaveBeenCalledWith(
+        'tenant-1',
+        expect.objectContaining({ currentPeriodEnd: '2027-01-22T10:00:00.000Z', previousPeriodEnd: '2026-12-22T10:00:00.000Z' }),
+      );
+      expect(store.upsertInvoice).toHaveBeenCalledWith(
+        'tenant-1',
+        expect.objectContaining({ periodStart: '2026-12-22T10:00:00.000Z', periodEnd: '2027-01-22T10:00:00.000Z' }),
+      );
+      expect(events.emitSubscriptionActivated).toHaveBeenCalledWith(
+        expect.objectContaining({ periodEnd: '2027-01-22T10:00:00.000Z', previousPeriodEnd: '2026-12-22T10:00:00.000Z' }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('records that the one-time comeback discount was used', async () => {
+    vi.mocked(store.getCheckoutIntent).mockResolvedValue({ ...growthIntent, offer: 'comeback' } as never);
+    expect(await body()).toBe('ok');
+    expect(store.upsertSubscription).toHaveBeenCalledWith('tenant-1', expect.objectContaining({ comebackUsedAt: expect.any(String) }));
   });
 });

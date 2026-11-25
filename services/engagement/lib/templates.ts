@@ -99,13 +99,22 @@ export interface SubscriptionWelcomeInput {
   monthlyProducts: number | null;
   /** Products already in the account from the trial. */
   existingProducts: number;
-  /** Day of the month the allowance resets and the plan renews (1-31). */
-  billingDay: number;
+  /** End of the month just paid for (ISO). */
+  paidUntil: string;
+}
+
+/** "22 December 2026" in South African time. */
+export function longDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-ZA', {
+    timeZone: 'Africa/Johannesburg',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
 }
 
 export function subscriptionWelcome(i: SubscriptionWelcomeInput): RenderedEmail {
   const allowance = i.monthlyProducts === null ? null : `${formatNumber(i.monthlyProducts)} new products`;
-  const day = `the ${ordinal(i.billingDay)} of each month${i.billingDay > 28 ? ' (or the last day of shorter months)' : ''}`;
   const kept =
     i.existingProducts === 1
       ? 'Your trial product and its listing are still in your account, so you can carry on where you left off.'
@@ -127,9 +136,9 @@ export function subscriptionWelcome(i: SubscriptionWelcomeInput): RenderedEmail 
     (kept ? para(kept) : '') +
     para('Good to know:') +
     bullets([
-      ...(allowance ? [`Your monthly allowance of ${allowance} starts today and resets on ${day}.`] : []),
-      `Your billing date is ${day}. Invoices are in your dashboard under Billing.`,
-      'You can change or cancel your plan at any time from Billing.',
+      ...(allowance ? [`Your allowance of ${allowance} starts today and resets on the 1st of each month.`] : []),
+      `Your plan is paid until <b>${escapeHtml(longDate(i.paidUntil))}</b>. We will email you a week before, and you pay for the next month from Billing. We never charge you automatically.`,
+      'Invoices are in your dashboard under Billing, where you can also change your plan at any time.',
     ]) +
     button('Go to my dashboard', `${i.siteUrl}/dashboard`);
   return render('Thank you for subscribing to MerchOS', `Your ${i.planName} plan is now active.`, body);

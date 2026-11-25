@@ -24,8 +24,9 @@ import { logger } from '../../../shared/middleware/logger';
 import { getPlan } from '../../config/plans';
 import { PayFastProvider, loadPayFastConfig } from '../../providers/payfast';
 import type { PaymentProvider } from '../../providers/payment-provider';
-import { createCheckoutIntent } from '../../services/subscription-store';
-import { resolveVoucher } from '../../services/vouchers';
+import { createCheckoutIntent, getSubscription } from '../../services/subscription-store';
+import { percentOff, resolveVoucher } from '../../services/vouchers';
+import { comebackOffer, isBillingLifecycleOn } from '../../../shared/entitlements/billing-stage';
 import { changePlanSchema } from '../schemas';
 import { mapErrorToResponse, ApiErrors } from '../error-mapper';
 
@@ -154,7 +155,15 @@ async function baseHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayPro
     const pricing = parsed.data.voucherCode
       ? await resolveVoucher(parsed.data.voucherCode, parsed.data.planId, plan.priceZARCents)
       : undefined;
-    const chargeCents = pricing?.finalCents ?? plan.priceZARCents;
+    // Win-back: 50% off the first month back, applied automatically in the 14
+    // days after the day-90 email, once per seller. A voucher typed in wins.
+    let comeback: { discountCents: number; finalCents: number } | undefined;
+    if (!pricing && isBillingLifecycleOn()) {
+      const current = await getSubscription(tenantId);
+      const offer = comebackOffer(current?.currentPeriodEnd, current?.comebackUsedAt);
+      if (offer) comeback = percentOff(plan.priceZARCents, offer.percentOff);
+    }
+    const chargeCents = pricing?.finalCents ?? comeback?.finalCents ?? plan.priceZARCents;
 
     // The ITN notify URL is derived from the API's own domain at request time
     // (not an env var) because wiring the API URL into the Lambda's environment
@@ -187,6 +196,9 @@ async function baseHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayPro
             listPriceCents: pricing.listPriceCents,
             discountCents: pricing.discountCents,
           }
+        : {}),
+      ...(comeback
+        ? { listPriceCents: plan.priceZARCents, discountCents: comeback.discountCents, offer: 'comeback' as const }
         : {}),
     });
 

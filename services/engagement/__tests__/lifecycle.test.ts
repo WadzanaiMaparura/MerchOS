@@ -51,8 +51,13 @@ vi.mock('../lib/schedule', async () => {
     scheduleStep: vi.fn(async (e: { step: 'tips'; tenantId: string; referrerTenantId?: string; attempt?: number }, from: Date = new Date()) => {
       schedules.push({ ...e, at: actual.dueDate(e.step, from, e.attempt ?? 0).toISOString() });
     }),
+    scheduleBillingSteps: vi.fn(async (tenantId: string, paidUntil: string, planId: string) => {
+      billingBooked.push({ tenantId, paidUntil, planId });
+      return [];
+    }),
   };
 });
+const billingBooked = vi.hoisted(() => [] as Array<{ tenantId: string; paidUntil: string; planId: string }>);
 
 import { _setTokenSecret } from '../lib/config';
 import { sendEmail } from '../lib/mailer';
@@ -78,6 +83,7 @@ beforeEach(() => {
   mem.reset();
   sent.length = 0;
   schedules.length = 0;
+  billingBooked.length = 0;
   accounts.users.clear();
   accounts.products.clear();
   accounts.subscribed.clear();
@@ -139,18 +145,24 @@ describe('subscriber track (first payment)', () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]!.subject).toBe('Thank you for subscribing to MerchOS');
     expect(sent[0]!.html).toContain('Your 12 trial products');
-    expect(sent[0]!.html).toContain('the 22nd of each month');
+    expect(sent[0]!.html).toContain('resets on the 1st of each month');
+    expect(sent[0]!.html).toContain('paid until <b>22 December 2026</b>');
+    expect(sent[0]!.html).toContain('We never charge you automatically');
     expect(schedules).toEqual([
       { step: 'review', tenantId: TENANT, at: '2026-12-22T07:00:00.000Z' },
       { step: 'referral', tenantId: TENANT, at: '2026-12-27T07:00:00.000Z' },
     ]);
+    expect(billingBooked).toEqual([{ tenantId: TENANT, paidUntil: '2026-12-22T10:00:00.000Z', planId: 'growth' }]);
   });
 
-  it('renewals send nothing', async () => {
+  it('renewals send nothing, but book that period\'s payment-cycle emails', async () => {
     await onSubscriptionActivated(activated());
-    await onSubscriptionActivated(activated({ mPaymentId: 'pay-2', periodStart: '2026-12-22T10:00:00.000Z' }));
+    await onSubscriptionActivated(
+      activated({ mPaymentId: 'pay-2', periodStart: '2026-12-22T10:00:00.000Z', periodEnd: '2027-01-22T10:00:00.000Z', previousPeriodEnd: '2026-12-22T10:00:00.000Z' }),
+    );
     expect(sent).toHaveLength(1);
     expect(schedules).toHaveLength(2);
+    expect(billingBooked.map((b) => b.paidUntil)).toEqual(['2026-12-22T10:00:00.000Z', '2027-01-22T10:00:00.000Z']);
   });
 
   it('review request: only with 5+ products, once, with signed star and unsubscribe links', async () => {

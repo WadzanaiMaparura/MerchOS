@@ -73,6 +73,13 @@ function voucherUsePK(code: string): string {
   return `VOUCHERUSE#${code}`;
 }
 
+/** A percentage off a price, never below PayFast's minimum charge (comeback offer). */
+export function percentOff(listPriceCents: number, percent: number): { discountCents: number; finalCents: number } {
+  const discount = Math.floor((listPriceCents * percent) / 100);
+  const discountCents = Math.max(0, Math.min(discount, listPriceCents - PAYFAST_MIN_CHARGE_CENTS));
+  return { discountCents, finalCents: listPriceCents - discountCents };
+}
+
 /** Pure pricing + validity rules (no I/O). Throws VoucherError when unusable. */
 export function priceWithVoucher(
   voucher: VoucherRecord | null | undefined,

@@ -21,6 +21,8 @@ export interface BillingRow {
   since?: string;
   lastPayment?: { amountCents: number; at?: string; voucherCode?: string };
   status: BillingStatus;
+  /** Payment cycle: grace (up to 3 days late), paused (day 3 to 37), closed (day 37 on). */
+  stage?: 'none' | 'exempt' | 'paid' | 'due_soon' | 'grace' | 'paused' | 'closed';
   problems: number;
 }
 

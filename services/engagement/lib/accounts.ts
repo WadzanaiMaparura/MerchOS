@@ -137,6 +137,23 @@ export async function countProducts(tenantId: string, cap = 10_000): Promise<num
   return Math.min(count, cap);
 }
 
+/** The paid status as billing recorded it (ENTITLEMENT#trial), for the payment-cycle emails. */
+export async function getPaidStatus(
+  tenantId: string,
+): Promise<{ status: string; subscribedUntil?: string | undefined } | null> {
+  const out = await db().send(
+    new GetCommand({
+      TableName: config.productsTable,
+      Key: { PK: `TENANT#${tenantId}`, SK: 'ENTITLEMENT#trial' },
+      ConsistentRead: true,
+    }),
+  );
+  const item = out.Item;
+  if (!item || typeof item['status'] !== 'string') return null;
+  const until = item['subscribedUntil'];
+  return { status: item['status'], subscribedUntil: typeof until === 'string' ? until : undefined };
+}
+
 /** True while the tenant has a paid period that has not ended. */
 export async function isSubscribedNow(tenantId: string, now: Date = new Date()): Promise<boolean> {
   const out = await db().send(

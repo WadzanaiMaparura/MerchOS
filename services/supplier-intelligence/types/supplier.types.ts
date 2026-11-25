@@ -96,8 +96,10 @@ export interface ImportJobResults {
   updated: number;
   duplicates: number;
   validationFailed: number;
-  /** Products not imported because the seller's free trial limit was reached (or not activated). */
+  /** Products not imported because of the seller's limits (free trial, plan allowance, or a paused plan). */
   blockedByTrial?: number;
+  /** Why they were not imported (the gate's error code). */
+  blockedReason?: 'TRIAL_LIMIT_REACHED' | 'TRIAL_NOT_ACTIVATED' | 'PLAN_LIMIT_REACHED' | 'PLAN_PAUSED';
 }
 
 /** An error entry recorded during import processing. */

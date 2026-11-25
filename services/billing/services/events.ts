@@ -21,6 +21,8 @@ export interface SubscriptionActivatedDetail {
   mPaymentId: string;
   periodStart: string;
   periodEnd: string;
+  /** Paid-until before this payment (absent on the first payment). */
+  previousPeriodEnd?: string;
 }
 
 let client: EventBridgeClient | undefined;

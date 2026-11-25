@@ -37,7 +37,7 @@ import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations
 import { Construct } from 'constructs';
 import * as path from 'path';
 import { adminDashboardOrigins, sellerDashboardOrigins } from './cors-origins';
-import { envSetting } from './env-config';
+import { envFlag, envSetting } from './env-config';
 
 export interface EngagementStackProps extends cdk.StackProps {
   environment: string;
@@ -215,6 +215,10 @@ export class EngagementStack extends cdk.Stack {
       PRODUCTS_TABLE: productsTableName,
       // rbacMiddleware rejects every token without this (INVALID_ISSUER).
       COGNITO_ISSUER: issuer,
+      // Payment reminders, pause/close notices and win-back emails. Booked at every
+      // payment regardless; each one checks this at send time, so switching it on
+      // later covers sellers who paid before.
+      BILLING_LIFECYCLE: envFlag(this, env, 'billingLifecycle'),
       POWERTOOLS_SERVICE_NAME: 'engagement',
       LOG_LEVEL: env === 'production' ? 'WARN' : 'INFO',
     };
@@ -362,6 +366,7 @@ export class EngagementStack extends cdk.Stack {
       ['/reviews', HttpMethod.POST],
       ['/reviews/invite', HttpMethod.GET],
       ['/unsubscribe', HttpMethod.POST],
+      ['/feedback', HttpMethod.POST],
     ];
     for (const [routePath, method] of publicRoutes) {
       // No account needed: the signed link is the credential (checked in the handler).
@@ -387,6 +392,7 @@ export class EngagementStack extends cdk.Stack {
       ['/admin/reviews/{reviewId}', [HttpMethod.DELETE]],
       ['/admin/reviews/{reviewId}/approve', [HttpMethod.POST]],
       ['/admin/reviews/{reviewId}/reject', [HttpMethod.POST]],
+      ['/admin/feedback', [HttpMethod.GET]],
     ] as Array<[string, HttpMethod[]]>) {
       this.httpApi.addRoutes({ path: routePath, methods, integration: reviewsIntegration, authorizer: adminAuthorizer });
     }

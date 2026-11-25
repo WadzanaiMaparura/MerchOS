@@ -73,4 +73,15 @@ export const engagementApi = {
   referrals: async () => (await call<{ referrals: AdminReferral[] }>('/admin/referrals')).referrals,
   markApplied: (referrer: string, referred: string) =>
     call(`/admin/referrals/${encodeURIComponent(referrer)}/${encodeURIComponent(referred)}/applied`, { method: 'POST' }),
+  feedback: async () => (await call<{ feedback: LeaveFeedback[] }>('/admin/feedback')).feedback,
 };
+
+/** A seller's answer to the "why did you leave?" email. */
+export interface LeaveFeedback {
+  tenantId: string;
+  reason: string;
+  label: string;
+  comment?: string;
+  at: string;
+  businessName: string;
+}
