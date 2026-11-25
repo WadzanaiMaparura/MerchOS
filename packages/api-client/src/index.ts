@@ -40,6 +40,7 @@ export {
   useBilling,
   useInvoices,
   usePlanChange,
+  useCancelAutoBilling,
   useBillingProfile,
   useUpdateBillingProfile,
   useInvoicePdf,

@@ -51,6 +51,9 @@ export interface PricingConfig {
   faq: FAQItem[];
 }
 
+/** Plans renew by card automatically (PayFast subscriptions). Build-time switch. */
+export const CARD_BILLING = process.env.NEXT_PUBLIC_CARD_SUBSCRIPTIONS === 'true';
+
 /**
  * Formats a price in ZAR cents to a display string.
  * Example: 49900 → "R499" | 129900 → "R1 299"
@@ -226,9 +229,19 @@ export const pricingConfig: PricingConfig = {
     },
     {
       question: 'What happens when my 15 free products are used?',
-      answer:
-        'You keep them, and you can still edit and correct them. To add new products or generate new content, choose a plan. We never charge you automatically.',
+      answer: CARD_BILLING
+        ? 'You keep them, and you can still edit and correct them. To add new products or generate new content, choose a plan. Nothing is charged until you subscribe.'
+        : 'You keep them, and you can still edit and correct them. To add new products or generate new content, choose a plan. We never charge you automatically.',
     },
+    ...(CARD_BILLING
+      ? [
+          {
+            question: 'How do I pay?',
+            answer:
+              'By card, through PayFast. Your plan renews automatically each month and your card is charged on the same date. We email you a week before. You can change your plan or stop automatic billing at any time from Billing. If a card payment does not go through, you can update your card or pay that month by EFT.',
+          },
+        ]
+      : []),
     {
       question: 'What counts as a new product?',
       answer:
@@ -260,7 +273,9 @@ export const pricingConfig: PricingConfig = {
     {
       question: 'Can I change or cancel my plan?',
       answer:
-        'Yes. Upgrade any time and the new limit applies straight away. Cancel any time; you keep access until the end of the month you have paid for.',
+        CARD_BILLING
+          ? 'Yes. Upgrade any time: the new limit applies straight away and you pay only the difference for the rest of the month. A downgrade starts on your next billing date. Cancel any time; you keep access until the end of the month you have paid for.'
+          : 'Yes. Upgrade any time and the new limit applies straight away. Cancel any time; you keep access until the end of the month you have paid for.',
     },
     {
       question: 'Which marketplaces do you support?',

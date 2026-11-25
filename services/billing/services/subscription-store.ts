@@ -46,8 +46,64 @@ export interface SubscriptionRecord {
   previousPeriodEnd?: string;
   /** When the one-time comeback discount was used (never offered again). */
   comebackUsedAt?: string;
+  /** Card subscription: charged automatically every month while true. */
+  autoRenew?: boolean;
+  /** PayFast subscription token (card on file). Never shown in logs. */
+  payfastToken?: string;
+  /** Downgrade waiting for the next charge date. */
+  nextPlanId?: PlanId;
+  /** The last automatic charge failed (cleared by the next successful one). */
+  lastChargeFailedAt?: string;
+  /** Automatic billing was cancelled (by the seller, or at PayFast). */
+  cancelledAt?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Fields of the card subscription that can be changed without a payment. */
+export async function updateCardSubscription(
+  tenantId: string,
+  fields: {
+    autoRenew?: boolean;
+    nextPlanId?: PlanId | null;
+    lastChargeFailedAt?: string | null;
+    cancelledAt?: string | null;
+  },
+  /** Only apply when this is still the current card (a stale notification must not change a newer card). */
+  expectToken?: string,
+): Promise<boolean> {
+  const sets: string[] = ['#u = :now'];
+  const removes: string[] = [];
+  const names: Record<string, string> = { '#u': 'updatedAt' };
+  const values: Record<string, unknown> = { ':now': new Date().toISOString() };
+  for (const [key, value] of Object.entries(fields)) {
+    if (value === undefined) continue;
+    names[`#${key}`] = key;
+    if (value === null) removes.push(`#${key}`);
+    else {
+      sets.push(`#${key} = :${key}`);
+      values[`:${key}`] = value;
+    }
+  }
+  if (expectToken) {
+    names['#tok'] = 'payfastToken';
+    values[':tok'] = expectToken;
+  }
+  const client = createTenantDynamoClient(tenantId);
+  try {
+    await client.update({
+      TableName: BILLING_TABLE,
+      Key: { PK: tenantPK(tenantId), SK: subscriptionSK() },
+      UpdateExpression: `SET ${sets.join(', ')}${removes.length ? ` REMOVE ${removes.join(', ')}` : ''}`,
+      ConditionExpression: expectToken ? 'attribute_exists(SK) AND #tok = :tok' : 'attribute_exists(SK)',
+      ExpressionAttributeNames: names,
+      ExpressionAttributeValues: values,
+    });
+    return true;
+  } catch (error) {
+    if ((error as { name?: string }).name === 'ConditionalCheckFailedException') return false;
+    throw error;
+  }
 }
 
 export interface UpsertSubscriptionInput {
@@ -61,6 +117,9 @@ export interface UpsertSubscriptionInput {
   currentPeriodEnd?: string;
   previousPeriodEnd?: string;
   comebackUsedAt?: string;
+  /** Card subscription fields; omitted = keep what is stored. */
+  autoRenew?: boolean;
+  payfastToken?: string;
 }
 
 /** Reads the tenant's current subscription, or null if none exists. */
@@ -87,6 +146,8 @@ export async function upsertSubscription(
   const now = new Date().toISOString();
   const existing = await getSubscription(tenantId);
   const comebackUsedAt = input.comebackUsedAt ?? existing?.comebackUsedAt;
+  const autoRenew = input.autoRenew ?? existing?.autoRenew;
+  const payfastToken = input.payfastToken ?? existing?.payfastToken;
 
   const record: SubscriptionRecord = {
     tenantId,
@@ -105,6 +166,12 @@ export async function upsertSubscription(
     ...(input.previousPeriodEnd !== undefined ? { previousPeriodEnd: input.previousPeriodEnd } : {}),
     // Once used, the comeback discount stays used.
     ...(comebackUsedAt ? { comebackUsedAt } : {}),
+    // The card on file carries over (an EFT payment does not remove it). A
+    // payment sets the plan, so a scheduled downgrade and a failed-charge
+    // marker are cleared.
+    ...(autoRenew !== undefined ? { autoRenew } : {}),
+    ...(payfastToken ? { payfastToken } : {}),
+    ...(existing?.cancelledAt && input.autoRenew !== true ? { cancelledAt: existing.cancelledAt } : {}),
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
@@ -209,6 +276,12 @@ export interface CheckoutIntent {
   discountCents?: number;
   /** The one-time comeback discount was applied (instead of a voucher). */
   offer?: 'comeback';
+  /** Card subscription: the monthly amount PayFast charges after the first payment. */
+  recurringAmountCents?: number;
+  /** Upgrade: the card subscription this one replaces (cancelled once paid). */
+  replacesToken?: string;
+  /** Upgrade: the unused part of the old month taken off the first charge. */
+  upgradeCreditCents?: number;
   createdAt: string;
 }
 
@@ -222,6 +295,9 @@ export async function createCheckoutIntent(
     listPriceCents?: number;
     discountCents?: number;
     offer?: 'comeback';
+    recurringAmountCents?: number;
+    replacesToken?: string;
+    upgradeCreditCents?: number;
   }
 ): Promise<CheckoutIntent> {
   const now = new Date();
@@ -234,6 +310,9 @@ export async function createCheckoutIntent(
     ...(input.listPriceCents !== undefined ? { listPriceCents: input.listPriceCents } : {}),
     ...(input.discountCents !== undefined ? { discountCents: input.discountCents } : {}),
     ...(input.offer ? { offer: input.offer } : {}),
+    ...(input.recurringAmountCents !== undefined ? { recurringAmountCents: input.recurringAmountCents } : {}),
+    ...(input.replacesToken ? { replacesToken: input.replacesToken } : {}),
+    ...(input.upgradeCreditCents ? { upgradeCreditCents: input.upgradeCreditCents } : {}),
     createdAt: now.toISOString(),
   };
   const client = createTenantDynamoClient(tenantId);
@@ -267,10 +346,13 @@ export async function getCheckoutIntent(
 // ---------------------------------------------------------------------------
 
 export interface RecordPaymentInput {
+  /** Our key for this payment: m_payment_id, or "R-<pf_payment_id>" for a monthly card charge. */
   mPaymentId: string;
   planId: PlanId;
   amountGrossCents?: number;
   paymentStatus?: string;
+  /** PayFast's id for this charge (card subscriptions). */
+  pfPaymentId?: string;
 }
 
 /**
@@ -300,6 +382,7 @@ export async function recordPayment(
           ? { amountGrossCents: input.amountGrossCents }
           : {}),
         ...(input.paymentStatus !== undefined ? { paymentStatus: input.paymentStatus } : {}),
+        ...(input.pfPaymentId ? { pfPaymentId: input.pfPaymentId } : {}),
         // Two-phase: the claim is written first with applied=false and flipped to
         // true only after every side effect (activation + credit grant) has
         // succeeded. A retry that finds applied=false RESUMES the work instead of
@@ -330,13 +413,13 @@ export async function recordPayment(
 export async function getPayment(
   tenantId: string,
   mPaymentId: string
-): Promise<{ mPaymentId: string; applied?: boolean } | null> {
+): Promise<{ mPaymentId: string; applied?: boolean; pfPaymentId?: string } | null> {
   const client = createTenantDynamoClient(tenantId);
   const res = await client.get({
     TableName: BILLING_TABLE,
     Key: { PK: tenantPK(tenantId), SK: paymentSK(mPaymentId) },
   });
-  return res.Item ? (res.Item as unknown as { mPaymentId: string; applied?: boolean }) : null;
+  return res.Item ? (res.Item as unknown as { mPaymentId: string; applied?: boolean; pfPaymentId?: string }) : null;
 }
 
 /** Marks a payment fully applied (activation + credits done). Idempotent. */

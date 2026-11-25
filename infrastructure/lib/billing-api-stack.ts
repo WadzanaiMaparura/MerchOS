@@ -83,6 +83,8 @@ export class BillingApiStack extends cdk.Stack {
     const checkoutEnabled = envFlag(this, env, 'checkoutEnabled');
     // Payment reminders, pause/close stages and the comeback offer (billing-stage.ts). Off until switched on.
     const billingLifecycle = envFlag(this, env, 'billingLifecycle');
+    // Automatic monthly card charges (PayFast subscriptions). Off until switched on.
+    const cardSubscriptions = envFlag(this, env, 'cardSubscriptions');
     // Where PayFast sends the buyer back to when the client sends no returnUrl.
     const appBaseUrl = envSetting(
       this,
@@ -218,6 +220,7 @@ export class BillingApiStack extends cdk.Stack {
       PAYFAST_MODE: payfastMode,
       CHECKOUT_ENABLED: checkoutEnabled,
       BILLING_LIFECYCLE: billingLifecycle,
+      CARD_SUBSCRIPTIONS: cardSubscriptions,
       APP_BASE_URL: appBaseUrl,
       // Where PayFast may return the buyer (change-plan refuses anything else).
       ALLOWED_RETURN_ORIGINS: sellerDashboardOrigins(env).join(','),
@@ -332,12 +335,21 @@ export class BillingApiStack extends cdk.Stack {
       [billingTableReadOnly, kmsPolicy]
     );
 
-    // change-plan writes the pending subscription intent and reads the PayFast secret.
+    // change-plan writes the pending subscription intent and reads the PayFast secret
+    // (it also changes the monthly amount at PayFast for a downgrade).
     const changePlanFn = createLambda('ChangePlan', path.join(handlersPath, 'change-plan.ts'), [
       billingTableAccess,
       kmsPolicy,
       payfastSecretRead,
     ]);
+
+    // Cancel automatic billing: calls PayFast's subscriptions API (secret) and
+    // clears the auto-renew flag on the entitlement (products table, one item).
+    const cancelSubscriptionFn = createLambda(
+      'CancelSubscription',
+      path.join(handlersPath, 'cancel-subscription.ts'),
+      [billingTableAccess, kmsPolicy, payfastSecretRead],
+    );
 
     // ITN activates subscriptions, records payments and grants credits.
     // The payment alarms need metric filters on the ITN log group at deploy time.
@@ -383,6 +395,15 @@ export class BillingApiStack extends cdk.Stack {
       }),
     );
     getBillingFn.addEnvironment('PRODUCTS_TABLE', productsTableName);
+    // Cancelling automatic billing clears the auto-renew flag (one UpdateItem).
+    cancelSubscriptionFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['dynamodb:UpdateItem'],
+        resources: [`arn:aws:dynamodb:${region}:${this.account}:table/${productsTableName}`],
+      }),
+    );
+    cancelSubscriptionFn.addEnvironment('PRODUCTS_TABLE', productsTableName);
     // billing.subscription.activated (welcome email, referral rewards). The bus is
     // Foundation's, named by convention so this stack takes no new dependency.
     const eventBusName = `merch-os-events-${env}`;
@@ -452,6 +473,13 @@ export class BillingApiStack extends cdk.Stack {
       path: '/billing/plan',
       methods: [HttpMethod.POST],
       integration: new HttpLambdaIntegration('ChangePlanIntegration', changePlanFn),
+      authorizer: jwtAuthorizer,
+    });
+
+    this.httpApi.addRoutes({
+      path: '/billing/subscription/cancel',
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration('CancelSubscriptionIntegration', cancelSubscriptionFn),
       authorizer: jwtAuthorizer,
     });
 
@@ -592,6 +620,9 @@ export class BillingApiStack extends cdk.Stack {
         'ITN missing tenant or payment id',
         // Paid, but the free-trial cap could not be lifted: unblock the seller by hand.
         'ITN trial entitlement not updated',
+        // Card subscriptions: an old card still charging after an upgrade, a
+        // charge on an unknown card, or a subscription paid without a token.
+        'ITN anomaly',
       ]),
       1,
       'A verified ITN did not match our records (amount, checkout or tenant). Possible tampering or a bug; the payment was not applied.'

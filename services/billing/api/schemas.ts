@@ -15,6 +15,11 @@ export const changePlanSchema = z
     voucherCode: z.string().trim().min(1).max(40).optional(),
     returnUrl: z.string().url().optional(),
     cancelUrl: z.string().url().optional(),
+    /**
+     * Pay this one month without saving a card (e.g. EFT after a card was
+     * declined). Only meaningful when card subscriptions are switched on.
+     */
+    payOnce: z.boolean().optional(),
   })
   .strict();
 

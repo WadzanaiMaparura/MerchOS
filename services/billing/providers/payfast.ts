@@ -93,7 +93,19 @@ const CHECKOUT_FIELD_ORDER = [
   // custom_str1 carries our tenantId. PayFast echoes it back on the ITN so the
   // webhook (which has no JWT) can locate the correct tenant partition.
   'custom_str1',
+  // Recurring billing (card subscriptions). PayFast's documented order puts
+  // these last. Blank for once-off payments, so they drop out of both the
+  // signature and the redirect.
+  'subscription_type',
+  'billing_date',
+  'recurring_amount',
+  'frequency',
+  'cycles',
 ] as const;
+
+/** PayFast frequency code for monthly billing; 0 cycles = until cancelled. */
+export const PAYFAST_MONTHLY = '3';
+export const PAYFAST_UNTIL_CANCELLED = '0';
 
 /** Shape of the JSON stored in the PayFast Secrets Manager secret. */
 interface PayFastSecretPayload {
@@ -279,6 +291,9 @@ export class PayFastProvider implements PaymentProvider {
 
     const mPaymentId = crypto.randomUUID();
     const amount = centsToDecimalString(req.amountCents ?? plan.priceZARCents);
+    if (req.recurring && !/^\d{4}-\d{2}-\d{2}$/.test(req.recurring.billingDate)) {
+      throw new Error('Recurring billing date must be YYYY-MM-DD');
+    }
 
     // Build the field map in the EXACT required order (see CHECKOUT_FIELD_ORDER).
     const values: Record<(typeof CHECKOUT_FIELD_ORDER)[number], string> = {
@@ -293,6 +308,12 @@ export class PayFastProvider implements PaymentProvider {
       // Empty string is skipped by both the signature and the querystring.
       email_address: req.email ?? '',
       custom_str1: req.tenantId,
+      // Card subscription fields (blank = once-off payment).
+      subscription_type: req.recurring ? '1' : '',
+      billing_date: req.recurring?.billingDate ?? '',
+      recurring_amount: req.recurring ? centsToDecimalString(req.recurring.recurringAmountCents) : '',
+      frequency: req.recurring ? PAYFAST_MONTHLY : '',
+      cycles: req.recurring ? PAYFAST_UNTIL_CANCELLED : '',
     };
 
     const orderedPairs = CHECKOUT_FIELD_ORDER.map(
@@ -383,6 +404,10 @@ export class PayFastProvider implements PaymentProvider {
     if (raw['m_payment_id'] !== undefined) result.mPaymentId = raw['m_payment_id'];
     if (amountGrossCents !== undefined) result.amountGrossCents = amountGrossCents;
     if (raw['payment_status'] !== undefined) result.paymentStatus = raw['payment_status'];
+    // Card subscriptions: the card token, and PayFast's own id for THIS charge
+    // (every monthly charge has a new one; m_payment_id stays the first one's).
+    if (raw['token']) result.token = raw['token'];
+    if (raw['pf_payment_id']) result.pfPaymentId = raw['pf_payment_id'];
     return result;
   }
 }

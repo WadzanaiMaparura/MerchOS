@@ -27,6 +27,28 @@ import type { PaymentProvider } from '../../providers/payment-provider';
 import { createCheckoutIntent, getSubscription } from '../../services/subscription-store';
 import { percentOff, resolveVoucher } from '../../services/vouchers';
 import { comebackOffer, isBillingLifecycleOn } from '../../../shared/entitlements/billing-stage';
+import { updateCardSubscription } from '../../services/subscription-store';
+import { firstRecurringDate, planChangeKind, upgradeQuote } from '../../services/card-billing';
+import {
+  PayFastSubscriptionsApi,
+  isCardSubscriptionsOn,
+  type SubscriptionsApi,
+} from '../../providers/payfast-subscriptions';
+import type { PayFastConfig } from '../../providers/payfast';
+
+let injectedSubscriptionsApi: SubscriptionsApi | undefined;
+/** Test seam: inject the PayFast subscriptions API. */
+export function setSubscriptionsApi(api: SubscriptionsApi | undefined): void {
+  injectedSubscriptionsApi = api;
+}
+const subscriptionsApi = (config: PayFastConfig): SubscriptionsApi =>
+  injectedSubscriptionsApi ?? new PayFastSubscriptionsApi(config);
+
+const respondJson = (statusCode: number, body: unknown): APIGatewayProxyResultV2 => ({
+  statusCode,
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body),
+});
 import { changePlanSchema } from '../schemas';
 import { mapErrorToResponse, ApiErrors } from '../error-mapper';
 
@@ -149,21 +171,101 @@ async function baseHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayPro
   }
 
   try {
+    const current = await getSubscription(tenantId);
+    const now = new Date();
+
+    // ── Card subscriptions (automatic monthly charges) ──────────────────────
+    // Card unless the seller asked to pay once (EFT after a declined card).
+    const card = isCardSubscriptionsOn() && parsed.data.payOnce !== true;
+    const onCard =
+      card &&
+      current?.status === 'active' &&
+      current.autoRenew === true &&
+      !!current.payfastToken &&
+      !!current.currentPeriodStart &&
+      !!current.currentPeriodEnd;
+    const currentPrice = current ? (getPlan(current.planId)?.priceZARCents ?? null) : null;
+    const kind = onCard
+      ? planChangeKind(
+          currentPrice !== null
+            ? {
+                planId: current!.planId,
+                priceCents: currentPrice,
+                periodStart: current!.currentPeriodStart!,
+                periodEnd: current!.currentPeriodEnd!,
+              }
+            : null,
+          parsed.data.planId,
+          plan.priceZARCents,
+          now,
+        )
+      : 'subscribe';
+
+    if (kind === 'same') {
+      return respondJson(409, {
+        error: { code: 'ALREADY_ON_PLAN', message: 'You are already on this plan. It renews automatically each month.' },
+      });
+    }
+
+    if (kind === 'downgrade') {
+      // No charge now: PayFast charges the lower price from the next date; the
+      // higher plan runs to the end of the month already paid for.
+      await subscriptionsApi(await loadPayFastConfig()).updateAmount(current!.payfastToken!, plan.priceZARCents);
+      await updateCardSubscription(tenantId, { nextPlanId: parsed.data.planId }, current!.payfastToken!);
+      logger.info('Downgrade scheduled', { tenantId, from: current!.planId, to: parsed.data.planId });
+      return respondJson(200, {
+        scheduled: true,
+        planId: parsed.data.planId,
+        effectiveAt: current!.currentPeriodEnd,
+        nextChargeCents: plan.priceZARCents,
+      });
+    }
+
+    // Upgrade top-up: new price minus the unused part of the current month.
+    const upgrade =
+      kind === 'upgrade' && currentPrice !== null
+        ? upgradeQuote(
+            {
+              planId: current!.planId,
+              priceCents: currentPrice,
+              periodStart: current!.currentPeriodStart!,
+              periodEnd: current!.currentPeriodEnd!,
+            },
+            plan.priceZARCents,
+            now,
+          )
+        : undefined;
+
     // Price the checkout on the server. A voucher (if any) is validated and
     // applied here; the resulting amount is what PayFast is asked to charge AND
-    // what the ITN is later verified against.
-    const pricing = parsed.data.voucherCode
-      ? await resolveVoucher(parsed.data.voucherCode, parsed.data.planId, plan.priceZARCents)
-      : undefined;
+    // what the ITN is later verified against. Vouchers and the comeback offer
+    // apply to a first payment, not to an upgrade top-up.
+    const pricing =
+      parsed.data.voucherCode && !upgrade
+        ? await resolveVoucher(parsed.data.voucherCode, parsed.data.planId, plan.priceZARCents)
+        : undefined;
     // Win-back: 50% off the first month back, applied automatically in the 14
     // days after the day-90 email, once per seller. A voucher typed in wins.
     let comeback: { discountCents: number; finalCents: number } | undefined;
-    if (!pricing && isBillingLifecycleOn()) {
-      const current = await getSubscription(tenantId);
+    if (!pricing && !upgrade && isBillingLifecycleOn()) {
       const offer = comebackOffer(current?.currentPeriodEnd, current?.comebackUsedAt);
       if (offer) comeback = percentOff(plan.priceZARCents, offer.percentOff);
     }
-    const chargeCents = pricing?.finalCents ?? comeback?.finalCents ?? plan.priceZARCents;
+    const chargeCents = upgrade?.chargeCents ?? pricing?.finalCents ?? comeback?.finalCents ?? plan.priceZARCents;
+
+    // The first automatic charge: a month after the month this payment buys
+    // starts (renewing the same plan early continues from the current end).
+    const monthStart =
+      !upgrade &&
+      current?.status === 'active' &&
+      current.planId === parsed.data.planId &&
+      current.currentPeriodEnd &&
+      Date.parse(current.currentPeriodEnd) > now.getTime()
+        ? current.currentPeriodEnd
+        : now.toISOString();
+    const recurring = card
+      ? { recurringAmountCents: plan.priceZARCents, billingDate: firstRecurringDate(monthStart) }
+      : undefined;
 
     // The ITN notify URL is derived from the API's own domain at request time
     // (not an env var) because wiring the API URL into the Lambda's environment
@@ -180,6 +282,7 @@ async function baseHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayPro
       returnUrl,
       cancelUrl,
       amountCents: chargeCents,
+      ...(recurring ? { recurring } : {}),
     });
 
     // Record the checkout INTENT (plan + expected price) under CHECKOUT#<id>.
@@ -200,16 +303,25 @@ async function baseHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayPro
       ...(comeback
         ? { listPriceCents: plan.priceZARCents, discountCents: comeback.discountCents, offer: 'comeback' as const }
         : {}),
+      ...(recurring ? { recurringAmountCents: recurring.recurringAmountCents } : {}),
+      ...(upgrade
+        ? {
+            listPriceCents: plan.priceZARCents,
+            upgradeCreditCents: upgrade.creditCents,
+            replacesToken: current!.payfastToken!,
+          }
+        : {}),
     });
 
     // NOTE: the payment idempotency record (PAYMENT#<mPaymentId>) is created by
     // the ITN handler on first confirmation (first-write-wins), NOT here.
 
-    return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ redirectUrl: checkout.redirectUrl, mPaymentId: checkout.mPaymentId }),
-    };
+    return respondJson(200, {
+      redirectUrl: checkout.redirectUrl,
+      mPaymentId: checkout.mPaymentId,
+      ...(recurring ? { automatic: true } : {}),
+      ...(upgrade ? { upgrade: { chargeCents: upgrade.chargeCents, creditCents: upgrade.creditCents } } : {}),
+    });
   } catch (error) {
     logger.error('Change plan failed', {
       error: error instanceof Error ? error.message : String(error),

@@ -128,3 +128,32 @@ describe('Billing payment cycle (reminders, pause, close)', () => {
     });
   });
 });
+
+describe('Billing card subscriptions (automatic monthly charges)', () => {
+  it('is off unless switched on; cancel has its own Lambda, route and narrow permissions', () => {
+    const t = synth();
+    t.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'merch-os-billing-changeplan-dev',
+      Environment: { Variables: Match.objectLike({ CARD_SUBSCRIPTIONS: 'false' }) },
+    });
+    t.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'merch-os-billing-cancelsubscription-dev',
+      Environment: { Variables: Match.objectLike({ PRODUCTS_TABLE: 'merch-os-products-dev' }) },
+    });
+    t.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+      RouteKey: 'POST /billing/subscription/cancel',
+      AuthorizationType: 'JWT',
+    });
+    t.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({ Action: 'dynamodb:UpdateItem', Resource: 'arn:aws:dynamodb:eu-west-1:123456789012:table/merch-os-products-dev' }),
+        ]),
+      },
+    });
+    synth({ cardSubscriptions: 'true' }).hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'merch-os-billing-payfastitn-dev',
+      Environment: { Variables: Match.objectLike({ CARD_SUBSCRIPTIONS: 'true' }) },
+    });
+  });
+});

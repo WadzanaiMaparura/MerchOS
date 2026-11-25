@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 vi.mock('../../services/subscription-store', () => ({
   getCheckoutIntent: vi.fn(),
   getSubscription: vi.fn(async () => null),
+  updateCardSubscription: vi.fn(async () => true),
   upsertSubscription: vi.fn(),
   recordPayment: vi.fn(),
   getPayment: vi.fn(),
@@ -25,7 +26,7 @@ vi.mock('../../services/events', () => ({
   emitSubscriptionActivated: vi.fn(),
 }));
 
-import { handler, paidPeriod, setPaymentProvider } from '../handlers/payfast-itn';
+import { handler, paidPeriod, setItnSubscriptionsApi, setPaymentProvider } from '../handlers/payfast-itn';
 import * as events from '../../services/events';
 import { logger } from '../../../shared/middleware/logger';
 import * as store from '../../services/subscription-store';
@@ -400,5 +401,124 @@ describe('PayFast ITN: which month a payment buys', () => {
     vi.mocked(store.getCheckoutIntent).mockResolvedValue({ ...growthIntent, offer: 'comeback' } as never);
     expect(await body()).toBe('ok');
     expect(store.upsertSubscription).toHaveBeenCalledWith('tenant-1', expect.objectContaining({ comebackUsedAt: expect.any(String) }));
+  });
+});
+
+describe('PayFast ITN: card subscriptions (automatic monthly charges)', () => {
+  const TOKEN = '2afa4575-5628-051a-d0ed-4e071b56a7b0';
+  const cardSub = (over: Record<string, unknown> = {}) =>
+    ({
+      tenantId: 'tenant-1',
+      planId: 'growth',
+      status: 'active',
+      provider: 'payfast',
+      mPaymentId: 'pay-1',
+      priceZARCents: 89900,
+      currentPeriodStart: '2026-11-22T10:00:00.000Z',
+      currentPeriodEnd: '2026-12-22T10:00:00.000Z',
+      autoRenew: true,
+      payfastToken: TOKEN,
+      createdAt: '',
+      updatedAt: '',
+      ...over,
+    }) as never;
+  const cancelApi = { cancel: vi.fn(async () => undefined), updateAmount: vi.fn(async () => undefined) };
+
+  beforeEach(() => {
+    vi.mocked(ledger.grantCredits).mockResolvedValue(undefined as never);
+    setItnSubscriptionsApi(cancelApi);
+    cancelApi.cancel.mockClear();
+  });
+
+  it('first payment of a card subscription keeps the card token and turns automatic billing on', async () => {
+    verifyItn.mockResolvedValue({ ...GOOD, amountGrossCents: 89900, token: TOKEN, pfPaymentId: 'pf-1' });
+    vi.mocked(store.getCheckoutIntent).mockResolvedValue({ ...growthIntent, priceZARCents: 89900, recurringAmountCents: 89900 } as never);
+    expect(await body()).toBe('ok');
+    expect(store.recordPayment).toHaveBeenCalledWith('tenant-1', expect.objectContaining({ mPaymentId: 'pay-1', pfPaymentId: 'pf-1' }));
+    expect(store.upsertSubscription).toHaveBeenCalledWith('tenant-1', expect.objectContaining({ autoRenew: true, payfastToken: TOKEN }));
+  });
+
+  it('a monthly charge (same m_payment_id, new pf_payment_id) extends the month under its own key, once', async () => {
+    verifyItn.mockResolvedValue({ ...GOOD, amountGrossCents: 89900, token: TOKEN, pfPaymentId: 'pf-2' });
+    vi.mocked(store.getPayment).mockImplementation(async (_t, id) =>
+      id === 'pay-1' ? { mPaymentId: 'pay-1', applied: true, pfPaymentId: 'pf-1' } : { mPaymentId: id, applied: false },
+    );
+    vi.mocked(store.getSubscription).mockResolvedValue(cardSub());
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-12-22T04:00:00.000Z'));
+    try {
+      expect(await body()).toBe('ok');
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(store.getCheckoutIntent).not.toHaveBeenCalled();
+    expect(store.recordPayment).toHaveBeenCalledWith('tenant-1', expect.objectContaining({ mPaymentId: 'R-pf-2', pfPaymentId: 'pf-2' }));
+    expect(store.upsertSubscription).toHaveBeenCalledWith(
+      'tenant-1',
+      expect.objectContaining({
+        mPaymentId: 'R-pf-2',
+        currentPeriodEnd: '2027-01-22T10:00:00.000Z',
+        previousPeriodEnd: '2026-12-22T10:00:00.000Z',
+        autoRenew: true,
+      }),
+    );
+    expect(store.upsertInvoice).toHaveBeenCalledWith('tenant-1', expect.objectContaining({ invoiceId: 'R-pf-2', amountCents: 89900 }));
+    expect(store.markPaymentApplied).toHaveBeenCalledWith('tenant-1', 'R-pf-2');
+    expect(events.emitSubscriptionActivated).toHaveBeenCalledWith(expect.objectContaining({ periodEnd: '2027-01-22T10:00:00.000Z' }));
+
+    // The same charge notified again is a duplicate.
+    vi.clearAllMocks();
+    verifyItn.mockResolvedValue({ ...GOOD, amountGrossCents: 89900, token: TOKEN, pfPaymentId: 'pf-2' });
+    vi.mocked(store.recordPayment).mockResolvedValue(false);
+    vi.mocked(store.getPayment).mockImplementation(async (_t, id) =>
+      id === 'pay-1' ? { mPaymentId: 'pay-1', applied: true, pfPaymentId: 'pf-1' } : { mPaymentId: id, applied: true },
+    );
+    vi.mocked(store.getSubscription).mockResolvedValue(cardSub());
+    expect(await body()).toBe('duplicate');
+    expect(store.upsertSubscription).not.toHaveBeenCalled();
+  });
+
+  it('a monthly charge for the wrong amount, or an old card, changes nothing', async () => {
+    vi.mocked(store.getPayment).mockResolvedValue({ mPaymentId: 'pay-1', applied: true, pfPaymentId: 'pf-1' });
+    vi.mocked(store.getSubscription).mockResolvedValue(cardSub());
+    verifyItn.mockResolvedValue({ ...GOOD, amountGrossCents: 100, token: TOKEN, pfPaymentId: 'pf-3' });
+    expect(await body()).toBe('amount-mismatch');
+    verifyItn.mockResolvedValue({ ...GOOD, amountGrossCents: 89900, token: '11111111-2222-3333-4444-555555555555', pfPaymentId: 'pf-3' });
+    expect(await body()).toBe('unknown-card');
+    expect(store.upsertSubscription).not.toHaveBeenCalled();
+  });
+
+  it('a downgrade takes effect at the charge for the lower price', async () => {
+    verifyItn.mockResolvedValue({ ...GOOD, amountGrossCents: 49900, token: TOKEN, pfPaymentId: 'pf-4' });
+    vi.mocked(store.getPayment).mockImplementation(async (_t, id) =>
+      id === 'pay-1' ? { mPaymentId: 'pay-1', applied: true, pfPaymentId: 'pf-1' } : null,
+    );
+    vi.mocked(store.getSubscription).mockResolvedValue(cardSub({ nextPlanId: 'starter' }));
+    expect(await body()).toBe('ok');
+    expect(store.upsertSubscription).toHaveBeenCalledWith('tenant-1', expect.objectContaining({ planId: 'starter', priceZARCents: 49900 }));
+  });
+
+  it('an upgrade cancels the old card subscription once the new one is paid', async () => {
+    const NEW = '99999999-8888-7777-6666-555555555555';
+    verifyItn.mockResolvedValue({ ...GOOD, amountGrossCents: 119067, token: NEW, pfPaymentId: 'pf-9' });
+    vi.mocked(store.getCheckoutIntent).mockResolvedValue({
+      ...growthIntent, planId: 'professional', priceZARCents: 119067, recurringAmountCents: 179000,
+      replacesToken: TOKEN, upgradeCreditCents: 59933, listPriceCents: 179000,
+    } as never);
+    expect(await body()).toBe('ok');
+    expect(store.upsertSubscription).toHaveBeenCalledWith('tenant-1', expect.objectContaining({ planId: 'professional', payfastToken: NEW }));
+    expect(store.upsertInvoice).toHaveBeenCalledWith('tenant-1', expect.objectContaining({ amountCents: 119067, listPriceCents: 179000, discountCents: 59933 }));
+    expect(cancelApi.cancel).toHaveBeenCalledWith(TOKEN);
+  });
+
+  it('CANCELLED and FAILED notifications update the card status only', async () => {
+    verifyItn.mockResolvedValue({ ...GOOD, paymentStatus: 'CANCELLED', token: TOKEN });
+    expect(await body()).toBe('subscription-cancelled');
+    expect(store.updateCardSubscription).toHaveBeenCalledWith('tenant-1', expect.objectContaining({ autoRenew: false }), TOKEN);
+    verifyItn.mockResolvedValue({ ...GOOD, paymentStatus: 'FAILED', token: TOKEN });
+    expect(await body()).toBe('charge-failed');
+    expect(store.updateCardSubscription).toHaveBeenCalledWith('tenant-1', expect.objectContaining({ lastChargeFailedAt: expect.any(String) }), TOKEN);
+    expect(store.upsertSubscription).not.toHaveBeenCalled();
+    expect(ledger.grantCredits).not.toHaveBeenCalled();
   });
 });

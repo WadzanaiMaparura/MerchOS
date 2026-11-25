@@ -1,8 +1,9 @@
-﻿import { describe, it, expect, vi, beforeEach } from 'vitest';
+﻿import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../../services/subscription-store', () => ({
   getSubscription: vi.fn(async () => null),
   createCheckoutIntent: vi.fn(),
+  updateCardSubscription: vi.fn(async () => true),
 }));
 vi.mock('../../services/vouchers', async (orig) => ({
   ...(await orig<typeof import('../../services/vouchers')>()),
@@ -12,7 +13,7 @@ vi.mock('../../../shared/middleware/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), addContext: vi.fn() },
 }));
 
-import { handler, setPaymentProvider } from '../handlers/change-plan';
+import { handler, setPaymentProvider, setSubscriptionsApi } from '../handlers/change-plan';
 import * as store from '../../services/subscription-store';
 import * as vouchers from '../../services/vouchers';
 
@@ -220,5 +221,96 @@ describe('POST /billing/plan comeback offer (50% off the first month back)', () 
     await call({ planId: 'growth', voucherCode: 'V' });
     expect(initiateCheckout).toHaveBeenCalledWith(expect.objectContaining({ amountCents: 79900 }));
     expect(store.createCheckoutIntent).toHaveBeenCalledWith('tenant-1', expect.not.objectContaining({ offer: 'comeback' }));
+  });
+});
+
+describe('POST /billing/plan with card subscriptions on', () => {
+  const TOKEN = '2afa4575-5628-051a-d0ed-4e071b56a7b0';
+  const api = { cancel: vi.fn(async () => undefined), updateAmount: vi.fn(async () => undefined) };
+  const onCard = (over: Record<string, unknown> = {}) =>
+    ({
+      tenantId: 'tenant-1',
+      planId: 'growth',
+      status: 'active',
+      provider: 'payfast',
+      autoRenew: true,
+      payfastToken: TOKEN,
+      currentPeriodStart: new Date(Date.now() - 10 * 86_400_000).toISOString(),
+      currentPeriodEnd: new Date(Date.now() + 20 * 86_400_000).toISOString(),
+      createdAt: '',
+      updatedAt: '',
+      ...over,
+    }) as never;
+
+  beforeEach(() => {
+    process.env['CARD_SUBSCRIPTIONS'] = 'true';
+    process.env['BILLING_LIFECYCLE'] = 'false';
+    process.env['PAYFAST_MERCHANT_ID'] = '10000100';
+    process.env['PAYFAST_MERCHANT_KEY'] = 'k';
+    setSubscriptionsApi(api);
+    api.updateAmount.mockClear();
+  });
+  afterEach(() => {
+    process.env['CARD_SUBSCRIPTIONS'] = 'false';
+  });
+
+  it('a new subscriber saves a card: first month now, then the plan price monthly', async () => {
+    const { status, json } = await call({ planId: 'growth' });
+    expect(status).toBe(200);
+    expect(json.automatic).toBe(true);
+    const req = initiateCheckout.mock.calls[0]![0];
+    expect(req.amountCents).toBe(89900);
+    expect(req.recurring.recurringAmountCents).toBe(89900);
+    expect(req.recurring.billingDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(store.createCheckoutIntent).toHaveBeenCalledWith('tenant-1', expect.objectContaining({ recurringAmountCents: 89900 }));
+  });
+
+  it('upgrade mid-month: charged the new price minus the unused days now, old card replaced', async () => {
+    vi.mocked(store.getSubscription).mockResolvedValue(onCard());
+    const { status, json } = await call({ planId: 'professional' });
+    expect(status).toBe(200);
+    // 20 of 30 days unused: R1,790 - (R899 x 2/3 = R599.33) = R1,190.67
+    expect(json.upgrade).toEqual({ chargeCents: 119067, creditCents: 59933 });
+    const req = initiateCheckout.mock.calls[0]![0];
+    expect(req.amountCents).toBe(119067);
+    expect(req.recurring.recurringAmountCents).toBe(179000);
+    expect(store.createCheckoutIntent).toHaveBeenCalledWith(
+      'tenant-1',
+      expect.objectContaining({ priceZARCents: 119067, replacesToken: TOKEN, upgradeCreditCents: 59933 }),
+    );
+  });
+
+  it('downgrade: no payment page; the lower price from the next charge date', async () => {
+    vi.mocked(store.getSubscription).mockResolvedValue(onCard({ planId: 'professional' }));
+    const { status, json } = await call({ planId: 'starter' });
+    expect(status).toBe(200);
+    expect(json).toMatchObject({ scheduled: true, planId: 'starter', nextChargeCents: 49900 });
+    expect(api.updateAmount).toHaveBeenCalledWith(TOKEN, 49900);
+    expect(store.updateCardSubscription).toHaveBeenCalledWith('tenant-1', { nextPlanId: 'starter' }, TOKEN);
+    expect(initiateCheckout).not.toHaveBeenCalled();
+  });
+
+  it('the same plan is refused (it already renews)', async () => {
+    vi.mocked(store.getSubscription).mockResolvedValue(onCard());
+    const { status, json } = await call({ planId: 'growth' });
+    expect(status).toBe(409);
+    expect(json.error.code).toBe('ALREADY_ON_PLAN');
+  });
+
+  it('pay once (EFT after a declined card): a normal once-off payment, no card saved', async () => {
+    vi.mocked(store.getSubscription).mockResolvedValue(onCard({ currentPeriodEnd: new Date(Date.now() - 2 * 86_400_000).toISOString() }));
+    const { status, json } = await call({ planId: 'growth', payOnce: true });
+    expect(status).toBe(200);
+    expect(json.automatic).toBeUndefined();
+    expect(initiateCheckout.mock.calls[0]![0].recurring).toBeUndefined();
+  });
+
+  it('with the switch off nothing changes (once-off checkout)', async () => {
+    process.env['CARD_SUBSCRIPTIONS'] = 'false';
+    vi.mocked(store.getSubscription).mockResolvedValue(onCard());
+    const { status } = await call({ planId: 'professional' });
+    expect(status).toBe(200);
+    expect(initiateCheckout.mock.calls[0]![0].recurring).toBeUndefined();
+    expect(initiateCheckout.mock.calls[0]![0].amountCents).toBe(179000);
   });
 });

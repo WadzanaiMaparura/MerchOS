@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   useBilling,
+  useCancelAutoBilling,
   useInvoices,
   usePlanChange,
   useInvoicePdf,
@@ -236,6 +237,11 @@ function BillingContent() {
   const [showPlanChange, setShowPlanChange] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<PlanId | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // The next checkout pays one month by EFT instead of saving a card.
+  const [payOnceNext, setPayOnceNext] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [stopOpen, setStopOpen] = useState(false);
+  const cancelAuto = useCancelAutoBilling();
   const [voucherCode, setVoucherCode] = useState('');
   const [pdfError, setPdfError] = useState<Record<string, boolean>>({});
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -252,6 +258,9 @@ function BillingContent() {
   const account = billingData?.account;
   const lapsed = account?.stage === 'grace' || account?.stage === 'paused' || account?.stage === 'closed';
   const renewing = !!selectedPlan && selectedPlan === billing.planId && billing.subscriptionStatus === 'active';
+  // Card subscriptions switched on for the platform (the server decides; the switch is shared).
+  const cardMode = account?.cardBillingEnabled === true;
+  const currentPlanPrice = plans.find((p) => p.planId === billing.planId)?.priceZARCents ?? null;
 
   // ?renew=1 (emails, banners): open the plans once they have loaded.
   useEffect(() => {
@@ -282,10 +291,13 @@ function BillingContent() {
   const handlePlanChangeConfirm = () => {
     if (!selectedPlan) return;
     const chosen = selectedPlan;
+    const once = payOnceNext;
+    setPayOnceNext(false);
     planChangeMutation.mutate(
       {
         planId: chosen,
         ...(voucherCode.trim() ? { voucherCode: voucherCode.trim() } : {}),
+        ...(once ? { payOnce: true } : {}),
         // Return to whichever origin the seller is on (not a server-side default),
         // so dev/staging/prod and custom domains all land back on their own app.
         returnUrl: `${window.location.origin}/billing?checkout=success`,
@@ -293,6 +305,15 @@ function BillingContent() {
       },
       {
         onSuccess: (result) => {
+          setConfirmOpen(false);
+          // A downgrade on automatic billing: no payment now, the plan changes at the next charge.
+          if (result.scheduled) {
+            const name = plans.find((p) => p.planId === result.planId)?.name ?? 'new';
+            setNotice(
+              `Done. Your plan changes to ${name} on ${formatDate(result.effectiveAt ?? '')}, and your card will be charged ${formatZAR(result.nextChargeCents ?? 0)} from then. You keep your current plan until then.`,
+            );
+            return;
+          }
           // Remember what they are buying so the return trip can confirm THAT plan,
           // then hand the browser to PayFast's hosted payment page.
           try {
@@ -303,7 +324,7 @@ function BillingContent() {
           } catch {
             /* ignore */
           }
-          window.location.assign(result.redirectUrl);
+          if (result.redirectUrl) window.location.assign(result.redirectUrl);
         },
       }
     );
@@ -410,6 +431,90 @@ function BillingContent() {
         <Alert variant="error" title="Couldn't start checkout">
           {planChangeMutation.error?.message || 'Something went wrong starting your payment. Please try again.'}
         </Alert>
+      )}
+
+      {notice && (
+        <Alert variant="success" title="Plan change scheduled">
+          {notice}
+        </Alert>
+      )}
+      {cancelAuto.isSuccess && (
+        <Alert variant="info" title="Automatic billing stopped">
+          Your card will not be charged again. Your plan stays active until {formatDate(cancelAuto.data?.paidUntil ?? '')}.
+          You can pay again at any time.
+        </Alert>
+      )}
+
+      {/* Automatic card billing (PayFast subscription) */}
+      {account?.cardBillingEnabled && CHECKOUT_ENABLED && (account.autoRenew || account.chargeFailed) && (
+        <Card title="Automatic billing">
+          {account.chargeFailed && lapsed ? (
+            <div className="space-y-3">
+              <Alert variant="warning" title="We could not charge your card">
+                Update your card and we will try again, or pay this month by EFT now.
+              </Alert>
+              <div className="flex flex-wrap gap-2">
+                {account.cardUpdateUrl && (
+                  <a
+                    href={account.cardUpdateUrl}
+                    className="rounded-md bg-blue-600 px-3.5 py-1.5 text-sm font-medium text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                  >
+                    Update my card
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPayOnceNext(true);
+                    setSelectedPlan((account.lastPlanId ?? billing.planId) as PlanId);
+                    setConfirmOpen(true);
+                  }}
+                  className="rounded-md border border-gray-300 bg-white px-3.5 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+                >
+                  Pay this month by EFT
+                </button>
+              </div>
+            </div>
+          ) : account.autoRenew ? (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-gray-700">
+                Your card is charged automatically each month.
+                {account.nextCharge && (
+                  <>
+                    {' '}
+                    Next charge: <b>{formatZAR(account.nextCharge.amountCents)}</b> on{' '}
+                    <b>{formatDate(account.nextCharge.at)}</b>
+                    {account.nextCharge.planId !== billing.planId &&
+                      ` (${plans.find((p) => p.planId === account.nextCharge!.planId)?.name ?? ''} plan from then)`}
+                    .
+                  </>
+                )}
+              </p>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                {account.cardUpdateUrl && (
+                  <a
+                    href={account.cardUpdateUrl}
+                    className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+                  >
+                    Update card
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setStopOpen(true)}
+                  className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600"
+                >
+                  Stop automatic billing
+                </button>
+              </div>
+            </div>
+          ) : null}
+          {cancelAuto.isError && (
+            <p role="alert" className="mt-2 text-sm text-red-700">
+              {cancelAuto.error?.message || 'Could not stop automatic billing. Please try again.'}
+            </p>
+          )}
+        </Card>
       )}
 
       {/* Subscription Overview (Requirement 8.1) — compact summary row */}
@@ -571,7 +676,7 @@ function BillingContent() {
                     {isCurrent && (
                       <p className="mt-4 text-center text-sm font-medium text-blue-700">Current Plan</p>
                     )}
-                    {isCurrent && selfService && CHECKOUT_ENABLED && (
+                    {isCurrent && selfService && CHECKOUT_ENABLED && !(account?.autoRenew && !lapsed) && (
                       <button
                         onClick={() => {
                           setSelectedPlan(plan.planId);
@@ -635,7 +740,19 @@ function BillingContent() {
         onOpenChange={setConfirmOpen}
         title="Continue to payment"
         description={
-          renewing
+          payOnceNext
+            ? `You're about to pay one month of the ${selectedPlanEntry?.name ?? ''} plan${
+                selectedPlanEntry?.priceZARCents != null ? ` (${formatZAR(selectedPlanEntry.priceZARCents)})` : ''
+              } by EFT or card on PayFast, without saving a card. You can turn automatic billing back on later.`
+            : cardMode && account?.autoRenew && !lapsed && selectedPlanEntry?.priceZARCents != null && currentPlanPrice !== null
+              ? selectedPlanEntry.priceZARCents > currentPlanPrice
+                ? `You're upgrading to ${selectedPlanEntry.name}. It starts straight away. Today you pay ${formatZAR(selectedPlanEntry.priceZARCents)} minus the unused part of your current month (the exact amount is shown on PayFast), and from then ${formatZAR(selectedPlanEntry.priceZARCents)} a month. Your card is saved for the monthly charge.`
+                : `You're moving to ${selectedPlanEntry.name}. Nothing is charged now: you keep your current plan until ${formatDate(billing.currentPeriodEnd)}, then your card is charged ${formatZAR(selectedPlanEntry.priceZARCents)} a month.`
+            : cardMode
+              ? `You're about to subscribe to the ${selectedPlanEntry?.name ?? ''} plan${
+                  selectedPlanEntry?.priceZARCents != null ? ` for ${formatZAR(selectedPlanEntry.priceZARCents)} a month` : ''
+                }. You pay the first month now on PayFast and your card is charged automatically each month after that. You can stop automatic billing at any time.`
+            : renewing
             ? `You're about to pay for ${lapsed ? 'a new month' : 'your next month'} of the ${selectedPlanEntry?.name ?? ''} plan${
                 selectedPlanEntry?.priceZARCents != null ? ` (${formatZAR(selectedPlanEntry.priceZARCents)})` : ''
               }. ${
@@ -649,15 +766,37 @@ function BillingContent() {
                   : ''
               }. You'll be redirected to PayFast to complete payment securely. Your plan changes as soon as the payment is confirmed.`
         }
-        confirmLabel="Continue to PayFast"
+        confirmLabel={
+          cardMode && account?.autoRenew && !lapsed && !payOnceNext && selectedPlanEntry?.priceZARCents != null &&
+          currentPlanPrice !== null && selectedPlanEntry.priceZARCents < currentPlanPrice
+            ? 'Change my plan'
+            : 'Continue to PayFast'
+        }
         cancelLabel="Cancel"
         onConfirm={handlePlanChangeConfirm}
         onCancel={() => {
           setSelectedPlan(null);
+          setPayOnceNext(false);
           setConfirmOpen(false);
         }}
         variant="info"
         isLoading={planChangeMutation.isPending}
+      />
+
+      {/* Stop automatic billing */}
+      <ConfirmationModal
+        open={stopOpen}
+        onOpenChange={setStopOpen}
+        title="Stop automatic billing?"
+        description={`Your card will not be charged again. You keep your ${billing.planName} plan until ${formatDate(
+          billing.currentPeriodEnd,
+        )}; after that your plan pauses until you pay again.`}
+        confirmLabel="Stop automatic billing"
+        cancelLabel="Keep it on"
+        onConfirm={() => cancelAuto.mutate(undefined, { onSettled: () => setStopOpen(false) })}
+        onCancel={() => setStopOpen(false)}
+        variant="danger"
+        isLoading={cancelAuto.isPending}
       />
     </div>
   );

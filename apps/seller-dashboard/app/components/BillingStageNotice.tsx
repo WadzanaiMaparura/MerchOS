@@ -51,8 +51,28 @@ export function BillingStageBanner() {
   if (a.stage !== 'due_soon' && a.stage !== 'grace' && a.stage !== 'paused') return null;
   const owner = role === 'owner';
 
+  const card = a.cardBillingEnabled === true;
   const content =
-    a.stage === 'due_soon'
+    a.stage === 'due_soon' && card && a.autoRenew
+      ? {
+          tone: 'border-blue-200 bg-blue-50',
+          title: `Your ${data.planName} plan renews on ${longDate(a.paidUntil)}.`,
+          text: 'Your card will be charged automatically. Nothing to do.',
+          cta: 'Manage billing',
+          href: '/billing',
+        }
+      : a.stage !== 'due_soon' && card && a.chargeFailed
+        ? {
+            tone: a.stage === 'grace' ? 'border-amber-300 bg-amber-50' : 'border-red-300 bg-red-50',
+            title: a.stage === 'grace' ? 'We could not charge your card.' : 'Your plan is paused: we could not charge your card.',
+            text:
+              a.stage === 'grace'
+                ? `Everything still works until ${longDate(a.graceEndsAt)}. Update your card, or pay this month by EFT.`
+                : `Your products are safe. Update your card, or pay this month by EFT, before ${longDate(a.closesAt)} to keep your account open.`,
+            cta: 'Update card or pay by EFT',
+            href: '/billing',
+          }
+      : a.stage === 'due_soon'
       ? {
           tone: 'border-blue-200 bg-blue-50',
           title: `Your ${data.planName} plan is paid until ${longDate(a.paidUntil)}.`,
@@ -88,7 +108,7 @@ export function BillingStageBanner() {
           </p>
         </div>
         {owner && CHECKOUT_ENABLED && (
-          <Link href="/billing?renew=1" className={payLink}>
+          <Link href={'href' in content && content.href ? content.href : '/billing?renew=1'} className={payLink}>
             {content.cta}
           </Link>
         )}
@@ -127,12 +147,14 @@ export function WelcomeBack() {
   const discounted =
     price !== null && a?.comeback && !voucher.trim() ? Math.round((price * (100 - a.comeback.percentOff)) / 100) : null;
 
-  const pay = () => {
+  const card = a?.cardBillingEnabled === true;
+  const pay = (payOnce = false) => {
     if (!planId) return;
     plan.mutate(
       {
         planId,
         ...(voucher.trim() ? { voucherCode: voucher.trim() } : {}),
+        ...(payOnce ? { payOnce: true } : {}),
         returnUrl: `${window.location.origin}/billing?checkout=success`,
         cancelUrl: `${window.location.origin}/dashboard`,
       },
@@ -146,7 +168,7 @@ export function WelcomeBack() {
           } catch {
             /* ignore */
           }
-          window.location.assign(result.redirectUrl);
+          if (result.redirectUrl) window.location.assign(result.redirectUrl);
         },
       },
     );
@@ -235,7 +257,7 @@ export function WelcomeBack() {
             )}
             <button
               type="button"
-              onClick={pay}
+              onClick={() => pay()}
               disabled={!planId || plan.isPending}
               className="w-full rounded-md bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:opacity-60"
             >
@@ -247,7 +269,24 @@ export function WelcomeBack() {
                     ? `Reactivate and pay ${formatRand(price)}`
                     : 'Reactivate'}
             </button>
-            <p className="text-xs text-gray-500">You pay securely on PayFast. We never charge you automatically.</p>
+            {card ? (
+              <>
+                <p className="text-xs text-gray-500">
+                  You pay securely on PayFast by card. Your card is charged automatically each month; stop any time from
+                  Billing.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => pay(true)}
+                  disabled={!planId || plan.isPending}
+                  className="text-sm font-medium text-blue-700 underline hover:text-blue-900 disabled:opacity-60"
+                >
+                  Pay one month by EFT instead
+                </button>
+              </>
+            ) : (
+              <p className="text-xs text-gray-500">You pay securely on PayFast. We never charge you automatically.</p>
+            )}
           </div>
         )}
         <button
