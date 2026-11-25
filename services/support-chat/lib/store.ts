@@ -427,7 +427,10 @@ export async function touchPresence(agentId: string): Promise<void> {
     new UpdateCommand({
       TableName: config.table,
       Key: { PK: 'PRESENCE', SK: `AGENT#${agentId}` },
-      UpdateExpression: 'SET agentId = :id, lastSeenAt = :t, online = if_not_exists(online, :off)',
+      // "online" is a DynamoDB reserved word: it must be aliased, or every
+      // heartbeat (and every agent socket connect) fails.
+      UpdateExpression: 'SET agentId = :id, lastSeenAt = :t, #online = if_not_exists(#online, :off)',
+      ExpressionAttributeNames: { '#online': 'online' },
       ExpressionAttributeValues: { ':id': agentId, ':t': Date.now(), ':off': false },
     }),
   );

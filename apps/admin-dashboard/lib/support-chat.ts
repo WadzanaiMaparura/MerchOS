@@ -136,7 +136,11 @@ export function openAgentSocket(
     try {
       token = await accessToken();
     } catch {
+      // Keep trying (e.g. the session was refreshing): giving up here left the
+      // inbox offline until the page was reloaded.
       onStatus(false);
+      attempt += 1;
+      retry = setTimeout(() => void connect(), Math.min(30_000, 1000 * 2 ** attempt));
       return;
     }
     const ws = new WebSocket(`${SUPPORT_CHAT_WS_URL}?role=agent&token=${encodeURIComponent(token)}`);
