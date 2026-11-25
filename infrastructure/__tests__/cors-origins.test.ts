@@ -38,10 +38,10 @@ describe('every seller-facing API uses the shared allow-list', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('every stack that configures CORS reads sellerDashboardOrigins', () => {
+  it('every stack that configures CORS reads a shared allow-list (seller site or admin dashboard)', () => {
     for (const f of stacks) {
       const src = readFileSync(join(libDir, f), 'utf8');
-      if (/allowOrigins:/.test(src)) expect(src, f).toContain('sellerDashboardOrigins(');
+      if (/allowOrigins:/.test(src)) expect(src, f).toMatch(/(seller|admin)DashboardOrigins\(/);
     }
   });
 

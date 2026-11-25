@@ -1,8 +1,8 @@
 // Feature: pricing-page, Property 4: FAQ accordion exclusivity
+// Direct clicks (fireEvent): userEvent's per-step delays made 100 runs exceed the timeout.
 // **Validates: Requirements 7.5**
 
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { fireEvent, render, screen } from '@testing-library/react';
 import * as fc from 'fast-check';
 import { FAQSection } from '@/app/(marketing)/pricing/components/FAQSection';
 import { FAQItem } from '@/app/config/pricing';
@@ -20,7 +20,6 @@ describe('Property 4: FAQ accordion exclusivity', () => {
         ),
         fc.array(fc.nat(), { minLength: 1, maxLength: 10 }),
         async (items: FAQItem[], clickSequence: number[]) => {
-          const user = userEvent.setup();
           const { unmount } = render(<FAQSection items={items} />);
 
           // Initially all items should be collapsed
@@ -34,7 +33,7 @@ describe('Property 4: FAQ accordion exclusivity', () => {
           for (const rawIndex of clickSequence) {
             const targetIndex = rawIndex % items.length;
             const buttons = screen.getAllByRole('button');
-            await user.click(buttons[targetIndex]);
+            fireEvent.click(buttons[targetIndex]);
 
             // After each click, at most one item should be expanded
             const allButtons = screen.getAllByRole('button');
@@ -63,14 +62,13 @@ describe('Property 4: FAQ accordion exclusivity', () => {
         ),
         fc.nat(),
         async (items: FAQItem[], rawIndex: number) => {
-          const user = userEvent.setup();
           const targetIndex = rawIndex % items.length;
           const { unmount } = render(<FAQSection items={items} />);
 
           const buttons = screen.getAllByRole('button');
 
           // First click: should expand the item
-          await user.click(buttons[targetIndex]);
+          fireEvent.click(buttons[targetIndex]);
           const afterFirstClick = screen.getAllByRole('button');
           const expandedAfterFirst = afterFirstClick.filter(
             (btn) => btn.getAttribute('aria-expanded') === 'true'
@@ -78,7 +76,7 @@ describe('Property 4: FAQ accordion exclusivity', () => {
           expect(expandedAfterFirst).toBe(1);
 
           // Second click on same button: should collapse it
-          await user.click(afterFirstClick[targetIndex]);
+          fireEvent.click(afterFirstClick[targetIndex]);
           const afterSecondClick = screen.getAllByRole('button');
           const expandedAfterSecond = afterSecondClick.filter(
             (btn) => btn.getAttribute('aria-expanded') === 'true'

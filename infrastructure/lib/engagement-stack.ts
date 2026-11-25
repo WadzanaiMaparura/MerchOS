@@ -91,6 +91,7 @@ export class EngagementStack extends cdk.Stack {
 
     const sellerOrigins = sellerDashboardOrigins(env);
     const adminOrigins = adminDashboardOrigins(env);
+    const engagementOrigins = [...sellerOrigins, ...adminOrigins];
 
     // -----------------------------------------------------------------------
     // Data
@@ -140,7 +141,8 @@ export class EngagementStack extends cdk.Stack {
       corsPreflight: {
         allowHeaders: ['Content-Type', 'Authorization'],
         allowMethods: [CorsHttpMethod.GET, CorsHttpMethod.POST, CorsHttpMethod.DELETE, CorsHttpMethod.OPTIONS],
-        allowOrigins: [...sellerOrigins, ...adminOrigins],
+        // Both shared allow-lists (seller site + admin dashboard), nothing hand-written.
+        allowOrigins: engagementOrigins,
         maxAge: cdk.Duration.hours(1),
       },
     });
