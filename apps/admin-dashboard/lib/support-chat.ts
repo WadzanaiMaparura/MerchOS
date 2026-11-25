@@ -112,6 +112,28 @@ export const supportApi = {
     call<{ ok: true }>('/support/push-subscriptions', { method: 'DELETE', body: JSON.stringify({ endpoint }) }),
 };
 
+/** Short two-tone chime for a new waiting chat (no audio file needed). */
+export function chime(): void {
+  try {
+    const AudioCtx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    [880, 1320].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.15, ctx.currentTime + i * 0.18);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.18 + 0.3);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(ctx.currentTime + i * 0.18);
+      osc.stop(ctx.currentTime + i * 0.18 + 0.3);
+    });
+    setTimeout(() => void ctx.close(), 1000);
+  } catch {
+    // Browsers block audio until the page has been interacted with.
+  }
+}
+
 /** Heartbeat interval: presence counts an inbox as open for 3 minutes. */
 export const HEARTBEAT_MS = 60_000;
 
