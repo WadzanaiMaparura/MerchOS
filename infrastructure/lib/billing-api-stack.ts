@@ -34,7 +34,10 @@ import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
-import { CorsHttpMethod, HttpApi, HttpMethod } from 'aws-cdk-lib/aws-apigatewayv2';
+import { ApiMapping, CorsHttpMethod, DomainName, HttpApi, HttpMethod } from 'aws-cdk-lib/aws-apigatewayv2';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
+import * as route53 from 'aws-cdk-lib/aws-route53';
+import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
 import { HttpJwtAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import { Construct } from 'constructs';
@@ -659,6 +662,39 @@ export class BillingApiStack extends cdk.Stack {
     // -----------------------------------------------------------------------
     // SSM exports + stack outputs
     // -----------------------------------------------------------------------
+
+    // -----------------------------------------------------------------------
+    // Permanent address for PayFast (e.g. api.merchos.co.za). PayFast's Notify
+    // URL is set to https://<domain>/billing/payfast/itn ONCE; moving from dev
+    // to production later only changes where this name points, not PayFast.
+    // Off unless billingApiDomain + hostedZoneId + hostedZoneName are set.
+    // -----------------------------------------------------------------------
+
+    const apiDomain = envSetting(this, env, 'billingApiDomain');
+    const hostedZoneId = envSetting(this, env, 'hostedZoneId');
+    const hostedZoneName = envSetting(this, env, 'hostedZoneName');
+    if (apiDomain && hostedZoneId && hostedZoneName) {
+      const zone = route53.HostedZone.fromHostedZoneAttributes(this, 'MerchOsZone', {
+        hostedZoneId,
+        zoneName: hostedZoneName,
+      });
+      const certificate = new acm.Certificate(this, 'BillingApiCertificate', {
+        domainName: apiDomain,
+        validation: acm.CertificateValidation.fromDns(zone),
+      });
+      const domain = new DomainName(this, 'BillingApiDomain', { domainName: apiDomain, certificate });
+      new ApiMapping(this, 'BillingApiDomainMapping', { api: this.httpApi, domainName: domain });
+      new route53.ARecord(this, 'BillingApiDomainRecord', {
+        zone,
+        recordName: apiDomain,
+        target: route53.RecordTarget.fromAlias(
+          new route53Targets.ApiGatewayv2DomainProperties(domain.regionalDomainName, domain.regionalHostedZoneId),
+        ),
+      });
+      // Every checkout tells PayFast to notify the permanent address.
+      changePlanFn.addEnvironment('PAYFAST_NOTIFY_URL', `https://${apiDomain}/billing/payfast/itn`);
+      new cdk.CfnOutput(this, 'PayFastNotifyUrl', { value: `https://${apiDomain}/billing/payfast/itn` });
+    }
 
     new ssm.StringParameter(this, 'BillingApiUrlParam', {
       parameterName: `${ssmPrefix}/billing-api/url`,

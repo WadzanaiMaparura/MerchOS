@@ -270,9 +270,12 @@ async function baseHandler(event: APIGatewayProxyEventV2): Promise<APIGatewayPro
     // The ITN notify URL is derived from the API's own domain at request time
     // (not an env var) because wiring the API URL into the Lambda's environment
     // would create a CloudFormation circular dependency (API -> Lambda -> API).
+    // The permanent address (PAYFAST_NOTIFY_URL, e.g. api.merchos.co.za) wins
+    // when the stack sets one; it is a fixed string, so no circular dependency.
     const domainName = (event.requestContext as unknown as Record<string, unknown>)?.['domainName'];
     const notifyUrl =
-      typeof domainName === 'string' ? `https://${domainName}/billing/payfast/itn` : undefined;
+      process.env['PAYFAST_NOTIFY_URL'] ||
+      (typeof domainName === 'string' ? `https://${domainName}/billing/payfast/itn` : undefined);
 
     const provider = await resolveProvider(notifyUrl);
     const checkout = await provider.initiateCheckout({

@@ -157,3 +157,26 @@ describe('Billing card subscriptions (automatic monthly charges)', () => {
     });
   });
 });
+
+describe('Billing permanent address for PayFast (api.merchos.co.za)', () => {
+  const withDomain = () =>
+    synth({ billingApiDomain: 'api.merchos.co.za', hostedZoneId: 'Z04418812LQLSF1AUT0WU', hostedZoneName: 'merchos.co.za' });
+
+  it('certificate (DNS validated), custom domain, mapping and DNS record; checkout notifies the permanent address', () => {
+    const t = withDomain();
+    t.hasResourceProperties('AWS::CertificateManager::Certificate', { DomainName: 'api.merchos.co.za', ValidationMethod: 'DNS' });
+    t.hasResourceProperties('AWS::ApiGatewayV2::DomainName', { DomainName: 'api.merchos.co.za' });
+    t.resourceCountIs('AWS::ApiGatewayV2::ApiMapping', 1);
+    t.hasResourceProperties('AWS::Route53::RecordSet', { Name: 'api.merchos.co.za.', Type: 'A', HostedZoneId: 'Z04418812LQLSF1AUT0WU' });
+    t.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'merch-os-billing-changeplan-dev',
+      Environment: { Variables: Match.objectLike({ PAYFAST_NOTIFY_URL: 'https://api.merchos.co.za/billing/payfast/itn' }) },
+    });
+  });
+
+  it('nothing is created without the settings', () => {
+    const t = synth();
+    t.resourceCountIs('AWS::ApiGatewayV2::DomainName', 0);
+    t.resourceCountIs('AWS::CertificateManager::Certificate', 0);
+  });
+});
