@@ -145,3 +145,29 @@ describe('ClosedAccountGate and Welcome back', () => {
     expect(state.logout).toHaveBeenCalled();
   });
 });
+
+describe('card on file (automatic monthly charges)', () => {
+  it('due soon: says the card will be charged, no "pay" button', () => {
+    state.billing = billing({ stage: 'due_soon', cardBillingEnabled: true, autoRenew: true });
+    render(<mod.BillingStageBanner />);
+    expect(screen.getByText('Your Growth plan renews on 22 December 2026.')).toBeTruthy();
+    expect(screen.getByText(/Your card will be charged automatically/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Manage billing' }).getAttribute('href')).toBe('/billing');
+  });
+
+  it('a declined card: update the card or pay by EFT', () => {
+    state.billing = billing({ stage: 'paused', cardBillingEnabled: true, autoRenew: true, chargeFailed: true });
+    render(<mod.BillingStageBanner />);
+    expect(screen.getByText('Your plan is paused: we could not charge your card.')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Update card or pay by EFT' })).toBeTruthy();
+  });
+
+  it('Welcome back offers a one-off EFT payment besides the card subscription', async () => {
+    const user = userEvent.setup();
+    state.billing = billing({ stage: 'closed', cardBillingEnabled: true });
+    render(<mod.WelcomeBack />);
+    expect(screen.getByText(/Your card is charged automatically each month/)).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Pay one month by EFT instead' }));
+    expect(state.mutate).toHaveBeenCalledWith(expect.objectContaining({ planId: 'growth', payOnce: true }), expect.anything());
+  });
+});

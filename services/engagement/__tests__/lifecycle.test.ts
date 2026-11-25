@@ -18,6 +18,7 @@ vi.mock('../lib/accounts', async () => {
     getOwnerDetails: async () => ({ fullName: 'Thandi Khumalo', businessName: 'Thandi Home Goods' }),
     countProducts: async (t: string) => accounts.products.get(t) ?? 0,
     isSubscribedNow: async (t: string) => accounts.subscribed.has(t),
+    getPaidStatus: async () => null,
     ensureProfile: async (tenantId: string, userId?: string) => {
       const existing = store.mem.profiles.get(tenantId);
       if (existing) return existing;

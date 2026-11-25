@@ -140,7 +140,7 @@ export async function countProducts(tenantId: string, cap = 10_000): Promise<num
 /** The paid status as billing recorded it (ENTITLEMENT#trial), for the payment-cycle emails. */
 export async function getPaidStatus(
   tenantId: string,
-): Promise<{ status: string; subscribedUntil?: string | undefined } | null> {
+): Promise<{ status: string; subscribedUntil?: string | undefined; autoRenew?: boolean } | null> {
   const out = await db().send(
     new GetCommand({
       TableName: config.productsTable,
@@ -151,7 +151,12 @@ export async function getPaidStatus(
   const item = out.Item;
   if (!item || typeof item['status'] !== 'string') return null;
   const until = item['subscribedUntil'];
-  return { status: item['status'], subscribedUntil: typeof until === 'string' ? until : undefined };
+  return {
+    status: item['status'],
+    subscribedUntil: typeof until === 'string' ? until : undefined,
+    // Card charged automatically (only counts while card subscriptions are switched on).
+    autoRenew: item['autoRenew'] === true && process.env['CARD_SUBSCRIPTIONS'] === 'true',
+  };
 }
 
 /** True while the tenant has a paid period that has not ended. */

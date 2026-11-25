@@ -68,3 +68,33 @@ describe('GET /billing account state', () => {
     expect(await accountState('t', null, at(0))).toEqual({ stage: 'none', lifecycleEnabled: true });
   });
 });
+
+describe('GET /billing card status', () => {
+  const TOKEN = '2afa4575-5628-051a-d0ed-4e071b56a7b0';
+  beforeEach(() => {
+    process.env['CARD_SUBSCRIPTIONS'] = 'true';
+    process.env['PAYFAST_MERCHANT_ID'] = '10000100';
+    process.env['PAYFAST_MERCHANT_KEY'] = 'k';
+    process.env['PAYFAST_MODE'] = 'live';
+    process.env['APP_BASE_URL'] = 'https://merchos.co.za';
+    vi.mocked(getEntitlement).mockResolvedValue({ status: 'subscribed', subscribedUntil: UNTIL, productsUsed: 0, productLimit: 15 });
+  });
+
+  it('shows the next automatic charge (a scheduled downgrade at its price) and the update-card link', async () => {
+    const s = await accountState('t', sub({ autoRenew: true, payfastToken: TOKEN, planId: 'professional', nextPlanId: 'growth' }), at(-10));
+    expect(s).toMatchObject({
+      cardBillingEnabled: true,
+      autoRenew: true,
+      nextCharge: { at: UNTIL, amountCents: 89900, planId: 'growth' },
+    });
+    expect(s.cardUpdateUrl).toBe(`https://www.payfast.co.za/eng/recurring/update/${TOKEN}?return=https%3A%2F%2Fmerchos.co.za%2Fbilling%3Fcard%3Dupdated`);
+  });
+
+  it('a declined charge is flagged; nothing about cards while switched off', async () => {
+    expect((await accountState('t', sub({ autoRenew: true, payfastToken: TOKEN, lastChargeFailedAt: 'x' }), at(1))).chargeFailed).toBe(true);
+    process.env['CARD_SUBSCRIPTIONS'] = 'false';
+    const off = await accountState('t', sub({ autoRenew: true, payfastToken: TOKEN }), at(-10));
+    expect(off.cardBillingEnabled).toBeUndefined();
+    expect(off.cardUpdateUrl).toBeUndefined();
+  });
+});

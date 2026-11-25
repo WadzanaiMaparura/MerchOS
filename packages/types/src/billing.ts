@@ -91,6 +91,16 @@ export interface BillingAccountState {
   dataKeptUntil?: string;
   /** The one-time comeback discount, while it applies. */
   comeback?: { percentOff: number; endsAt: string };
+  /** Card subscriptions are switched on for the platform. */
+  cardBillingEnabled?: boolean;
+  /** This seller's card is charged automatically each month. */
+  autoRenew?: boolean;
+  /** Next automatic charge (while autoRenew). */
+  nextCharge?: { at: string; amountCents: number; planId: PlanId };
+  /** The last automatic charge was declined. */
+  chargeFailed?: boolean;
+  /** PayFast page to replace the card on the subscription. */
+  cardUpdateUrl?: string;
 }
 
 /** A plan entry exposed to the frontend plan picker / pricing table. */

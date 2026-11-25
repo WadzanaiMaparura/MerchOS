@@ -22,6 +22,9 @@ import { logger } from '../../../shared/middleware/logger';
 import { getPlan, PLAN_CATALOGUE } from '../../config/plans';
 import { getBalance } from '../../services/credit-ledger';
 import { getSubscription, type SubscriptionRecord } from '../../services/subscription-store';
+import { loadPayFastConfigFromEnv } from '../../providers/payfast';
+import { cardUpdateUrl as buildCardUpdateUrl, isCardSubscriptionsOn } from '../../providers/payfast-subscriptions';
+import type { PlanId } from '@merch-os/types';
 import { getEntitlement } from '../../../shared/entitlements/trial-gate';
 import {
   billingStage,
@@ -36,6 +39,29 @@ function currentBillingMonth(d = new Date()): string {
   const y = d.getUTCFullYear();
   const m = (d.getUTCMonth() + 1).toString().padStart(2, '0');
   return `${y}${m}`;
+}
+
+/** Automatic card billing, as the seller should see it. */
+function cardState(subscription: SubscriptionRecord | null): Partial<BillingAccountState> {
+  if (!isCardSubscriptionsOn()) return {};
+  const auto = subscription?.autoRenew === true && !!subscription.payfastToken;
+  const nextPlanId = (subscription?.nextPlanId ?? subscription?.planId) as PlanId | undefined;
+  const nextPrice = nextPlanId ? getPlan(nextPlanId)?.priceZARCents : null;
+  let cardUpdateUrl: string | null = null;
+  if (auto) {
+    // Only the mode is needed (no merchant secret): this endpoint never reads the PayFast secret.
+    const mode = loadPayFastConfigFromEnv().mode;
+    cardUpdateUrl = buildCardUpdateUrl(mode, subscription!.payfastToken!, `${process.env['APP_BASE_URL'] ?? ''}/billing?card=updated`);
+  }
+  return {
+    cardBillingEnabled: true,
+    autoRenew: auto,
+    ...(auto && subscription?.currentPeriodEnd && nextPlanId && typeof nextPrice === 'number'
+      ? { nextCharge: { at: subscription.currentPeriodEnd, amountCents: nextPrice, planId: nextPlanId } }
+      : {}),
+    ...(subscription?.lastChargeFailedAt ? { chargeFailed: true } : {}),
+    ...(cardUpdateUrl ? { cardUpdateUrl } : {}),
+  };
 }
 
 /**
@@ -65,9 +91,11 @@ export async function accountState(
   const paidUntil = source?.subscribedUntil;
   const dates = paidUntil && stage !== 'exempt' ? stageDates(paidUntil) : undefined;
   const offer = comebackOffer(subscription?.currentPeriodEnd, subscription?.comebackUsedAt, now);
+  const card = cardState(subscription);
   return {
     stage,
     lifecycleEnabled: isBillingLifecycleOn(),
+    ...card,
     ...(subscription?.planId ? { lastPlanId: subscription.planId } : {}),
     ...(dates
       ? {

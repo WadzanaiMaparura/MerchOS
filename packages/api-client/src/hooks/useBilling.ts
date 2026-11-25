@@ -32,14 +32,43 @@ export interface PlanChangePayload {
   returnUrl?: string;
   /** Where PayFast sends the buyer if they cancel. */
   cancelUrl?: string;
+  /** Pay this one month without saving a card (EFT after a declined card). */
+  payOnce?: boolean;
 }
 
-/** Result of starting a plan change: where to send the buyer to pay. */
+/**
+ * Result of starting a plan change: where to send the buyer to pay, or (a
+ * downgrade on automatic billing) the change scheduled for the next charge.
+ */
 export interface PlanChangeResult {
   /** Signed PayFast hosted-checkout URL. Navigate the browser here. */
-  redirectUrl: string;
+  redirectUrl?: string;
   /** Our payment reference (PayFast m_payment_id). */
-  mPaymentId: string;
+  mPaymentId?: string;
+  /** The card will be saved and charged monthly. */
+  automatic?: boolean;
+  /** Upgrade top-up charged now (new price minus the unused part of the month). */
+  upgrade?: { chargeCents: number; creditCents: number };
+  /** Downgrade on automatic billing: no payment now, the plan changes at the next charge. */
+  scheduled?: boolean;
+  planId?: PlanId;
+  effectiveAt?: string;
+  nextChargeCents?: number;
+}
+
+/** Stops the monthly card charges; the plan runs to the end of the month paid for. */
+export function useCancelAutoBilling() {
+  const client = useBillingClient();
+  const queryClient = useQueryClient();
+  return useMutation<{ cancelled: boolean; paidUntil: string | null }, ApiError, void>({
+    mutationFn: async () => {
+      const { data } = await client.post<{ cancelled: boolean; paidUntil: string | null }>('/billing/subscription/cancel', {});
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: billingKeys.all });
+    },
+  });
 }
 
 export interface UseBillingOptions {

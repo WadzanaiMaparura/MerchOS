@@ -17,7 +17,7 @@ import type { EventBridgeEvent } from 'aws-lambda';
 import { z } from 'zod';
 import { GRACE_DAYS, isBillingLifecycleOn } from '../../shared/entitlements/billing-stage';
 import { TRIAL_PRODUCT_LIMIT } from '../../shared/entitlements/trial-gate';
-import { countProducts, ensureProfile, getUser } from '../lib/accounts';
+import { countProducts, ensureProfile, getPaidStatus, getUser } from '../lib/accounts';
 import { welcomeBack } from '../lib/billing-templates';
 import { config } from '../lib/config';
 import { ensureReferralCode, sendOnce } from '../lib/lifecycle';
@@ -148,6 +148,7 @@ export async function onSubscriptionActivated(detail: unknown): Promise<void> {
       monthlyProducts: d.monthlyProducts,
       existingProducts,
       paidUntil: d.periodEnd,
+      autoRenew: (await getPaidStatus(d.tenantId).catch(() => null))?.autoRenew === true,
     }),
   );
   const from = new Date(d.periodStart);

@@ -25,6 +25,12 @@ export interface CheckoutRequest {
    * omitted the plan's list price is used.
    */
   amountCents?: number;
+  /**
+   * Card subscription: the provider keeps the card and charges
+   * `recurringAmountCents` every month from `billingDate` (YYYY-MM-DD).
+   * `amountCents` is the first charge (it can differ: voucher, upgrade top-up).
+   */
+  recurring?: { recurringAmountCents: number; billingDate: string };
 }
 
 /** Result of initiating checkout — where to redirect the buyer and our ref. */
@@ -45,6 +51,10 @@ export interface ItnVerificationResult {
   mPaymentId?: string;
   amountGrossCents?: number;
   paymentStatus?: string;
+  /** Card subscription token (present on subscription notifications). */
+  token?: string;
+  /** The provider's id for this particular charge. */
+  pfPaymentId?: string;
   raw?: Record<string, string>;
   reason?: string;
   /**

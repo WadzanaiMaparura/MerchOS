@@ -100,6 +100,7 @@ async function billingStep(step: BillingStep, tenantId: string, paidUntil: strin
     closesAt: dates.closesAt,
     dataKeptUntil: dates.dataKeptUntil,
     productCount: await countProducts(tenantId),
+    autoRenew: paid.autoRenew === true,
   };
   const key = billingEmailKey(step, paidUntil);
 
@@ -107,6 +108,8 @@ async function billingStep(step: BillingStep, tenantId: string, paidUntil: strin
     case 'due7':
       return sendOnce(profile, user.email, key, dueInSevenDays(base));
     case 'due1':
+      // The card is charged automatically: one heads-up (7 days) is enough.
+      if (base.autoRenew) return 'skipped';
       return sendOnce(profile, user.email, key, dueTomorrow(base));
     case 'paused':
       return sendOnce(profile, user.email, key, planPaused(base));

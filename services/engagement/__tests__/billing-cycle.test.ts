@@ -7,7 +7,7 @@ vi.mock('../lib/store', () => fakeStore);
 const accounts = vi.hoisted(() => ({
   users: new Map<string, { email: string; enabled: boolean }>(),
   products: new Map<string, number>(),
-  paid: new Map<string, { status: string; subscribedUntil?: string }>(),
+  paid: new Map<string, { status: string; subscribedUntil?: string; autoRenew?: boolean }>(),
 }));
 vi.mock('../lib/accounts', async () => {
   const actual = await vi.importActual<typeof import('../lib/accounts')>('../lib/accounts');
@@ -283,5 +283,35 @@ describe('POST /feedback', () => {
     expect((await post({ token, reason: 'hate_it' })).statusCode).toBe(400);
     expect((await post({ token, reason: 'other' }, 'https://evil.example')).statusCode).toBe(403);
     expect(mem.feedback.size).toBe(0);
+  });
+});
+
+describe('card on file (automatic monthly charges)', () => {
+  const step = (s: string) => runStep({ step: s, tenantId: TENANT, paidUntil: UNTIL, planId: 'growth' });
+
+  beforeEach(() => {
+    accounts.paid.set(TENANT, { status: 'subscribed', subscribedUntil: UNTIL, autoRenew: true });
+  });
+
+  it('the 7-day email says the card will be charged, and there is no 1-day "please pay"', async () => {
+    expect(await step('due7')).toBe('sent');
+    expect(sent[0]!.subject).toBe('Your MerchOS plan renews on 22 December 2026');
+    expect(sent[0]!.html).toContain('We will charge your card for your next month on that day');
+    expect(sent[0]!.html).not.toContain('Pay for my next month');
+    expect(await step('due1')).toBe('skipped');
+  });
+
+  it('a declined card: paused email offers to update the card or pay by EFT', async () => {
+    expect(await step('paused')).toBe('sent');
+    expect(sent[0]!.html).toContain('we could not charge your card for your Growth plan');
+    expect(sent[0]!.html).toContain('Update my card or pay by EFT');
+  });
+
+  it('the card wording follows the account, not the switch alone', () => {
+    const base = {
+      siteUrl: site, planName: 'Growth', paidUntil: UNTIL, graceEndsAt: UNTIL, closesAt: UNTIL, dataKeptUntil: UNTIL, productCount: 1,
+    };
+    expect(dueInSevenDays({ ...base, autoRenew: false }).html).toContain('Pay for my next month');
+    expect(planPaused({ ...base }).html).toContain('We have not received a payment');
   });
 });

@@ -428,18 +428,22 @@ export async function markSubscribed(
     tableName?: string;
     /** The plan's new products per month; null/undefined = unlimited (custom plans). */
     monthlyProductLimit?: number | null;
+    /** Card on file, charged automatically (reminder and banner wording). */
+    autoRenew?: boolean;
   } = {},
 ): Promise<void> {
   const client = createTenantDynamoClient(tenantId);
   const TableName = tableFor(options);
   const Key = { PK: tenantPK(tenantId), SK: ENTITLEMENT_SK };
   const limit = typeof options.monthlyProductLimit === "number" ? options.monthlyProductLimit : undefined;
+  const auto = typeof options.autoRenew === "boolean" ? options.autoRenew : undefined;
   try {
     await client.put({
       TableName,
       Item: {
         ...Key, tenantId, status: "subscribed", subscribedUntil: until, productsUsed: 0, productLimit: TRIAL_PRODUCT_LIMIT,
         ...(limit !== undefined ? { monthlyProductLimit: limit } : {}),
+        ...(auto !== undefined ? { autoRenew: auto } : {}),
       },
       ConditionExpression: "attribute_not_exists(SK)",
     });
@@ -448,21 +452,25 @@ export async function markSubscribed(
     if (!isConditionalFailure(error)) throw error;
   }
   try {
+    const sets = ["#status = :subscribed", "#until = :until"];
+    if (limit !== undefined) sets.push("#mpl = :mpl");
+    if (auto !== undefined) sets.push("#auto = :auto");
     await client.update({
       TableName,
       Key,
       // exempt accounts stay exempt; a later (or equal) period wins. The plan's
       // monthly allowance follows the latest payment (upgrades/downgrades).
-      UpdateExpression:
-        limit !== undefined
-          ? "SET #status = :subscribed, #until = :until, #mpl = :mpl"
-          : "SET #status = :subscribed, #until = :until REMOVE #mpl",
+      UpdateExpression: `SET ${sets.join(", ")}${limit === undefined ? " REMOVE #mpl" : ""}`,
       ConditionExpression:
         "#status <> :exempt AND (attribute_not_exists(#until) OR #until <= :until OR #status <> :subscribed)",
-      ExpressionAttributeNames: { "#status": "status", "#until": "subscribedUntil", "#mpl": "monthlyProductLimit" },
+      ExpressionAttributeNames: {
+        "#status": "status", "#until": "subscribedUntil", "#mpl": "monthlyProductLimit",
+        ...(auto !== undefined ? { "#auto": "autoRenew" } : {}),
+      },
       ExpressionAttributeValues: {
         ":subscribed": "subscribed", ":exempt": "exempt", ":until": until,
         ...(limit !== undefined ? { ":mpl": limit } : {}),
+        ...(auto !== undefined ? { ":auto": auto } : {}),
       },
     });
   } catch (error) {
@@ -732,4 +740,23 @@ export async function assertCanGenerate(
   }
   if (entitlement.productsUsed >= entitlement.productLimit)
     throw new TrialLimitReachedError();
+}
+
+/**
+ * Billing: automatic charges switched off (the seller cancelled, or PayFast
+ * ended the card subscription). The paid period itself is unchanged.
+ */
+export async function setAutoRenew(tenantId: string, autoRenew: boolean, options: GateOptions = {}): Promise<void> {
+  try {
+    await createTenantDynamoClient(tenantId).update({
+      TableName: tableFor(options),
+      Key: { PK: tenantPK(tenantId), SK: ENTITLEMENT_SK },
+      UpdateExpression: "SET #auto = :auto",
+      ConditionExpression: "attribute_exists(SK)",
+      ExpressionAttributeNames: { "#auto": "autoRenew" },
+      ExpressionAttributeValues: { ":auto": autoRenew },
+    });
+  } catch (error) {
+    if (!isConditionalFailure(error)) throw error;
+  }
 }

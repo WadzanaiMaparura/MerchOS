@@ -101,6 +101,8 @@ export interface SubscriptionWelcomeInput {
   existingProducts: number;
   /** End of the month just paid for (ISO). */
   paidUntil: string;
+  /** Card on file, charged automatically each month. */
+  autoRenew?: boolean | undefined;
 }
 
 /** "22 December 2026" in South African time. */
@@ -137,7 +139,9 @@ export function subscriptionWelcome(i: SubscriptionWelcomeInput): RenderedEmail 
     para('Good to know:') +
     bullets([
       ...(allowance ? [`Your allowance of ${allowance} starts today and resets on the 1st of each month.`] : []),
-      `Your plan is paid until <b>${escapeHtml(longDate(i.paidUntil))}</b>. We will email you a week before, and you pay for the next month from Billing. We never charge you automatically.`,
+      i.autoRenew
+        ? `Your plan renews on <b>${escapeHtml(longDate(i.paidUntil))}</b> and on the same day each month after that: we charge your card automatically. You can change your plan or stop automatic billing at any time from Billing.`
+        : `Your plan is paid until <b>${escapeHtml(longDate(i.paidUntil))}</b>. We will email you a week before, and you pay for the next month from Billing. We never charge you automatically.`,
       'Invoices are in your dashboard under Billing, where you can also change your plan at any time.',
     ]) +
     button('Go to my dashboard', `${i.siteUrl}/dashboard`);

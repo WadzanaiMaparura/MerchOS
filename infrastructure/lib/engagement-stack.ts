@@ -221,6 +221,8 @@ export class EngagementStack extends cdk.Stack {
       // payment regardless; each one checks this at send time, so switching it on
       // later covers sellers who paid before.
       BILLING_LIFECYCLE: envFlag(this, env, 'billingLifecycle'),
+      // Card on file: reminders say "we will charge your card" instead of "please pay".
+      CARD_SUBSCRIPTIONS: envFlag(this, env, 'cardSubscriptions'),
       POWERTOOLS_SERVICE_NAME: 'engagement',
       LOG_LEVEL: env === 'production' ? 'WARN' : 'INFO',
     };

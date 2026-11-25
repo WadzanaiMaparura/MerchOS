@@ -46,6 +46,8 @@ export interface CycleInput {
   dataKeptUntil: string;
   /** Products in the account. */
   productCount: number;
+  /** Card on file, charged automatically each month. */
+  autoRenew?: boolean | undefined;
 }
 
 const payUrl = (siteUrl: string) => `${siteUrl}/billing?renew=1`;
@@ -53,6 +55,14 @@ const payUrl = (siteUrl: string) => `${siteUrl}/billing?renew=1`;
 // ─── Before the end ─────────────────────────────────────────────────────────
 
 export function dueInSevenDays(i: CycleInput): RenderedEmail {
+  if (i.autoRenew) {
+    const auto =
+      hello(i.firstName) +
+      para(`Your <b>${escapeHtml(i.planName)} plan</b> renews on <b>${date(i.paidUntil)}</b>. We will charge your card for your next month on that day, so there is nothing you need to do.`) +
+      para('To change your plan, update your card or stop automatic billing, go to Billing.') +
+      button('Manage billing', `${i.siteUrl}/billing`);
+    return render(`Your MerchOS plan renews on ${longDate(i.paidUntil)}`, 'We will charge your card on that day. Nothing to do.', auto);
+  }
   const body =
     hello(i.firstName) +
     para(`Your <b>${escapeHtml(i.planName)} plan</b> is paid until <b>${date(i.paidUntil)}</b>.`) +
@@ -78,16 +88,23 @@ export function dueTomorrow(i: CycleInput): RenderedEmail {
 // ─── After the end ──────────────────────────────────────────────────────────
 
 export function planPaused(i: CycleInput): RenderedEmail {
+  const why = i.autoRenew
+    ? `we could not charge your card for your ${escapeHtml(i.planName)} plan, so it is now paused.`
+    : `we have not received a payment for your ${escapeHtml(i.planName)} plan, so it is now paused.`;
   const body =
     heading('Your plan is paused') +
-    para(`${i.firstName ? `Hi ${escapeHtml(i.firstName)}, w` : 'W'}e have not received a payment for your ${escapeHtml(i.planName)} plan, so it is now paused.`) +
+    para(`${i.firstName ? `Hi ${escapeHtml(i.firstName)}, ` : ''}${i.firstName ? why : why.charAt(0).toUpperCase() + why.slice(1)}`) +
     bullets([
       `Your ${products(i.productCount)} and their listings are safe`,
       'You can still sign in, edit your products and export them',
       'Adding new products and writing new listings is paused',
     ]) +
-    para('Pay now and everything works again straight away.') +
-    button('Pay now', payUrl(i.siteUrl)) +
+    para(
+      i.autoRenew
+        ? 'Update your card, or pay this month by EFT, and everything works again straight away.'
+        : 'Pay now and everything works again straight away.',
+    ) +
+    button(i.autoRenew ? 'Update my card or pay by EFT' : 'Pay now', payUrl(i.siteUrl)) +
     small(
       `If we have not received a payment by ${date(i.closesAt)}, your account will close. Your products are kept, and you can come back at any time.`,
     );

@@ -22,7 +22,8 @@
         "appBaseUrl": "https://merchos.co.za",
         "checkoutEnabled": "false",
         "trialEnforcement": "false",
-        "billingLifecycle": "false"
+        "billingLifecycle": "false",
+        "cardSubscriptions": "false"
       }
     }
   }
