@@ -2,16 +2,19 @@
 
 import React, { useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import type { Notification } from '@merch-os/types';
+import { markNotificationsRead, type SellerNotification } from '../engagement/engagement-api';
 import { useNotificationStore } from '../../stores/notification-store';
-import { getNotificationNavigationPath } from '../../config/notification-routes';
+
+type Notification = SellerNotification;
+
+/** Only paths inside the dashboard are followed (the server sends paths, never URLs). */
+export function safeLink(link: string): string {
+  return /^\/[A-Za-z0-9/_%.-]*$/.test(link) && !link.startsWith('//') ? link : '/dashboard';
+}
 
 /**
- * NotificationHistoryDropdown - Accessible dropdown showing recent 50 notifications.
- *
- * Accessible from the top bar. Shows read/unread status, ordered newest first.
- * Includes mark-as-read and mark-all-as-read functionality.
- * Updates unread count within 1 second of interaction.
+ * NotificationHistoryDropdown - the bell: the last 50 notifications, newest first.
+ * Opening one marks it read (saved for the account) and goes to its page.
  */
 export function NotificationHistoryDropdown() {
   const {
@@ -20,9 +23,31 @@ export function NotificationHistoryDropdown() {
     isHistoryOpen,
     toggleHistory,
     setHistoryOpen,
-    markAsRead,
-    markAllAsRead,
+    markAsReadLocal,
+    markAllAsReadLocal,
+    setFromServer,
   } = useNotificationStore();
+
+  // Shown as read straight away; the saved state comes back from the server.
+  const save = useCallback(
+    (input: { ids: string[] } | { all: true }) => {
+      markNotificationsRead(input)
+        .then((r) => setFromServer(r.notifications, r.unreadCount))
+        .catch(() => undefined);
+    },
+    [setFromServer],
+  );
+  const markAsRead = useCallback(
+    (id: string) => {
+      markAsReadLocal(id);
+      save({ ids: [id] });
+    },
+    [markAsReadLocal, save],
+  );
+  const markAllAsRead = useCallback(() => {
+    markAllAsReadLocal();
+    save({ all: true });
+  }, [markAllAsReadLocal, save]);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -68,10 +93,8 @@ export function NotificationHistoryDropdown() {
       if (!notification.read) {
         markAsRead(notification.id);
       }
-      // Navigate to the corresponding detail page based on event type (Requirement 12.3)
-      const path = getNotificationNavigationPath(notification);
       setHistoryOpen(false);
-      router.push(path);
+      router.push(safeLink(notification.link));
     },
     [markAsRead, setHistoryOpen, router]
   );
@@ -86,10 +109,11 @@ export function NotificationHistoryDropdown() {
       const diffDays = Math.floor(diffMs / 86400000);
 
       if (diffMins < 1) return 'Just now';
-      if (diffMins < 60) return `${diffMins}m ago`;
-      if (diffHours < 24) return `${diffHours}h ago`;
-      if (diffDays < 7) return `${diffDays}d ago`;
-      return date.toLocaleDateString();
+      if (diffMins < 60) return `${diffMins} ${diffMins === 1 ? 'minute' : 'minutes'} ago`;
+      if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? 'hour' : 'hours'} ago`;
+      if (diffDays === 1) return 'Yesterday';
+      if (diffDays < 7) return `${diffDays} days ago`;
+      return date.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
     } catch {
       return '';
     }
@@ -163,7 +187,7 @@ export function NotificationHistoryDropdown() {
           >
             {notifications.length === 0 ? (
               <div className="px-4 py-8 text-center text-sm text-gray-500">
-                No notifications available
+                Nothing new. Finished imports, payments and other updates show up here.
               </div>
             ) : (
               notifications.map((notification) => (
@@ -176,6 +200,11 @@ export function NotificationHistoryDropdown() {
               ))
             )}
           </div>
+          {notifications.length > 0 && (
+            <p className="border-t border-gray-200 px-4 py-2 text-center text-xs text-gray-500">
+              Showing the last 50. Kept for 90 days.
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -196,7 +225,7 @@ function NotificationItem({ notification, onClick, formatTimestamp }: Notificati
       className={`flex w-full items-start gap-3 border-b border-gray-100 px-4 py-3 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-600 ${
         !notification.read ? 'bg-blue-50' : ''
       }`}
-      aria-label={`${notification.read ? '' : 'Unread: '}${notification.title}. ${notification.message}. ${formatTimestamp(notification.timestamp)}`}
+      aria-label={`${notification.read ? '' : 'Unread: '}${notification.title}. ${notification.message}. ${formatTimestamp(notification.at)}`}
     >
       {/* Unread indicator dot */}
       <div className="mt-1.5 flex-shrink-0">
@@ -216,7 +245,7 @@ function NotificationItem({ notification, onClick, formatTimestamp }: Notificati
           {notification.message}
         </p>
         <p className="mt-1 text-xs text-gray-400">
-          {formatTimestamp(notification.timestamp)}
+          {formatTimestamp(notification.at)}
         </p>
       </div>
     </button>

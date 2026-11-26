@@ -102,6 +102,23 @@ describe('Engagement stack', () => {
     expect(policies()).toContain('event-bus/merch-os-events-dev');
   });
 
+  it('seller notifications: bell routes behind the seller sign-in, fed by import, photo and trial events', () => {
+    const bell = routes().filter((p) => /^(GET|POST) \/notifications/.test(String(p['RouteKey'])));
+    expect(bell.map((p) => p['RouteKey']).sort()).toEqual(['GET /notifications', 'POST /notifications/read']);
+    for (const p of bell) expect(p['AuthorizationType']).toBe('JWT');
+    t.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'merch-os-engagement-sellernotifications-dev',
+      Handler: 'index.notificationsHandler',
+    });
+    t.hasResourceProperties('AWS::Events::Rule', {
+      EventBusName: 'merch-os-events-dev',
+      EventPattern: {
+        source: ['merch-os.supplier-intelligence', 'merch-os.image-intelligence', 'merch-os.product'],
+        'detail-type': ['ImportJobCompleted', 'ImportJobFailed', 'ImageModerationRejected', 'ImageProcessingFailed', 'product.trial.usage'],
+      },
+    });
+  });
+
   it('only allows our own site and admin origins', () => {
     t.hasResourceProperties('AWS::ApiGatewayV2::Api', {
       ProtocolType: 'HTTP',

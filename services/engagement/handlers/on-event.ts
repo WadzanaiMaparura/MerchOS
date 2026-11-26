@@ -21,7 +21,17 @@ import type { EventBridgeEvent } from 'aws-lambda';
 import { z } from 'zod';
 import { GRACE_DAYS, isBillingLifecycleOn } from '../../shared/entitlements/billing-stage';
 import { TRIAL_PRODUCT_LIMIT } from '../../shared/entitlements/trial-gate';
-import { countProducts, ensureProfile, getPaidStatus, getUser } from '../lib/accounts';
+import { countProducts, ensureProfile, getPaidStatus, getProductTitle, getUser } from '../lib/accounts';
+import { addNotification } from '../lib/notifications';
+import {
+  imageFailed,
+  imageRejected,
+  importCompleted,
+  importFailed,
+  paymentReceived,
+  referralApplied,
+  trialUsage,
+} from '../lib/notification-texts';
 import { welcomeBack } from '../lib/billing-templates';
 import { config } from '../lib/config';
 import { ensureReferralCode, sendOnce } from '../lib/lifecycle';
@@ -50,6 +60,7 @@ const activatedSchema = z.object({
   periodStart: z.string().datetime(),
   periodEnd: z.string().datetime(),
   previousPeriodEnd: z.string().datetime().optional(),
+  mPaymentId: z.string().min(1).max(100).optional(),
 });
 
 const extendedSchema = z.object({
@@ -103,7 +114,7 @@ export async function onRegistered(detail: unknown): Promise<void> {
   await scheduleStep({ step: 'training', tenantId }, now);
 }
 
-export async function onSubscriptionActivated(detail: unknown): Promise<void> {
+export async function onSubscriptionActivated(detail: unknown, at: string = new Date().toISOString()): Promise<void> {
   const parsed = activatedSchema.safeParse(detail);
   if (!parsed.success) {
     console.warn('billing.subscription.activated ignored: unexpected detail');
@@ -132,6 +143,9 @@ export async function onSubscriptionActivated(detail: unknown): Promise<void> {
   // Every payment books this paid period's reminders and, if it is not renewed,
   // the pause, closing and win-back emails. Each checks at send time.
   await scheduleBillingSteps(d.tenantId, d.periodEnd, d.planId);
+
+  // The bell: one entry per payment.
+  await addNotification(d.tenantId, paymentReceived(d.mPaymentId ?? d.periodEnd, d.planName, d.periodEnd, at));
 
   // Free months this seller earned while not paying are applied now, one month each.
   if (isReferralFreeMonthsOn()) {
@@ -192,7 +206,7 @@ export async function onSubscriptionActivated(detail: unknown): Promise<void> {
  * this new paid-until gets its reminders (the old ones see a later paid-until
  * and stay quiet).
  */
-export async function onSubscriptionExtended(detail: unknown): Promise<void> {
+export async function onSubscriptionExtended(detail: unknown, at: string = new Date().toISOString()): Promise<void> {
   const parsed = extendedSchema.safeParse(detail);
   if (!parsed.success) {
     console.warn('billing.subscription.extended ignored: unexpected detail');
@@ -206,7 +220,80 @@ export async function onSubscriptionExtended(detail: unknown): Promise<void> {
     if (r?.reward !== 'APPLIED') console.warn('Free month added but the referral was not owed one', { tenantId: d.tenantId });
   }
   await scheduleBillingSteps(d.tenantId, d.periodEnd, d.planId);
+  await addNotification(d.tenantId, referralApplied(d.referredTenantId, d.periodEnd, at));
   console.info('Referral free month applied', { tenantId: d.tenantId, periodEnd: d.periodEnd });
+}
+
+// ─── Seller notifications from other services' events ────────────────────────
+
+const importCompletedSchema = z.object({
+  tenantId: z.string().uuid(),
+  importJobId: z.string().min(1).max(100),
+  results: z.object({
+    created: z.number().int().nonnegative(),
+    updated: z.number().int().nonnegative(),
+    duplicates: z.number().int().nonnegative().default(0),
+    validationFailed: z.number().int().nonnegative().default(0),
+  }),
+});
+const importFailedSchema = z.object({
+  tenantId: z.string().uuid(),
+  importJobId: z.string().min(1).max(100),
+  error: z.object({ code: z.string().max(100).optional() }).partial().optional(),
+});
+const imageEventSchema = z.object({
+  tenantId: z.string().uuid(),
+  productId: z.string().min(1).max(100),
+  imageJobId: z.string().min(1).max(100),
+});
+const trialUsageSchema = z.object({
+  tenantId: z.string().uuid(),
+  productsUsed: z.number().int().nonnegative(),
+  productLimit: z.number().int().positive(),
+});
+
+/** Event time (stable across EventBridge retries), else now. */
+const eventTime = (event: EventBridgeEvent<string, unknown>): string => {
+  const t = Date.parse(event.time ?? '');
+  return Number.isNaN(t) ? new Date().toISOString() : new Date(t).toISOString();
+};
+
+/** Trial notifications: "almost used up" from 3 left, then "used up" (one each, ever). */
+export const TRIAL_NOTIFY_FROM_REMAINING = 3;
+
+export async function onNotifiable(event: EventBridgeEvent<string, unknown>): Promise<void> {
+  const at = eventTime(event);
+  const type = event['detail-type'];
+  const ignore = () => console.warn('Notification event ignored: unexpected detail', { detailType: type });
+
+  if (type === 'ImportJobCompleted') {
+    const p = importCompletedSchema.safeParse(event.detail);
+    if (!p.success) return ignore();
+    await addNotification(p.data.tenantId, importCompleted(p.data.importJobId, p.data.results, at));
+    return;
+  }
+  if (type === 'ImportJobFailed') {
+    const p = importFailedSchema.safeParse(event.detail);
+    if (!p.success) return ignore();
+    await addNotification(p.data.tenantId, importFailed(p.data.importJobId, p.data.error?.code === 'TIMEOUT', at));
+    return;
+  }
+  if (type === 'ImageModerationRejected' || type === 'ImageProcessingFailed') {
+    const p = imageEventSchema.safeParse(event.detail);
+    if (!p.success) return ignore();
+    const { tenantId, productId, imageJobId } = p.data;
+    const title = await getProductTitle(tenantId, productId).catch(() => null);
+    const build = type === 'ImageModerationRejected' ? imageRejected : imageFailed;
+    await addNotification(tenantId, build(imageJobId, productId, title, at));
+    return;
+  }
+  if (type === 'product.trial.usage') {
+    const p = trialUsageSchema.safeParse(event.detail);
+    if (!p.success) return ignore();
+    const { tenantId, productsUsed, productLimit } = p.data;
+    if (productsUsed < productLimit - TRIAL_NOTIFY_FROM_REMAINING) return;
+    await addNotification(tenantId, trialUsage(productsUsed, productLimit, at));
+  }
 }
 
 export async function handler(event: EventBridgeEvent<string, unknown>): Promise<void> {
@@ -214,9 +301,15 @@ export async function handler(event: EventBridgeEvent<string, unknown>): Promise
     case 'auth.user.registered':
       return onRegistered(event.detail);
     case 'billing.subscription.activated':
-      return onSubscriptionActivated(event.detail);
+      return onSubscriptionActivated(event.detail, eventTime(event));
     case 'billing.subscription.extended':
-      return onSubscriptionExtended(event.detail);
+      return onSubscriptionExtended(event.detail, eventTime(event));
+    case 'ImportJobCompleted':
+    case 'ImportJobFailed':
+    case 'ImageModerationRejected':
+    case 'ImageProcessingFailed':
+    case 'product.trial.usage':
+      return onNotifiable(event);
     default:
       console.info('Event ignored', { detailType: event['detail-type'] });
   }

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeStore, mem } from './fake-store';
 
 vi.mock('../lib/store', () => fakeStore);
+vi.mock('../lib/notifications', async () => (await import('./fake-store')).fakeNotifications);
 vi.mock('../lib/accounts', async () => {
   const actual = await vi.importActual<typeof import('../lib/accounts')>('../lib/accounts');
   const store = await import('./fake-store');
@@ -31,7 +32,7 @@ vi.mock('../../shared/middleware/tenant-context', () => ({
 import { _setTokenSecret } from '../lib/config';
 import { issueToken } from '../lib/tokens';
 import { handler as publicApi } from '../handlers/public-api';
-import { handler as sellerApi } from '../handlers/seller-api';
+import { handler as sellerApi, notificationsHandler } from '../handlers/seller-api';
 import { reviewsHandler, referralsHandler } from '../handlers/admin-api';
 
 const SECRET = 'test-secret';
@@ -206,5 +207,42 @@ describe('referrals (seller)', () => {
     expect(list.body['referrals']).toEqual([
       expect.objectContaining({ referrerBusiness: 'Thandi Home Goods', reward: 'APPLIED', status: 'QUALIFIED' }),
     ]);
+  });
+});
+
+describe('seller notifications API (the bell)', () => {
+  beforeEach(async () => {
+    const { notifMem, fakeNotifications } = await import('./fake-store');
+    notifMem.reset();
+    await fakeNotifications.addNotification(TENANT, {
+      key: 'import-failed:j1', kind: 'import.failed', title: 'Import failed', message: 'm', link: '/imports/j1', at: '2026-11-25T08:00:00.000Z',
+    });
+    await fakeNotifications.addNotification(TENANT, {
+      key: 'payment:p1', kind: 'payment.received', title: 'Payment received', message: 'm', link: '/billing', at: '2026-11-25T09:00:00.000Z',
+    });
+    await fakeNotifications.addNotification(OTHER, {
+      key: 'payment:p2', kind: 'payment.received', title: 'Someone else', message: 'm', link: '/billing', at: '2026-11-25T09:00:00.000Z',
+    });
+  });
+
+  it('lists my notifications only, newest first, with the unread count', async () => {
+    const r = await call(notificationsHandler, http('GET /notifications', { tenantId: TENANT }));
+    expect(r.status).toBe(200);
+    expect((r.body['notifications'] as Array<{ title: string }>).map((n) => n.title)).toEqual(['Payment received', 'Import failed']);
+    expect(r.body['unreadCount']).toBe(2);
+  });
+
+  it('marks one, then all, as read and returns the updated list', async () => {
+    const list = (await call(notificationsHandler, http('GET /notifications', { tenantId: TENANT }))).body['notifications'] as Array<{ id: string }>;
+    const one = await call(notificationsHandler, http('POST /notifications/read', { tenantId: TENANT, body: { ids: [list[1]!.id] } }));
+    expect(one.body['unreadCount']).toBe(1);
+    const all = await call(notificationsHandler, http('POST /notifications/read', { tenantId: TENANT, body: { all: true } }));
+    expect(all.body['unreadCount']).toBe(0);
+  });
+
+  it('refuses an empty or malformed request, and needs a signed-in seller', async () => {
+    expect((await call(notificationsHandler, http('POST /notifications/read', { tenantId: TENANT, body: { ids: [] } }))).status).toBe(400);
+    expect((await call(notificationsHandler, http('POST /notifications/read', { tenantId: TENANT, body: { all: 'yes' } }))).status).toBe(400);
+    expect((await call(notificationsHandler, http('GET /notifications'))).status).toBe(401);
   });
 });

@@ -371,6 +371,24 @@ export class EngagementStack extends cdk.Stack {
       targets: [target],
     });
 
+    // Seller notifications (the bell) from other services' events.
+    new events.Rule(this, 'SellerNotificationsRule', {
+      ruleName: `merch-os-engagement-seller-notifications-${env}`,
+      description: 'Imports finished or failed, photos not accepted, free trial almost used: seller bell',
+      eventBus: bus,
+      eventPattern: {
+        source: ['merch-os.supplier-intelligence', 'merch-os.image-intelligence', 'merch-os.product'],
+        detailType: [
+          'ImportJobCompleted',
+          'ImportJobFailed',
+          'ImageModerationRejected',
+          'ImageProcessingFailed',
+          'product.trial.usage',
+        ],
+      },
+      targets: [target],
+    });
+
     // Free months owed are requested from billing (engagement.referral.reward-earned):
     // when a referral qualifies (Scheduled) and after each payment (OnEvent).
     const putEvents = new iam.PolicyStatement({
@@ -405,6 +423,23 @@ export class EngagementStack extends cdk.Stack {
         path: routePath,
         methods: [method],
         integration: sellerIntegration,
+        authorizer: sellerAuthorizer,
+      });
+    }
+
+    // The seller's bell: own notifications only (tenant from the token).
+    const notificationsFn = createFn('SellerNotifications', 'seller-api.ts', [tableAccess, kmsAccess], {
+      handler: 'notificationsHandler',
+    });
+    const notificationsIntegration = new HttpLambdaIntegration('EngagementNotificationsIntegration', notificationsFn);
+    for (const [routePath, method] of [
+      ['/notifications', HttpMethod.GET],
+      ['/notifications/read', HttpMethod.POST],
+    ] as Array<[string, HttpMethod]>) {
+      this.httpApi.addRoutes({
+        path: routePath,
+        methods: [method],
+        integration: notificationsIntegration,
         authorizer: sellerAuthorizer,
       });
     }

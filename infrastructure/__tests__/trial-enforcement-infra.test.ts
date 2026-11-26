@@ -127,3 +127,15 @@ describe('free-trial enforcement switch (infrastructure)', () => {
     });
   });
 });
+
+describe('free trial usage for the seller bell', () => {
+  it('only product create may tell the platform bus (product.trial.usage)', () => {
+    const t = productApi();
+    const withBus = (Object.values(t.findResources('AWS::Lambda::Function')) as Fn[]).filter(
+      (f) => f.Properties.Environment?.Variables?.['EVENT_BUS_NAME'] === 'merch-os-events-dev',
+    );
+    expect(names(withBus)).toEqual(['merch-os-product-createproduct-dev']);
+    const puts = statementsFor(t, 'events:PutEvents', 'event-bus/merch-os-events-dev');
+    expect(puts).toHaveLength(1);
+  });
+});

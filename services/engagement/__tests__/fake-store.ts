@@ -115,3 +115,50 @@ export const fakeStore = {
   saveFeedback: async (f: LeaveFeedback) => void mem.feedback.set(f.tenantId, { ...f }),
   listFeedback: async () => [...mem.feedback.values()],
 };
+
+// ─── Notifications (lib/notifications.ts), same once-per-key and read rules ──
+
+import type { NewNotification, SellerNotification } from '../lib/notifications';
+
+export const notifMem = {
+  items: new Map<string, Array<SellerNotification & { tenantId: string; key: string; readAt?: string }>>(),
+  keys: new Set<string>(),
+  lastReadAt: new Map<string, string>(),
+  reset() {
+    this.items.clear();
+    this.keys.clear();
+    this.lastReadAt.clear();
+  },
+  of(tenantId: string) {
+    return this.items.get(tenantId) ?? [];
+  },
+};
+
+export const fakeNotifications = {
+  NOTIFICATION_TTL_DAYS: 90,
+  NOTIFICATION_LIST_LIMIT: 50,
+  addNotification: async (tenantId: string, n: NewNotification) => {
+    const k = `${tenantId}|${n.key}`;
+    if (notifMem.keys.has(k)) return false;
+    notifMem.keys.add(k);
+    const at = new Date(n.at).toISOString();
+    const list = notifMem.of(tenantId);
+    list.push({ tenantId, key: n.key, id: `${at}#${n.key}`, kind: n.kind, title: n.title, message: n.message, link: n.link, at, read: false });
+    notifMem.items.set(tenantId, list);
+    return true;
+  },
+  listNotifications: async (tenantId: string) => {
+    const readUntil = notifMem.lastReadAt.get(tenantId) ?? '';
+    const notifications = [...notifMem.of(tenantId)]
+      .sort((a, b) => b.id.localeCompare(a.id))
+      .slice(0, 50)
+      .map(({ tenantId: _t, key: _k, readAt, ...n }) => ({ ...n, read: !!readAt || n.at <= readUntil }));
+    return { notifications, unreadCount: notifications.filter((n) => !n.read).length };
+  },
+  markRead: async (tenantId: string, ids: string[]) => {
+    for (const n of notifMem.of(tenantId)) if (ids.includes(n.id)) n.readAt ??= new Date().toISOString();
+  },
+  markAllRead: async (tenantId: string) => {
+    notifMem.lastReadAt.set(tenantId, new Date().toISOString());
+  },
+};

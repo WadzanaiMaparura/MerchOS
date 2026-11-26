@@ -173,3 +173,18 @@ export async function isSubscribedNow(tenantId: string, now: Date = new Date()):
   const until = item['subscribedUntil'];
   return typeof until !== 'string' || until > now.toISOString();
 }
+
+/** A product's title for a notification ("A photo on ..."), or null if it is gone. */
+export async function getProductTitle(tenantId: string, productId: string): Promise<string | null> {
+  const out = await db().send(
+    new GetCommand({
+      TableName: config.productsTable,
+      Key: { PK: `TENANT#${tenantId}`, SK: `PRODUCT#${productId}` },
+      ProjectionExpression: 'content.title',
+    }),
+  );
+  const title = (out.Item?.['content'] as { title?: unknown } | undefined)?.title;
+  if (typeof title !== 'string' || !title.trim()) return null;
+  const t = title.trim();
+  return t.length > 60 ? `${t.slice(0, 57)}...` : t;
+}

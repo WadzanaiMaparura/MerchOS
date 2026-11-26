@@ -1,8 +1,9 @@
 import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fakeStore, mem } from './fake-store';
+import { fakeStore, mem, notifMem } from './fake-store';
 
 vi.mock('../lib/store', () => fakeStore);
+vi.mock('../lib/notifications', async () => (await import('./fake-store')).fakeNotifications);
 
 const accounts = vi.hoisted(() => ({
   users: new Map<string, { email: string; enabled: boolean }>(),
@@ -170,6 +171,26 @@ describe('sending a step', () => {
     expect(sent.every((e) => !e.listUnsubscribeUrl && !e.html.includes('Unsubscribe'))).toBe(true);
     expect(sent[2]!.html).toContain('Your 412 products and their listings are safe');
     expect(sent[2]!.html).toContain('https://merchos.co.za/billing?renew=1');
+  });
+
+  it('the bell gets due in 7 days, paused and closing in 7 days, once each', async () => {
+    notifMem.reset();
+    for (const s of ['due7', 'due1', 'paused', 'final', 'closed', 'due7', 'paused']) await step(s);
+    expect(notifMem.of(TENANT).map((n) => n.title)).toEqual([
+      'Payment due in 7 days',
+      'Your plan is paused',
+      'Your account closes in 7 days',
+    ]);
+    expect(notifMem.of(TENANT).every((n) => n.link === '/billing')).toBe(true);
+  });
+
+  it('paid for a later period, or switched off: nothing in the bell either', async () => {
+    notifMem.reset();
+    accounts.paid.set(TENANT, { status: 'subscribed', subscribedUntil: '2027-01-22T10:00:00.000Z' });
+    await step('paused');
+    process.env['BILLING_LIFECYCLE'] = 'false';
+    await step('due7');
+    expect(notifMem.items.size).toBe(0);
   });
 
   it('paying for a later period cancels the rest quietly', async () => {

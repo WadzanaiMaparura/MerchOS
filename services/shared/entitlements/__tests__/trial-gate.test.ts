@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const get = vi.fn();
 const transactWrite = vi.fn();
@@ -477,5 +477,52 @@ describe('paid plans: new products per month', () => {
     await releaseProductSlot(T, 'p1', ON);
     const [del] = transactWrite.mock.calls[1]![0].TransactItems;
     expect(del.Delete.Key.SK).toBe(monthProductSK(monthKey(), 'p1'));
+  });
+});
+
+describe('trial usage event for the seller bell (product.trial.usage)', () => {
+  const sent: Array<Record<string, unknown>> = [];
+  beforeEach(async () => {
+    sent.length = 0;
+    const { _setTrialEventsClient } = await import('../trial-events');
+    _setTrialEventsClient({
+      send: async (cmd: { input: { Entries: Array<Record<string, unknown>> } }) => {
+        sent.push(...cmd.input.Entries);
+        return {};
+      },
+    } as never);
+  });
+  afterEach(() => {
+    delete process.env['EVENT_BUS_NAME'];
+  });
+
+  it('sent from 3 products left, with the count after this product', async () => {
+    process.env['EVENT_BUS_NAME'] = 'merch-os-events-test';
+    transactWrite.mockResolvedValue({});
+    get.mockResolvedValue(entitlement({ productsUsed: 12 }));
+    expect(await reserveProductSlot(T, 'p12', ON)).toBe('reserved');
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ Source: 'merch-os.product', DetailType: 'product.trial.usage', EventBusName: 'merch-os-events-test' });
+    expect(JSON.parse(sent[0]!['Detail'] as string)).toEqual({ tenantId: T, productsUsed: 12, productLimit: 15 });
+  });
+
+  it('not sent earlier in the trial, nor where the bus is not configured', async () => {
+    transactWrite.mockResolvedValue({});
+    process.env['EVENT_BUS_NAME'] = 'merch-os-events-test';
+    get.mockResolvedValue(entitlement({ productsUsed: 11 }));
+    await reserveProductSlot(T, 'p11', ON);
+    delete process.env['EVENT_BUS_NAME'];
+    get.mockResolvedValue(entitlement({ productsUsed: 14 }));
+    await reserveProductSlot(T, 'p14', ON);
+    expect(sent).toHaveLength(0);
+  });
+
+  it('a failure to send never stops the product being created', async () => {
+    process.env['EVENT_BUS_NAME'] = 'merch-os-events-test';
+    const { _setTrialEventsClient } = await import('../trial-events');
+    _setTrialEventsClient({ send: async () => { throw new Error('EventBridge down'); } } as never);
+    transactWrite.mockResolvedValue({});
+    get.mockResolvedValue(entitlement({ productsUsed: 15 }));
+    expect(await reserveProductSlot(T, 'p15', ON)).toBe('reserved');
   });
 });

@@ -44,6 +44,7 @@
 import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import { createTenantDynamoClient, tenantPK } from "../utils/dynamo-client";
 import { GRACE_DAYS } from "./billing-stage";
+import { emitTrialUsage, trialEventsConfigured } from "./trial-events";
 
 export const TRIAL_PRODUCT_LIMIT = 15;
 export const ENTITLEMENT_SK = "ENTITLEMENT#trial";
@@ -590,6 +591,7 @@ export async function reserveProductSlot(
           },
         ],
       });
+      await notifyTrialUsage(tenantId, options);
       return "reserved";
     } catch (error) {
       if (isTransactionConflict(error) && attempt < CONFLICT_RETRIES) {
@@ -612,6 +614,17 @@ export async function reserveProductSlot(
       }
       throw error;
     }
+  }
+}
+
+/** Near or at the trial limit: tell the seller (bell). Never throws. */
+async function notifyTrialUsage(tenantId: string, options: GateOptions): Promise<void> {
+  if (!trialEventsConfigured()) return;
+  try {
+    const e = await getEntitlement(tenantId, options);
+    if (e && e.status === "active") await emitTrialUsage(tenantId, e.productsUsed, e.productLimit);
+  } catch {
+    // Best effort: the product is being created either way.
   }
 }
 

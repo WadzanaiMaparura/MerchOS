@@ -1,76 +1,42 @@
 'use client';
 
 import { create } from 'zustand';
-import type { Notification } from '@merch-os/types';
+import type { SellerNotification } from '../components/engagement/engagement-api';
 
-/** Maximum number of notifications retained in history. */
-const MAX_NOTIFICATIONS = 50;
-
-export type ConnectionStatus = 'connected' | 'reconnecting' | 'polling' | 'disconnected';
-
+/**
+ * The bell's state. The server is the source of truth (engagement API,
+ * GET /notifications); this holds the last list it returned, and applies
+ * "mark as read" straight away while the request is on its way.
+ */
 interface NotificationStore {
-  /** Most recent 50 notifications, ordered newest first. */
-  notifications: Notification[];
-  /** Number of unread notifications. */
+  /** Last 50, newest first. */
+  notifications: SellerNotification[];
   unreadCount: number;
-  /** WebSocket connection status. */
-  connectionStatus: ConnectionStatus;
-  /** Whether the notification history dropdown is open. */
   isHistoryOpen: boolean;
 
-  /** Add a new notification (maintains max 50, newest first). */
-  addNotification: (notification: Notification) => void;
-  /** Mark a single notification as read by ID. */
-  markAsRead: (id: string) => void;
-  /** Mark all notifications as read. */
-  markAllAsRead: () => void;
-  /** Update the connection status. */
-  setConnectionStatus: (status: ConnectionStatus) => void;
-  /** Toggle the notification history dropdown. */
+  /** Replace with what the server returned. */
+  setFromServer: (notifications: SellerNotification[], unreadCount: number) => void;
+  markAsReadLocal: (id: string) => void;
+  markAllAsReadLocal: () => void;
   toggleHistory: () => void;
-  /** Set the notification history dropdown open/closed state. */
   setHistoryOpen: (open: boolean) => void;
 }
 
 export const useNotificationStore = create<NotificationStore>((set) => ({
   notifications: [],
   unreadCount: 0,
-  connectionStatus: 'disconnected',
   isHistoryOpen: false,
 
-  addNotification: (notification) =>
+  setFromServer: (notifications, unreadCount) => set({ notifications, unreadCount }),
+
+  markAsReadLocal: (id) =>
     set((state) => {
-      // Avoid duplicates
-      if (state.notifications.some((n) => n.id === notification.id)) {
-        return state;
-      }
-
-      // Add to front (newest first), cap at MAX_NOTIFICATIONS
-      const updated = [notification, ...state.notifications].slice(0, MAX_NOTIFICATIONS);
-      const unreadCount = updated.filter((n) => !n.read).length;
-
-      return {
-        notifications: updated,
-        unreadCount,
-      };
+      const notifications = state.notifications.map((n) => (n.id === id ? { ...n, read: true } : n));
+      return { notifications, unreadCount: notifications.filter((n) => !n.read).length };
     }),
 
-  markAsRead: (id) =>
-    set((state) => {
-      const notifications = state.notifications.map((n) =>
-        n.id === id ? { ...n, read: true } : n
-      );
-      const unreadCount = notifications.filter((n) => !n.read).length;
-      return { notifications, unreadCount };
-    }),
-
-  markAllAsRead: () =>
-    set((state) => ({
-      notifications: state.notifications.map((n) => ({ ...n, read: true })),
-      unreadCount: 0,
-    })),
-
-  setConnectionStatus: (connectionStatus) => set({ connectionStatus }),
+  markAllAsReadLocal: () =>
+    set((state) => ({ notifications: state.notifications.map((n) => ({ ...n, read: true })), unreadCount: 0 })),
 
   toggleHistory: () => set((state) => ({ isHistoryOpen: !state.isHistoryOpen })),
 
