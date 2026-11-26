@@ -413,6 +413,9 @@ export class AdminApiStack extends cdk.Stack {
     );
     for (const [k, v] of Object.entries({ ...sellerTables, ...sellerBuckets })) retentionFn.addEnvironment(k, v);
     retentionFn.addEnvironment('DATA_RETENTION', dataRetention);
+    // When the rehearsal started: admin is reminded to switch on after 30 days.
+    const dryRunSince = envSetting(this, env, 'dataRetentionDryRunSince');
+    if (dryRunSince) retentionFn.addEnvironment('DATA_RETENTION_DRYRUN_SINCE', dryRunSince);
     retentionFn.addEnvironment('EVENT_BUS_NAME', `merch-os-events-${env}`);
     retentionFn.addEnvironment('ALERT_EMAIL', alertEmail);
     retentionFn.addEnvironment('ALERT_FROM_EMAIL', 'MerchOS Alerts <noreply@merchos.co.za>');

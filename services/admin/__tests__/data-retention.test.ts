@@ -167,6 +167,28 @@ describe('data retention job', () => {
     expect(s.retention.has(T_EXEMPT)).toBe(false);
   });
 
+  it('after 30 days of rehearsal: a reminder to switch on (that day, then in every email)', async () => {
+    process.env['DATA_RETENTION'] = 'dryrun';
+    process.env['DATA_RETENTION_DRYRUN_SINCE'] = '2027-02-01';
+    await runRetention(new Date('2027-03-02T01:00:00Z')); // day 29, Tuesday, nothing listed
+    expect(s.emails).toHaveLength(0);
+    await runRetention(new Date('2027-03-03T01:00:00Z')); // day 30, Wednesday
+    expect(s.emails).toHaveLength(1);
+    expect(s.emails[0]!.subject).toBe('Data deletion: rehearsal done, ready to switch on (nothing due)');
+    expect(s.emails[0]!.html).toContain('the rehearsal has run for 30 days');
+    expect(s.emails[0]!.html).toContain('dataRetention');
+    await runRetention(new Date('2027-03-04T01:00:00Z')); // day 31, quiet Thursday: no email
+    expect(s.emails).toHaveLength(1);
+    await runRetention(new Date('2027-03-08T01:00:00Z')); // Monday: reminded again
+    expect(s.emails[1]!.html).toContain('the rehearsal has run for 35 days');
+    // Switched on: no more reminders.
+    process.env['DATA_RETENTION'] = 'on';
+    s.emails.length = 0;
+    await runRetention(new Date('2027-03-15T01:00:00Z'));
+    expect(s.emails.every((e) => !e.html.includes('rehearsal has run'))).toBe(true);
+    delete process.env['DATA_RETENTION_DRYRUN_SINCE'];
+  });
+
   it('quiet days send no email, except a short Monday note', async () => {
     process.env['DATA_RETENTION'] = 'dryrun';
     await runRetention(new Date('2027-03-03T01:00:00Z')); // Wednesday, nothing due

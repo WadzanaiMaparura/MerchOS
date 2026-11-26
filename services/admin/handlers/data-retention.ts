@@ -285,12 +285,36 @@ function line(l: ReportLine): string {
   }${l.note ? `. ${escapeHtml(l.note)}` : ''}</li>`;
 }
 
-export function reportEmail(mode: 'dryrun' | 'on', checked: number, lines: ReportLine[], adminUrl: string) {
+/** How long the rehearsal runs before admin is reminded to switch the job on. */
+export const DRY_RUN_DAYS = 30;
+
+/** Days since the dry run started (DATA_RETENTION_DRYRUN_SINCE), or null if not set. */
+export function dryRunDays(now: Date): number | null {
+  const since = Date.parse(process.env['DATA_RETENTION_DRYRUN_SINCE'] ?? '');
+  return Number.isNaN(since) ? null : Math.floor((now.getTime() - since) / (24 * 60 * 60 * 1000));
+}
+
+const switchOnReminder = (days: number) =>
+  para(
+    `<b>Reminder: the rehearsal has run for ${days} days.</b> If the lists in these emails look right, switch the job on: set <code>dataRetention</code> to <code>on</code> in infrastructure/cdk.json and deploy MerchOS-AdminApi. Until then nothing is deleted and no seller is warned, so the 12-month promise in the emails and the privacy policy is not being kept.`,
+  );
+
+export function reportEmail(
+  mode: 'dryrun' | 'on',
+  checked: number,
+  lines: ReportLine[],
+  adminUrl: string,
+  remindDays: number | null = null,
+) {
   const dry = mode === 'dryrun';
+  const listed = lines.length ? `${lines.length} account${lines.length === 1 ? '' : 's'} listed` : 'nothing due';
   const subject = dry
-    ? `Data deletion rehearsal: ${lines.length ? `${lines.length} account${lines.length === 1 ? '' : 's'} listed` : 'nothing due'}`
+    ? remindDays !== null
+      ? `Data deletion: rehearsal done, ready to switch on (${listed})`
+      : `Data deletion rehearsal: ${listed}`
     : `Data deletion: ${lines.length} account${lines.length === 1 ? '' : 's'} today`;
   const body =
+    (dry && remindDays !== null ? switchOnReminder(remindDays) : '') +
     para(
       dry
         ? '<b>Rehearsal (dry run).</b> Nothing was deleted and no seller was emailed. This is what the job would do today.'
@@ -310,8 +334,12 @@ async function sendReport(mode: 'dryrun' | 'on', checked: number, lines: ReportL
   const to = process.env['ALERT_EMAIL'];
   // Every run with something to report; otherwise a short weekly note (Mondays) so silence is never ambiguous.
   const monday = new Date(now.getTime() + 2 * 60 * 60 * 1000).getUTCDay() === 1;
-  if (!to || (!lines.length && !monday)) return false;
-  const email = reportEmail(mode, checked, lines, (process.env['ADMIN_BASE_URL'] || 'https://admin.merchos.co.za').replace(/\/$/, ''));
+  // After 30 days of rehearsal: a reminder to switch on, on day 30 and in every email after it.
+  const days = mode === 'dryrun' ? dryRunDays(now) : null;
+  const remind = days !== null && days >= DRY_RUN_DAYS ? days : null;
+  const firstReminder = remind === DRY_RUN_DAYS;
+  if (!to || (!lines.length && !monday && !firstReminder)) return false;
+  const email = reportEmail(mode, checked, lines, (process.env['ADMIN_BASE_URL'] || 'https://admin.merchos.co.za').replace(/\/$/, ''), remind);
   ses ??= new SESv2Client({});
   await ses.send(
     new SendEmailCommand({
