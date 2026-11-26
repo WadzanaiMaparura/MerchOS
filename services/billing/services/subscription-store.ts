@@ -56,6 +56,8 @@ export interface SubscriptionRecord {
   lastChargeFailedAt?: string;
   /** Automatic billing was cancelled (by the seller, or at PayFast). */
   cancelledAt?: string;
+  /** Free months already added to paid-until (credit ids, e.g. REF-<tenantId>). */
+  freeMonthCredits?: Set<string>;
   createdAt: string;
   updatedAt: string;
 }
@@ -172,6 +174,8 @@ export async function upsertSubscription(
     ...(autoRenew !== undefined ? { autoRenew } : {}),
     ...(payfastToken ? { payfastToken } : {}),
     ...(existing?.cancelledAt && input.autoRenew !== true ? { cancelledAt: existing.cancelledAt } : {}),
+    // Free months already given stay recorded, so a repeat request never adds another.
+    ...(existing?.freeMonthCredits?.size ? { freeMonthCredits: existing.freeMonthCredits } : {}),
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
@@ -186,6 +190,98 @@ export async function upsertSubscription(
     },
   });
   return record;
+}
+
+// ---------------------------------------------------------------------------
+// Free months (referral rewards): SK = CREDIT#<creditId>
+// ---------------------------------------------------------------------------
+
+export interface FreeMonthCredit {
+  creditId: string;
+  /** Who earned it for this account (the referred seller). */
+  referredTenantId: string;
+  planId?: string;
+  /** Paid-until before and after the free month. */
+  fromEnd?: string;
+  toEnd?: string;
+  /** Set once the free month is fully applied. */
+  appliedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const creditSK = (creditId: string) => `CREDIT#${creditId}`;
+
+export async function getFreeMonthCredit(tenantId: string, creditId: string): Promise<FreeMonthCredit | null> {
+  const res = await createTenantDynamoClient(tenantId).get({
+    TableName: BILLING_TABLE,
+    Key: { PK: tenantPK(tenantId), SK: creditSK(creditId) },
+    ConsistentRead: true,
+  });
+  return (res.Item as FreeMonthCredit | undefined) ?? null;
+}
+
+/** Records where a free month is going (before anything changes). Never touches an applied one. */
+export async function saveFreeMonthCredit(
+  tenantId: string,
+  credit: Omit<FreeMonthCredit, 'createdAt' | 'updatedAt' | 'appliedAt'>,
+): Promise<void> {
+  const now = new Date().toISOString();
+  await createTenantDynamoClient(tenantId).update({
+    TableName: BILLING_TABLE,
+    Key: { PK: tenantPK(tenantId), SK: creditSK(credit.creditId) },
+    UpdateExpression:
+      'SET tenantId = :t, creditId = :c, referredTenantId = :r, planId = :p, fromEnd = :f, toEnd = :to, createdAt = if_not_exists(createdAt, :now), updatedAt = :now',
+    ConditionExpression: 'attribute_not_exists(appliedAt)',
+    ExpressionAttributeValues: {
+      ':t': tenantId,
+      ':c': credit.creditId,
+      ':r': credit.referredTenantId,
+      ':p': credit.planId ?? null,
+      ':f': credit.fromEnd ?? null,
+      ':to': credit.toEnd ?? null,
+      ':now': now,
+    },
+  });
+}
+
+export async function markFreeMonthCreditApplied(tenantId: string, creditId: string): Promise<void> {
+  const now = new Date().toISOString();
+  await createTenantDynamoClient(tenantId).update({
+    TableName: BILLING_TABLE,
+    Key: { PK: tenantPK(tenantId), SK: creditSK(creditId) },
+    UpdateExpression: 'SET appliedAt = if_not_exists(appliedAt, :now), updatedAt = :now',
+    ExpressionAttributeValues: { ':now': now },
+  });
+}
+
+/**
+ * Moves paid-until from `fromEnd` to `toEnd` and records the credit on the
+ * subscription, in one conditional write. False when paid-until is no longer
+ * `fromEnd` (a payment or another free month got there first) or this credit
+ * was already added.
+ */
+export async function extendPaidUntil(tenantId: string, fromEnd: string, toEnd: string, creditId: string): Promise<boolean> {
+  try {
+    await createTenantDynamoClient(tenantId).update({
+      TableName: BILLING_TABLE,
+      Key: { PK: tenantPK(tenantId), SK: subscriptionSK() },
+      UpdateExpression: 'SET currentPeriodEnd = :to, updatedAt = :now ADD freeMonthCredits :ids',
+      ConditionExpression:
+        'currentPeriodEnd = :from AND (attribute_not_exists(freeMonthCredits) OR NOT contains(freeMonthCredits, :id))',
+      ExpressionAttributeValues: {
+        ':to': toEnd,
+        ':from': fromEnd,
+        ':now': new Date().toISOString(),
+        ':ids': new Set([creditId]),
+        ':id': creditId,
+      },
+    });
+    return true;
+  } catch (error) {
+    if ((error as { name?: string }).name === 'ConditionalCheckFailedException') return false;
+    throw error;
+  }
 }
 
 // ---------------------------------------------------------------------------

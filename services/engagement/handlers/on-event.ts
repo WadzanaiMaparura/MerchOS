@@ -6,7 +6,11 @@
  *                                                       emails (billing-cycle.ts), and "welcome back"
  *                                                       after a pause. First payment only: subscription
  *                                                       welcome now; review day 30, referral day 35; and
- *                                                       a referred seller's 14-day referral check
+ *                                                       a referred seller's 14-day referral check.
+ *                                                       Free months still owed to this seller are
+ *                                                       requested from billing (REFERRAL_FREE_MONTHS)
+ *   billing.subscription.extended   (merch-os.billing)  a free month was added: reward applied,
+ *                                                       reminders booked for the new paid-until
  *
  * Both events can be delivered more than once (and auth.user.registered has two
  * emitters), so every step is idempotent: emails have a sent marker and
@@ -22,7 +26,15 @@ import { welcomeBack } from '../lib/billing-templates';
 import { config } from '../lib/config';
 import { ensureReferralCode, sendOnce } from '../lib/lifecycle';
 import { scheduleBillingSteps, scheduleStep } from '../lib/schedule';
-import { markFirstSubscription, transitionReferral, wasSent } from '../lib/store';
+import { emitRewardEarned, isReferralFreeMonthsOn } from '../lib/events';
+import {
+  getReferral,
+  listReferralsBy,
+  markFirstSubscription,
+  markRewardApplied,
+  transitionReferral,
+  wasSent,
+} from '../lib/store';
 import { subscriptionWelcome, trialWelcome } from '../lib/templates';
 
 const registeredSchema = z.object({
@@ -39,6 +51,18 @@ const activatedSchema = z.object({
   periodEnd: z.string().datetime(),
   previousPeriodEnd: z.string().datetime().optional(),
 });
+
+const extendedSchema = z.object({
+  tenantId: z.string().uuid(),
+  planId: z.string().min(1).max(40),
+  reason: z.literal('referral-free-month'),
+  referredTenantId: z.string().uuid(),
+  periodEnd: z.string().datetime(),
+  previousPeriodEnd: z.string().datetime(),
+});
+
+/** rewardAppliedBy for free months applied by billing (staff ids otherwise). */
+export const AUTOMATIC = 'automatic';
 
 /** Paid again after the plan had been paused (or closed): past the grace period. */
 export function isComeback(previousPeriodEnd: string | undefined, paidAt: Date): boolean {
@@ -109,6 +133,13 @@ export async function onSubscriptionActivated(detail: unknown): Promise<void> {
   // the pause, closing and win-back emails. Each checks at send time.
   await scheduleBillingSteps(d.tenantId, d.periodEnd, d.planId);
 
+  // Free months this seller earned while not paying are applied now, one month each.
+  if (isReferralFreeMonthsOn()) {
+    for (const r of await listReferralsBy(d.tenantId)) {
+      if (r.reward === 'EARNED') await emitRewardEarned({ referrerTenantId: d.tenantId, referredTenantId: r.referredTenantId });
+    }
+  }
+
   // Back after a pause or closing: a "welcome back" (once per return).
   if (isComeback(d.previousPeriodEnd, new Date()) && isBillingLifecycleOn()) {
     const user = await getUser(profile.userId);
@@ -156,12 +187,36 @@ export async function onSubscriptionActivated(detail: unknown): Promise<void> {
   await scheduleStep({ step: 'referral', tenantId: d.tenantId }, from);
 }
 
+/**
+ * A referral free month was added to paid-until: the reward is applied, and
+ * this new paid-until gets its reminders (the old ones see a later paid-until
+ * and stay quiet).
+ */
+export async function onSubscriptionExtended(detail: unknown): Promise<void> {
+  const parsed = extendedSchema.safeParse(detail);
+  if (!parsed.success) {
+    console.warn('billing.subscription.extended ignored: unexpected detail');
+    return;
+  }
+  const d = parsed.data;
+  const marked = await markRewardApplied(d.tenantId, d.referredTenantId, AUTOMATIC);
+  if (!marked) {
+    const r = await getReferral(d.tenantId, d.referredTenantId);
+    // Already applied: a repeat delivery. Anything else is worth a look.
+    if (r?.reward !== 'APPLIED') console.warn('Free month added but the referral was not owed one', { tenantId: d.tenantId });
+  }
+  await scheduleBillingSteps(d.tenantId, d.periodEnd, d.planId);
+  console.info('Referral free month applied', { tenantId: d.tenantId, periodEnd: d.periodEnd });
+}
+
 export async function handler(event: EventBridgeEvent<string, unknown>): Promise<void> {
   switch (event['detail-type']) {
     case 'auth.user.registered':
       return onRegistered(event.detail);
     case 'billing.subscription.activated':
       return onSubscriptionActivated(event.detail);
+    case 'billing.subscription.extended':
+      return onSubscriptionExtended(event.detail);
     default:
       console.info('Event ignored', { detailType: event['detail-type'] });
   }

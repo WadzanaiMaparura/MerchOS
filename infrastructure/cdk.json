@@ -24,6 +24,7 @@
         "trialEnforcement": "true",
         "billingLifecycle": "false",
         "cardSubscriptions": "false",
+        "referralFreeMonths": "false",
         "billingApiDomain": "api.merchos.co.za",
         "hostedZoneId": "Z04418812LQLSF1AUT0WU",
         "hostedZoneName": "merchos.co.za"

@@ -3,8 +3,9 @@
 /**
  * Referrals: who referred whom, and the free months they earned. A referral
  * qualifies when the referred seller subscribes and is still subscribed 14
- * days later. Until checkout applies free months automatically, take the free
- * month off the referrer's next payment and mark it here.
+ * days later. With REFERRAL_FREE_MONTHS on, billing applies free months
+ * automatically; otherwise take the free month off the referrer's next
+ * payment and mark it here.
  */
 
 import React, { useState } from 'react';
@@ -44,7 +45,9 @@ function Referrals() {
   const query = useQuery({ queryKey: ['referrals'], queryFn: engagementApi.referrals });
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const owed = query.data?.filter((r) => r.reward === 'EARNED').length ?? 0;
+  const rows = query.data?.referrals;
+  const autoApply = query.data?.autoApply === true;
+  const owed = rows?.filter((r) => r.reward === 'EARNED').length ?? 0;
 
   const markApplied = async (r: AdminReferral) => {
     const key = `${r.referrerTenantId}/${r.referredTenantId}`;
@@ -67,8 +70,19 @@ function Referrals() {
         <p className="mt-1 text-sm text-gray-600">
           One free month for each referred seller who subscribes, stays subscribed for 14 days and is actively using
           MerchOS (at least 10 products, checked weekly up to 90 days after paying). Free months owed:{' '}
-          <strong>{owed}</strong>. Until checkout applies them automatically, take the free month off the referrer&apos;s
-          next payment, then mark it as applied.
+          <strong>{owed}</strong>.{' '}
+          {autoApply ? (
+            <>
+              Free months are applied automatically: the referrer&apos;s paid-until moves one month later (and a card on
+              file is charged a month later). A free month stays owed while the referrer is not paying and is applied
+              straight after their next payment. Use Mark as applied only if you gave one by hand.
+            </>
+          ) : (
+            <>
+              Free months are not applied automatically yet. Take the free month off the referrer&apos;s next payment,
+              then mark it as applied.
+            </>
+          )}
         </p>
       </div>
 
@@ -100,12 +114,12 @@ function Referrals() {
                 <td colSpan={5} className="px-4 py-3 text-red-700">{(query.error as Error).message}</td>
               </tr>
             )}
-            {query.data?.length === 0 && (
+            {rows?.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-4 py-3 text-gray-500">No referrals yet.</td>
               </tr>
             )}
-            {query.data?.map((r) => {
+            {rows?.map((r) => {
               const key = `${r.referrerTenantId}/${r.referredTenantId}`;
               const s = STATUS[r.status];
               return (
@@ -141,7 +155,10 @@ function Referrals() {
                         {busy === key ? 'Saving…' : 'Mark as applied'}
                       </button>
                     ) : r.reward === 'APPLIED' ? (
-                      <span className="text-xs text-gray-600">Applied {day(r.rewardAppliedAt)}</span>
+                      <span className="text-xs text-gray-600">
+                        Applied {day(r.rewardAppliedAt)}
+                        {r.rewardAppliedBy === 'automatic' && ' (automatic)'}
+                      </span>
                     ) : (
                       <span className="text-xs text-gray-400">Not earned yet</span>
                     )}

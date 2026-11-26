@@ -118,6 +118,18 @@ describe('PayFast subscriptions API', () => {
     await expect(api.cancel('not-a-token')).rejects.toThrow('Invalid subscription token');
   });
 
+  it('moves the next charge date with PATCH update { run_date }, and refuses a malformed date', async () => {
+    const fetchFn = vi.fn(async () => new Response('{}', { status: 200 }));
+    const api = new PayFastSubscriptionsApi(config, fetchFn as never);
+    await api.setNextChargeDate(TOKEN, '2027-01-25');
+    expect(fetchFn.mock.calls[0]![0]).toBe(`https://api.payfast.co.za/subscriptions/${TOKEN}/update?testing=true`);
+    expect((fetchFn.mock.calls[0]![1] as RequestInit).method).toBe('PATCH');
+    expect((fetchFn.mock.calls[0]![1] as RequestInit).body).toBe('{"run_date":"2027-01-25"}');
+    expect(() => api.setNextChargeDate(TOKEN, '25/01/2027')).toThrow('Invalid run date');
+    expect(() => api.setNextChargeDate(TOKEN, '2027-13-40')).toThrow('Invalid run date');
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
   it('builds the hosted update-card link', () => {
     expect(cardUpdateUrl('live', TOKEN, 'https://merchos.co.za/billing?card=updated')).toBe(
       `https://www.payfast.co.za/eng/recurring/update/${TOKEN}?return=https%3A%2F%2Fmerchos.co.za%2Fbilling%3Fcard%3Dupdated`,

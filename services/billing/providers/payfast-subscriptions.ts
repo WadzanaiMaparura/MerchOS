@@ -1,7 +1,8 @@
 /**
  * PayFast Subscriptions API (card subscriptions created by checkout with
- * subscription_type=1). Used to cancel a subscription and to change the
- * monthly amount (downgrades), plus the hosted "update card" link.
+ * subscription_type=1). Used to cancel a subscription, to change the monthly
+ * amount (downgrades), to move the next charge date (referral free months),
+ * plus the hosted "update card" link.
  *
  * Request signing (PayFast API, version v1): every header variable
  * (merchant-id, version, timestamp) and body variable, plus the passphrase,
@@ -39,7 +40,11 @@ export interface SubscriptionsApi {
   cancel(token: string): Promise<void>;
   /** New monthly amount from the next charge on. */
   updateAmount(token: string, amountCents: number): Promise<void>;
+  /** Move the next automatic charge to this date (YYYY-MM-DD, South African time). */
+  setNextChargeDate(token: string, date: string): Promise<void>;
 }
+
+const RUN_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export class PayFastSubscriptionsApi implements SubscriptionsApi {
   constructor(
@@ -76,6 +81,16 @@ export class PayFastSubscriptionsApi implements SubscriptionsApi {
   updateAmount(token: string, amountCents: number): Promise<void> {
     if (!Number.isInteger(amountCents) || amountCents <= 0) throw new Error('Invalid amount');
     return this.call('PATCH', token, 'update', { amount: String(amountCents) });
+  }
+
+  /**
+   * Referral free month: the card is not charged for it, so the next charge
+   * moves one month later. PayFast's update call takes `run_date` (YYYY-MM-DD).
+   * Not yet verified against a live subscription (part of the PayFast live test).
+   */
+  setNextChargeDate(token: string, date: string): Promise<void> {
+    if (!RUN_DATE.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) throw new Error('Invalid run date');
+    return this.call('PATCH', token, 'update', { run_date: date });
   }
 }
 

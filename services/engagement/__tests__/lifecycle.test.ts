@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeStore, mem } from './fake-store';
 
 vi.mock('../lib/store', () => fakeStore);
@@ -60,9 +60,21 @@ vi.mock('../lib/schedule', async () => {
 });
 const billingBooked = vi.hoisted(() => [] as Array<{ tenantId: string; paidUntil: string; planId: string }>);
 
+const freeMonthRequests = vi.hoisted(() => [] as Array<{ referrerTenantId: string; referredTenantId: string }>);
+vi.mock('../lib/events', async () => {
+  const actual = await vi.importActual<typeof import('../lib/events')>('../lib/events');
+  return {
+    ...actual,
+    emitRewardEarned: vi.fn(async (d: { referrerTenantId: string; referredTenantId: string }) => {
+      freeMonthRequests.push(d);
+    }),
+  };
+});
+
 import { _setTokenSecret } from '../lib/config';
+import { emitRewardEarned } from '../lib/events';
 import { sendEmail } from '../lib/mailer';
-import { onRegistered, onSubscriptionActivated } from '../handlers/on-event';
+import { onRegistered, onSubscriptionActivated, onSubscriptionExtended } from '../handlers/on-event';
 import { runStep } from '../handlers/scheduled';
 
 const TENANT = '7e22ed36-cf82-43ba-b194-8bd4cfab5166';
@@ -267,5 +279,79 @@ describe('referral reward', () => {
     await onSubscriptionActivated(activated());
     await onSubscriptionActivated(activated({ mPaymentId: 'pay-2' }));
     expect(schedules.filter((s) => s.step === 'qualify')).toHaveLength(1);
+  });
+});
+
+describe('referral free month applied automatically (REFERRAL_FREE_MONTHS)', () => {
+  const qualifyNow = async () => {
+    await onSubscriptionActivated(activated());
+    accounts.subscribed.add(TENANT);
+    accounts.products.set(TENANT, 10);
+    return runStep({ step: 'qualify', tenantId: TENANT, referrerTenantId: REFERRER });
+  };
+
+  beforeEach(async () => {
+    accounts.users.set('referrer-user', { email: 'ref@example.co.za', enabled: true });
+    await onRegistered({ userId: 'referrer-user', tenantId: REFERRER });
+    await onRegistered({ userId: OWNER, tenantId: TENANT });
+    await fakeStore.createReferral({
+      referrerTenantId: REFERRER,
+      referredTenantId: TENANT,
+      code: mem.profiles.get(REFERRER)!.referralCode!,
+      status: 'PENDING',
+      claimedAt: '2026-11-21T10:00:00.000Z',
+    });
+    freeMonthRequests.length = 0;
+    billingBooked.length = 0;
+    vi.mocked(emitRewardEarned).mockClear();
+    process.env['REFERRAL_FREE_MONTHS'] = 'true';
+  });
+  afterEach(() => {
+    delete process.env['REFERRAL_FREE_MONTHS'];
+  });
+
+  it('switch off: the free month is only recorded (staff apply it)', async () => {
+    delete process.env['REFERRAL_FREE_MONTHS'];
+    expect(await qualifyNow()).toBe('qualified');
+    expect(freeMonthRequests).toEqual([]);
+  });
+
+  it('qualifying asks billing to apply it straight away', async () => {
+    expect(await qualifyNow()).toBe('qualified');
+    expect(freeMonthRequests).toEqual([{ referrerTenantId: REFERRER, referredTenantId: TENANT }]);
+  });
+
+  it('if asking billing failed, the retried step asks again', async () => {
+    vi.mocked(emitRewardEarned).mockRejectedValueOnce(new Error('EventBridge down'));
+    await expect(qualifyNow()).rejects.toThrow('EventBridge down');
+    expect(await runStep({ step: 'qualify', tenantId: TENANT, referrerTenantId: REFERRER })).toBe('skipped');
+    expect(freeMonthRequests).toEqual([{ referrerTenantId: REFERRER, referredTenantId: TENANT }]);
+  });
+
+  it('still owed (referrer was not paying): asked again after the referrer pays', async () => {
+    await qualifyNow();
+    freeMonthRequests.length = 0;
+    await onSubscriptionActivated(activated({ tenantId: REFERRER, mPaymentId: 'ref-pay-1' }));
+    expect(freeMonthRequests).toEqual([{ referrerTenantId: REFERRER, referredTenantId: TENANT }]);
+  });
+
+  it('billing added the month: reward applied (automatic), reminders booked for the new paid-until', async () => {
+    await qualifyNow();
+    billingBooked.length = 0;
+    await onSubscriptionExtended({
+      tenantId: REFERRER,
+      planId: 'starter',
+      reason: 'referral-free-month',
+      referredTenantId: TENANT,
+      periodEnd: '2027-01-22T10:00:00.000Z',
+      previousPeriodEnd: '2026-12-22T10:00:00.000Z',
+    });
+    expect(await fakeStore.getReferral(REFERRER, TENANT)).toMatchObject({ reward: 'APPLIED', rewardAppliedBy: 'automatic' });
+    expect(billingBooked).toEqual([{ tenantId: REFERRER, paidUntil: '2027-01-22T10:00:00.000Z', planId: 'starter' }]);
+
+    // Once applied, the referrer's next payment does not ask again.
+    freeMonthRequests.length = 0;
+    await onSubscriptionActivated(activated({ tenantId: REFERRER, mPaymentId: 'ref-pay-2' }));
+    expect(freeMonthRequests).toEqual([]);
   });
 });
