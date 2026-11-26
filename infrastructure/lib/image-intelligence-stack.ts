@@ -617,10 +617,18 @@ export class ImageIntelligenceStack extends cdk.Stack {
     // CDK version is upgraded (tracked as a Phase 3 follow-up).
     const assetsOrigin = new origins.S3Origin(assetsBucket);
 
-    // Public key + key group for signed-URL verification. The public key PEM is
-    // supplied via context/SSM at deploy time; a placeholder default keeps synth
-    // working in non-deployed environments.
+    // Public key + key group for signed-URL verification. Each environment has its
+    // own key pair: cdk.json envConfig.<env>.imageSigningPublicKey, else the
+    // top-level context (cdk.context.json, dev's key). Production never falls back
+    // to dev's key: its private key lives only in production's secret. A
+    // placeholder keeps synth working in tests and non-deployed environments.
+    const envKeys = this.node.tryGetContext('envConfig') as Record<string, Record<string, unknown>> | undefined;
+    const ownKey = envKeys?.[env]?.['imageSigningPublicKey'] as string | undefined;
+    if (env === 'production' && !ownKey) {
+      throw new Error('Production needs its own image signing key: set envConfig.production.imageSigningPublicKey in cdk.json');
+    }
     const signingPublicKeyPem =
+      ownKey ??
       (this.node.tryGetContext('imageSigningPublicKey') as string | undefined) ??
       '-----BEGIN PUBLIC KEY-----\nPLACEHOLDER_REPLACE_AT_DEPLOY\n-----END PUBLIC KEY-----';
 

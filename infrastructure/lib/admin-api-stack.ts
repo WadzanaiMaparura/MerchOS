@@ -30,8 +30,8 @@ import { HttpJwtAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import { Construct } from 'constructs';
 import * as path from 'path';
-import { adminDashboardOrigins } from './cors-origins';
-import { envSetting } from './env-config';
+import { adminDashboardOrigins, siteAddresses } from './cors-origins';
+import { envFlag, envSetting } from './env-config';
 
 export interface AdminApiStackProps extends cdk.StackProps {
   environment: string;
@@ -274,7 +274,7 @@ export class AdminApiStack extends cdk.Stack {
 
     const healthFn = createFn('HealthRead', 'health-read.ts', [readMetrics, listSellers, adminTableRead, kmsRead]);
     // Payments shows "Not live yet" until checkout is switched on (same switch as the Billing API).
-    healthFn.addEnvironment('PAYMENTS_LIVE', this.node.tryGetContext('checkoutEnabled') === 'true' ? 'true' : 'false');
+    healthFn.addEnvironment('PAYMENTS_LIVE', envFlag(this, env, 'checkoutEnabled'));
 
     const alertsReadFn = createFn('AlertsRead', 'alerts-read.ts', [
       adminTableRead,
@@ -286,12 +286,7 @@ export class AdminApiStack extends cdk.Stack {
 
     // Every 15 minutes, plus every state change of the existing merch-os-* alarms.
     const alertEmail = envSetting(this, env, 'alertEmail', 'admin@merchos.co.za');
-    const adminBaseUrl = envSetting(
-      this,
-      env,
-      'adminBaseUrl',
-      env === 'dev' ? 'https://admin.merchos.co.za' : `https://admin-${env}.merchos.io`,
-    );
+    const adminBaseUrl = envSetting(this, env, 'adminBaseUrl', siteAddresses(env).admin);
     const monitorFn = createFn('AlertsMonitor', 'alerts-monitor.ts', [
       readMetrics,
       adminTableRead,

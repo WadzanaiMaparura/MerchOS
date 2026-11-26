@@ -6,6 +6,7 @@
 
 import * as cdk from 'aws-cdk-lib';
 import { FoundationStack } from '../lib/foundation-stack';
+import { TenantStack } from '../lib/tenant-stack';
 import { AuthStack } from '../lib/auth-stack';
 import { AuthApiStack } from '../lib/auth-api-stack';
 import { ProductApiStack } from '../lib/product-api-stack';
@@ -33,12 +34,24 @@ const foundationStack = new FoundationStack(app, `MerchOS-Foundation-${env}`, {
   environment: env,
 });
 
+// Tenants table (tenant, account owner, consent, pending registration). Auth,
+// AuthApi, Engagement and AdminApi read it by name / SSM ARN, so it must exist
+// first in a new account.
+const tenantStack = new TenantStack(app, `MerchOS-Tenant-${env}`, {
+  env: cdkEnv,
+  environment: env,
+  platformKey: foundationStack.platformKey,
+});
+
 const authStack = new AuthStack(app, `MerchOS-Auth-${env}`, {
   env: cdkEnv,
   environment: env,
   platformKey: foundationStack.platformKey,
   eventBus: foundationStack.eventBus,
 });
+// Auth reads the tenants table ARN from SSM (no implicit CloudFormation edge).
+// Every later stack that uses the table already depends on Auth.
+authStack.addDependency(tenantStack);
 
 new AuthApiStack(app, `MerchOS-AuthApi-${env}`, {
   env: cdkEnv,

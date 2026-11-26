@@ -44,7 +44,7 @@ import { HttpJwtAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import { Construct } from 'constructs';
 import * as path from 'path';
-import { sellerDashboardOrigins } from './cors-origins';
+import { sellerDashboardOrigins, siteAddresses } from './cors-origins';
 import { envFlag, envSetting } from './env-config';
 
 export interface BillingApiStackProps extends cdk.StackProps {
@@ -93,12 +93,7 @@ export class BillingApiStack extends cdk.Stack {
     // Referral free months added to paid-until automatically. Off until switched on.
     const referralFreeMonths = envFlag(this, env, 'referralFreeMonths');
     // Where PayFast sends the buyer back to when the client sends no returnUrl.
-    const appBaseUrl = envSetting(
-      this,
-      env,
-      'appBaseUrl',
-      `https://${env === 'production' ? 'app' : env}.merchos.io`,
-    );
+    const appBaseUrl = envSetting(this, env, 'appBaseUrl', siteAddresses(env).seller);
 
     // -----------------------------------------------------------------------
     // DynamoDB — billing table

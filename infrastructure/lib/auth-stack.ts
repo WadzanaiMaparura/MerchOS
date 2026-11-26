@@ -26,6 +26,8 @@ import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import * as path from 'path';
+import { adminDashboardOrigins, sellerDashboardOrigins } from './cors-origins';
+import { envFlag } from './env-config';
 
 export interface AuthStackProps extends cdk.StackProps {
   environment: string;
@@ -222,8 +224,8 @@ export class AuthStack extends cdk.Stack {
       oAuth: {
         flows: { authorizationCodeGrant: true },
         scopes: [cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL, cognito.OAuthScope.PROFILE],
-        callbackUrls: [`https://${env === 'production' ? 'app' : env}.merchos.io/callback`],
-        logoutUrls: [`https://${env === 'production' ? 'app' : env}.merchos.io/logout`],
+        callbackUrls: sellerDashboardOrigins(env).map((o) => `${o}/callback`),
+        logoutUrls: sellerDashboardOrigins(env).map((o) => `${o}/logout`),
       },
       generateSecret: false,
       preventUserExistenceErrors: true,
@@ -257,8 +259,8 @@ export class AuthStack extends cdk.Stack {
       oAuth: {
         flows: { authorizationCodeGrant: true },
         scopes: [cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL],
-        callbackUrls: [`https://admin-${env}.merchos.io/callback`],
-        logoutUrls: [`https://admin-${env}.merchos.io/logout`],
+        callbackUrls: adminDashboardOrigins(env).map((o) => `${o}/callback`),
+        logoutUrls: adminDashboardOrigins(env).map((o) => `${o}/logout`),
       },
       generateSecret: false,
       preventUserExistenceErrors: true,
@@ -407,7 +409,7 @@ export class AuthStack extends cdk.Stack {
     });
     // New self sign-ups are closed until launch. Open with --context signupsOpen=true
     // (and the same on the AuthApi stack, plus NEXT_PUBLIC_SIGNUPS_OPEN on the site).
-    preSignUpFn.addEnvironment('SIGNUPS_OPEN', this.node.tryGetContext('signupsOpen') === 'true' ? 'true' : 'false');
+    preSignUpFn.addEnvironment('SIGNUPS_OPEN', envFlag(this, env, 'signupsOpen'));
 
     // PostConfirmation trigger — records session, emits event
     const postConfirmationRole = new iam.Role(this, 'PostConfirmationRole', {

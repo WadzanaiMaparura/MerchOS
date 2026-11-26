@@ -25,11 +25,23 @@
         "billingLifecycle": "false",
         "cardSubscriptions": "false",
         "referralFreeMonths": "false",
-        "dataRetention": "dryrun",
-        "dataRetentionDryRunSince": "2026-11-26",
+        "dataRetention": "on",
         "billingApiDomain": "api.merchos.co.za",
         "hostedZoneId": "Z04418812LQLSF1AUT0WU",
         "hostedZoneName": "merchos.co.za"
+      },
+      "production": {
+        "payfastMode": "live",
+        "billingAlarmEmail": "admin@merchos.co.za",
+        "alertEmail": "admin@merchos.co.za",
+        "appBaseUrl": "https://merchos.co.za",
+        "signupsOpen": "false",
+        "checkoutEnabled": "false",
+        "trialEnforcement": "true",
+        "billingLifecycle": "false",
+        "cardSubscriptions": "false",
+        "referralFreeMonths": "false",
+        "dataRetention": "on"
       }
     }
   }

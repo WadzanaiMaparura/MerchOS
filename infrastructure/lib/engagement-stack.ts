@@ -37,7 +37,7 @@ import { HttpJwtAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import { Construct } from 'constructs';
 import * as path from 'path';
-import { adminDashboardOrigins, sellerDashboardOrigins } from './cors-origins';
+import { adminDashboardOrigins, sellerDashboardOrigins, siteAddresses } from './cors-origins';
 import { envFlag, envSetting } from './env-config';
 
 export interface EngagementStackProps extends cdk.StackProps {
@@ -73,13 +73,8 @@ export class EngagementStack extends cdk.Stack {
     const fromEmail = envSetting(this, env, 'engagementFromEmail', 'MerchOS <info@merchos.co.za>');
     const supportEmail = envSetting(this, env, 'engagementSupportEmail', 'info@merchos.co.za');
     const sesIdentity = envSetting(this, env, 'engagementSesIdentity', 'merchos.co.za');
-    const siteUrl = envSetting(this, env, 'siteUrl', env === 'dev' ? 'https://merchos.co.za' : `https://app.merchos.io`);
-    const adminBaseUrl = envSetting(
-      this,
-      env,
-      'adminBaseUrl',
-      env === 'dev' ? 'https://admin.merchos.co.za' : `https://admin-${env}.merchos.io`,
-    );
+    const siteUrl = envSetting(this, env, 'siteUrl', siteAddresses(env).seller);
+    const adminBaseUrl = envSetting(this, env, 'adminBaseUrl', siteAddresses(env).admin);
 
     const adminClientId =
       props.adminClientId ?? ssm.StringParameter.valueForStringParameter(this, `${ssmPrefix}/cognito/admin-client-id`);

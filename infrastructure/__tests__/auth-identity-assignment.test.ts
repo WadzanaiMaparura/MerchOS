@@ -322,8 +322,8 @@ describe('Auth identity-assignment infrastructure', () => {
       Properties: { CorsConfiguration?: { AllowOrigins?: string[] } };
     };
     const origins = api.Properties.CorsConfiguration?.AllowOrigins ?? [];
-    expect(origins).toContain('https://app.merchos.io');
-    expect(origins).not.toContain('https://merchos.co.za');
+    expect(origins).toEqual(['https://merchos.co.za']);
+    expect(origins).not.toContain('https://dev.merchos.co.za');
     expect(origins).not.toContain('https://main.d1jwaah0zt7pg5.amplifyapp.com');
     expect(origins).not.toContain('http://localhost:3000');
     expect(origins).not.toContain('*');

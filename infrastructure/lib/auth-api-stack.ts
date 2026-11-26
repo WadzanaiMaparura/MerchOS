@@ -29,6 +29,7 @@ import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations
 import { Construct } from 'constructs';
 import * as path from 'path';
 import { sellerDashboardOrigins } from './cors-origins';
+import { envFlag } from './env-config';
 
 export interface AuthApiStackProps extends cdk.StackProps {
   environment: string;
@@ -244,7 +245,7 @@ export class AuthApiStack extends cdk.Stack {
     // New self sign-ups are closed until launch (see AuthStack PreSignUp).
     registerPendingFn.addEnvironment(
       'SIGNUPS_OPEN',
-      this.node.tryGetContext('signupsOpen') === 'true' ? 'true' : 'false'
+      envFlag(this, env, 'signupsOpen')
     );
     // NOTE: the CommonJS bundling that this handler used to override locally is
     // now the shared default for ALL auth handlers (see defaultLambdaProps.bundling),
