@@ -22,6 +22,8 @@ export const defaultPermissionConfig: PermissionRegistryConfig = {
         { resource: 'subscription', actions: ['read', 'update'] },
         // Own referral link and referral progress; claim a link at sign-up.
         { resource: 'referrals', actions: ['create', 'read'] },
+        // Own notifications (the bell): list, mark as read.
+        { resource: 'notifications', actions: ['read', 'update'] },
       ],
     },
     {
@@ -77,6 +79,7 @@ export const defaultPermissionConfig: PermissionRegistryConfig = {
         { resource: 'reviews', actions: ['read', 'update', 'delete'] },
         // Referral rewards: see earned free months, mark them applied.
         { resource: 'referrals', actions: ['create', 'read', 'update'] },
+        { resource: 'notifications', actions: ['read', 'update'] },
       ],
     },
   ],

@@ -12,8 +12,3 @@ export {
 } from './route-permissions';
 
 export type { RoutePermission } from './route-permissions';
-
-export {
-  getNotificationNavigationPath,
-  isNotificationNavigable,
-} from './notification-routes';

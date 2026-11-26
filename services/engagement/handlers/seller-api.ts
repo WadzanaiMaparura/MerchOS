@@ -4,6 +4,8 @@
  *
  *   GET  /referrals/me      my personal link and how my referrals are doing
  *   POST /referrals/claim   { code }: this new account signed up through someone's link
+ *
+ * notificationsHandler (RBAC `notifications`): the seller's bell, see below.
  */
 
 import middy from '@middy/core';
@@ -14,7 +16,9 @@ import { ensureProfile } from '../lib/accounts';
 import { badRequest, conflict, json, notFound, readJson, serverError, tooMany, type HttpResult } from '../lib/http';
 import { ensureReferralCode, referralLink } from '../lib/lifecycle';
 import { normaliseCode } from '../lib/referral-code';
+import { listNotifications, markAllRead, markRead } from '../lib/notifications';
 import { createReferral, listReferralsBy, tenantForReferralCode, withinRateLimit } from '../lib/store';
+import { z } from 'zod';
 
 interface Caller {
   tenantId: string;
@@ -97,4 +101,41 @@ async function baseHandler(event: APIGatewayProxyEventV2): Promise<HttpResult> {
 
 export const handler = middy(baseHandler)
   .use(rbacMiddleware({ resource: 'referrals', action: 'read' }))
+  .use(tenantContextMiddleware());
+
+// ─── Notifications (the bell) ────────────────────────────────────────────────
+//   GET  /notifications        last 50, newest first, with the unread count
+//   POST /notifications/read   { ids: [...] } or { all: true }
+
+const readSchema = z.union([
+  z.object({ all: z.literal(true) }),
+  z.object({ ids: z.array(z.string().min(1).max(260)).min(1).max(50) }),
+]);
+
+async function notificationsRoute(event: APIGatewayProxyEventV2): Promise<HttpResult> {
+  try {
+    const caller = callerOf(event);
+    if (!caller) return json(401, { error: { code: 'UNAUTHORIZED', message: 'Please sign in again.' } });
+    switch (event.routeKey) {
+      case 'GET /notifications':
+        return json(200, await listNotifications(caller.tenantId));
+      case 'POST /notifications/read': {
+        const parsed = readSchema.safeParse(readJson(event));
+        if (!parsed.success) return badRequest('Nothing to mark as read.');
+        if ('all' in parsed.data) await markAllRead(caller.tenantId);
+        else await markRead(caller.tenantId, parsed.data.ids);
+        return json(200, await listNotifications(caller.tenantId));
+      }
+      default:
+        return notFound();
+    }
+  } catch (err) {
+    console.error('Notifications API failed', { route: event.routeKey, error: (err as Error).message });
+    return serverError();
+  }
+}
+
+/** Own notifications only (tenant from the token); marking them read needs no more than reading. */
+export const notificationsHandler = middy(notificationsRoute)
+  .use(rbacMiddleware({ resource: 'notifications', action: 'read' }))
   .use(tenantContextMiddleware());

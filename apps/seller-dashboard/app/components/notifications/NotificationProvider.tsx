@@ -2,105 +2,87 @@
 
 import React, { useCallback, useEffect, useRef } from 'react';
 import { useToast } from '@merch-os/ui';
-import { WebSocketManager } from '@merch-os/api-client';
-import type { Notification } from '@merch-os/types';
+import { ENGAGEMENT_API_URL, fetchNotifications, type SellerNotification } from '../engagement/engagement-api';
 import { useNotificationStore } from '../../stores/notification-store';
+
+/** How often the bell checks for new notifications while the tab is open. */
+export const NOTIFICATION_POLL_MS = 60_000;
 
 interface NotificationProviderProps {
   children: React.ReactNode;
-  /** WebSocket URL for notifications. */
-  wsUrl: string;
-  /** Function to retrieve current access token. */
-  getAccessToken: () => Promise<string>;
+  /** Start checking once the seller is signed in. */
+  enabled: boolean;
 }
 
 /**
- * NotificationProvider - Manages WebSocket connection lifecycle and bridges
- * notifications to the Zustand store and Toast system.
+ * Keeps the bell up to date by asking the engagement API every minute while
+ * the tab is visible, and straight away when the seller comes back to the tab.
+ * Nothing is checked while the tab is hidden.
  *
- * Displays notification toasts within 3 seconds of event arrival.
- * Toasts remain visible for 8 seconds or until dismissed.
- * Uses ARIA live region announcements for accessibility.
+ * Something new since the last check: a toast (8 seconds) and a screen reader
+ * announcement. The first load after sign-in shows the count only, no toasts.
  */
-export function NotificationProvider({
-  children,
-  wsUrl,
-  getAccessToken,
-}: NotificationProviderProps) {
+export function NotificationProvider({ children, enabled }: NotificationProviderProps) {
   const { toast } = useToast();
-  const { addNotification, setConnectionStatus } = useNotificationStore();
-  const wsManagerRef = useRef<WebSocketManager | null>(null);
+  const setFromServer = useNotificationStore((s) => s.setFromServer);
   const liveRegionRef = useRef<HTMLDivElement>(null);
+  const seen = useRef<Set<string> | null>(null);
+  const inFlight = useRef(false);
 
-  const handleMessage = useCallback(
-    (notification: Notification) => {
-      // Add to store
-      addNotification(notification);
-
-      // Display toast (visible for 8 seconds per requirement)
-      toast({
-        title: notification.title,
-        description: notification.message.slice(0, 200),
-        variant: 'info',
-        duration: 8000,
-      });
-
-      // Announce to screen readers via ARIA live region
+  const announce = useCallback(
+    (fresh: SellerNotification[]) => {
+      for (const n of fresh.slice(0, 3)) {
+        toast({ title: n.title, description: n.message.slice(0, 200), variant: 'info', duration: 8000 });
+      }
       if (liveRegionRef.current) {
-        liveRegionRef.current.textContent = `New notification: ${notification.title}. ${notification.message.slice(0, 200)}`;
+        const first = fresh[0]!;
+        liveRegionRef.current.textContent =
+          fresh.length === 1
+            ? `New notification: ${first.title}. ${first.message.slice(0, 200)}`
+            : `${fresh.length} new notifications. Latest: ${first.title}.`;
       }
     },
-    [addNotification, toast]
+    [toast],
   );
 
-  const handleConnectionChange = useCallback(
-    (connected: boolean) => {
-      if (connected) {
-        setConnectionStatus('connected');
-      } else {
-        // Determine if we're reconnecting or polling based on manager state
-        const manager = wsManagerRef.current;
-        if (manager) {
-          setConnectionStatus(manager.getConnectionStatus());
-        } else {
-          setConnectionStatus('disconnected');
-        }
-      }
-    },
-    [setConnectionStatus]
-  );
+  const refresh = useCallback(async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    try {
+      const { notifications, unreadCount } = await fetchNotifications();
+      const previous = seen.current;
+      const fresh = previous ? notifications.filter((n) => !n.read && !previous.has(n.id)) : [];
+      seen.current = new Set([...(previous ?? []), ...notifications.map((n) => n.id)]);
+      setFromServer(notifications, unreadCount);
+      if (fresh.length) announce(fresh);
+    } catch {
+      // Offline, signed out or the API is unavailable: the next check catches up.
+    } finally {
+      inFlight.current = false;
+    }
+  }, [announce, setFromServer]);
 
   useEffect(() => {
-    const manager = new WebSocketManager({
-      url: wsUrl,
-      getAccessToken,
-      onMessage: handleMessage,
-      onConnectionChange: handleConnectionChange,
-      maxReconnectAttempts: 5,
-      maxBackoff: 30000,
-      pollingInterval: 30000,
-    });
-
-    wsManagerRef.current = manager;
-    manager.connect();
-
-    return () => {
-      manager.disconnect();
-      wsManagerRef.current = null;
+    if (!enabled || !ENGAGEMENT_API_URL) return;
+    const visible = () => document.visibilityState === 'visible';
+    void refresh();
+    const timer = window.setInterval(() => {
+      if (visible()) void refresh();
+    }, NOTIFICATION_POLL_MS);
+    const onVisible = () => {
+      if (visible()) void refresh();
     };
-  }, [wsUrl, getAccessToken, handleMessage, handleConnectionChange]);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [enabled, refresh]);
 
   return (
     <>
       {children}
-      {/* ARIA live region for screen reader announcements of new notifications */}
-      <div
-        ref={liveRegionRef}
-        aria-live="polite"
-        aria-atomic="true"
-        className="sr-only"
-        role="status"
-      />
+      <div ref={liveRegionRef} aria-live="polite" aria-atomic="true" className="sr-only" role="status" />
     </>
   );
 }

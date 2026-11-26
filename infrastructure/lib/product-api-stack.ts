@@ -196,6 +196,17 @@ export class ProductApiStack extends cdk.Stack {
       dynamoDbReadWritePolicy,
       kmsPolicy,
     ]);
+    // Free trial almost or fully used (product.trial.usage): the seller's bell.
+    // The bus is Foundation's, named by convention (no new cross-stack export).
+    const platformBusName = `merch-os-events-${env}`;
+    createProductFn.addEnvironment('EVENT_BUS_NAME', platformBusName);
+    createProductFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['events:PutEvents'],
+        resources: [`arn:aws:events:${this.region}:${this.account}:event-bus/${platformBusName}`],
+      }),
+    );
 
     const getProductFn = createLambda('GetProduct', path.join(handlersPath, 'get-product.ts'), [
       dynamoDbReadWritePolicy,

@@ -93,6 +93,29 @@ export const fetchMyReferrals = () => call<MyReferrals>('/referrals/me', {}, tru
 export const claimReferral = (code: string) =>
   call<{ claimed: boolean; alreadyReferred?: boolean }>('/referrals/claim', { method: 'POST', body: JSON.stringify({ code }) }, true);
 
+// ─── Notifications: the bell (signed in) ────────────────────────────────────
+
+export interface SellerNotification {
+  id: string;
+  kind: string;
+  title: string;
+  message: string;
+  /** Dashboard path to open, e.g. /imports/<id>. */
+  link: string;
+  at: string;
+  read: boolean;
+}
+
+export interface NotificationList {
+  notifications: SellerNotification[];
+  unreadCount: number;
+}
+
+export const fetchNotifications = () => call<NotificationList>('/notifications', {}, true);
+
+export const markNotificationsRead = (input: { ids: string[] } | { all: true }) =>
+  call<NotificationList>('/notifications/read', { method: 'POST', body: JSON.stringify(input) }, true);
+
 // ─── Referral code captured from /r/<code> ──────────────────────────────────
 
 const STORAGE_KEY = 'merchos.referral';

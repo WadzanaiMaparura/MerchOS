@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fakeStore, mem } from './fake-store';
+import { fakeStore, mem, notifMem } from './fake-store';
 
 vi.mock('../lib/store', () => fakeStore);
+vi.mock('../lib/notifications', async () => (await import('./fake-store')).fakeNotifications);
 
 const accounts = vi.hoisted(() => ({
   users: new Map<string, { email: string; enabled: boolean }>(),
@@ -319,6 +320,14 @@ describe('referral free month applied automatically (REFERRAL_FREE_MONTHS)', () 
   it('qualifying asks billing to apply it straight away', async () => {
     expect(await qualifyNow()).toBe('qualified');
     expect(freeMonthRequests).toEqual([{ referrerTenantId: REFERRER, referredTenantId: TENANT }]);
+  });
+
+  it('bell: the referred seller sees "Payment received", the referrer "You earned a free month"', async () => {
+    notifMem.reset();
+    await qualifyNow();
+    expect(notifMem.of(TENANT).map((n) => n.title)).toEqual(['Payment received']);
+    expect(notifMem.of(TENANT)[0]).toMatchObject({ link: '/billing', message: 'Growth plan. You are paid up until 22 December 2026.' });
+    expect(notifMem.of(REFERRER).map((n) => n.title)).toEqual(['You earned a free month']);
   });
 
   it('if asking billing failed, the retried step asks again', async () => {

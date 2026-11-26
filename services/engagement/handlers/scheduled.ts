@@ -39,6 +39,8 @@ import {
 } from '../lib/billing-templates';
 import { config } from '../lib/config';
 import { emitRewardEarned, isReferralFreeMonthsOn } from '../lib/events';
+import { addNotification } from '../lib/notifications';
+import { closingSoon, paymentDue, planPausedNote, referralEarned } from '../lib/notification-texts';
 import {
   REVIEW_MIN_PRODUCTS,
   ensureReferralCode,
@@ -106,6 +108,12 @@ async function billingStep(step: BillingStep, tenantId: string, paidUntil: strin
   };
   const key = billingEmailKey(step, paidUntil);
 
+  // The bell, next to the email (same conditions; one each per paid period).
+  const now = new Date().toISOString();
+  if (step === 'due7') await addNotification(tenantId, paymentDue(paidUntil, base.autoRenew, now));
+  if (step === 'paused') await addNotification(tenantId, planPausedNote(paidUntil, dates.closesAt, now));
+  if (step === 'final') await addNotification(tenantId, closingSoon(paidUntil, dates.closesAt, now));
+
   switch (step) {
     case 'due7':
       return sendOnce(profile, user.email, key, dueInSevenDays(base));
@@ -164,7 +172,8 @@ async function requestFreeMonth(referrerTenantId: string, referredTenantId: stri
 async function qualify(tenantId: string, referrerTenantId: string, attempt: number): Promise<StepResult> {
   const referral = await getReferral(referrerTenantId, tenantId);
   if (referral?.status === 'QUALIFIED' && referral.reward === 'EARNED') {
-    // A retry after the request to billing failed: send it again (billing is idempotent).
+    // A retry after a later step failed: repeat them (both are idempotent).
+    await addNotification(referrerTenantId, referralEarned(tenantId, referral.qualifiedAt ?? new Date().toISOString()));
     await requestFreeMonth(referrerTenantId, tenantId);
     return 'skipped';
   }
@@ -191,6 +200,7 @@ async function qualify(tenantId: string, referrerTenantId: string, attempt: numb
     });
     if (!ok) return 'skipped';
     console.info('Referral qualified: free month earned', { referrerTenantId, tenantId });
+    await addNotification(referrerTenantId, referralEarned(tenantId, nowIso));
     // Applied now if the referrer is paying; otherwise owed until their next payment.
     await requestFreeMonth(referrerTenantId, tenantId);
     return 'qualified';
