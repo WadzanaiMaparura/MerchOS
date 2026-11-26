@@ -128,6 +128,10 @@ const productIntelligenceStack = new ProductIntelligenceStack(app, `MerchOS-Prod
 });
 productIntelligenceStack.addDependency(foundationStack);
 productIntelligenceStack.addDependency(authStack);
+// ProductApi reads /product-intelligence/api-url from SSM, so Product
+// Intelligence must exist first (it names the products table directly, so
+// there is no edge back).
+productApiStack.addDependency(productIntelligenceStack);
 
 // Export API (validate + export pipeline). Reads the exports bucket name and
 // the platform KMS key from Foundation; auth from the Cognito pool/client.

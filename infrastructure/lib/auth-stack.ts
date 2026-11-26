@@ -242,6 +242,9 @@ export class AuthStack extends cdk.Stack {
       authFlows: {
         userSrp: true,
       },
+      // No hosted sign-in: without this CDK enables OAuth with a placeholder
+      // https://example.com callback.
+      disableOAuth: true,
       generateSecret: true,
       preventUserExistenceErrors: true,
       readAttributes: clientReadAttributes,

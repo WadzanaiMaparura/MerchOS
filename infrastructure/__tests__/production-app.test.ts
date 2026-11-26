@@ -83,6 +83,37 @@ describe('production app synthesis', () => {
     expect(stacks).toEqual(STACKS.map((s) => `MerchOS-${s}-production`).sort());
   });
 
+  it('deploys every SSM parameter before any stack reads it (a new account has none)', () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8')) as {
+      artifacts: Record<string, { type: string; dependencies?: string[] }>;
+    };
+    const deps = (name: string, seen = new Set<string>()): Set<string> => {
+      for (const d of manifest.artifacts[name]?.dependencies ?? []) {
+        if (!seen.has(d)) { seen.add(d); deps(d, seen); }
+      }
+      return seen;
+    };
+    type Full = Template & { Parameters?: Record<string, { Type: string; Default?: string }> };
+    const creators = new Map<string, string>();
+    for (const s of STACKS) {
+      for (const r of Object.values(read(dir, s).Resources)) {
+        if (r.Type === 'AWS::SSM::Parameter') creators.set(String(r.Properties?.['Name']), `MerchOS-${s}-production`);
+      }
+    }
+    const problems: string[] = [];
+    for (const s of STACKS) {
+      const stack = `MerchOS-${s}-production`;
+      for (const p of Object.values((read(dir, s) as Full).Parameters ?? {})) {
+        if (!p.Type.startsWith('AWS::SSM::Parameter::Value') || !p.Default) continue;
+        if (p.Default.startsWith('/cdk-bootstrap/')) continue; // created by `cdk bootstrap`
+        const creator = creators.get(p.Default);
+        if (!creator) problems.push(`${stack} reads ${p.Default}, which no stack creates`);
+        else if (creator !== stack && !deps(stack).has(creator)) problems.push(`${stack} reads ${p.Default} before ${creator} deploys`);
+      }
+    }
+    expect(problems).toEqual([]);
+  });
+
   it('creates the production tenants table', () => {
     expect(all).toContain('merch-os-tenants-production');
   });
@@ -96,11 +127,13 @@ describe('production app synthesis', () => {
   });
 
   it('points Cognito callbacks at the production sites only', () => {
-    // The api-gateway client has no hosted sign-in (CDK default callback only).
-    const clients = Object.values(read(dir, 'Auth').Resources).filter(
-      (r) => r.Type === 'AWS::Cognito::UserPoolClient' && /dashboard/.test(String(r.Properties?.['ClientName'])),
-    );
-    expect(clients).toHaveLength(2);
+    const clients = Object.values(read(dir, 'Auth').Resources).filter((r) => r.Type === 'AWS::Cognito::UserPoolClient');
+    expect(clients).toHaveLength(3);
+    // The api-gateway client has no hosted sign-in at all.
+    const apiClient = clients.find((c) => String(c.Properties?.['ClientName']).startsWith('api-gateway-'));
+    expect(apiClient?.Properties?.['AllowedOAuthFlows']).toBeUndefined();
+    expect(apiClient?.Properties?.['CallbackURLs']).toBeUndefined();
+    expect(all).not.toContain('example.com');
     const urls = clients.flatMap((c) => (c.Properties?.['CallbackURLs'] as string[] | undefined) ?? []).sort();
     expect(urls).toEqual(['https://admin.merchos.co.za/callback', 'https://merchos.co.za/callback']);
   });
