@@ -14,7 +14,9 @@
     "test": "vitest run",
     "test:unit": "vitest run --dir __tests__/unit",
     "test:integration": "vitest run --dir __tests__/integration",
-    "test:properties": "vitest run --dir __tests__/properties"
+    "test:properties": "vitest run --dir __tests__/properties",
+    "bench": "vite-node bench/run.ts --",
+    "bench:report": "vite-node bench/run.ts -- report"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "3.654.0",
@@ -35,6 +37,7 @@
     "aws-sdk-client-mock": "4.0.1",
     "fast-check": "3.19.0",
     "typescript": "5.4.5",
+    "vite-node": "1.6.0",
     "vitest": "1.6.0"
   }
 }

@@ -682,8 +682,10 @@ export class ContentGenerator {
       .split('\n')
       .map((line) => line.trim())
       .filter((line) => line.length > 0)
-      // Strip common bullet prefixes: "1.", "1)", "-", "•", "*"
-      .map((line) => line.replace(/^(\d+[\.\)]\s*|[-•*]\s*)/, '').trim())
+      // Strip common bullet prefixes: "1. ", "1) ", "-", "•", "*". A number only
+      // counts as a list marker when a space follows it, so "1.7 litre capacity"
+      // keeps its "1." (found by the quality bench: it became "7 litre").
+      .map((line) => line.replace(/^(\d+[.)]\s+|[-•*]\s*)/, '').trim())
       .filter((line) => line.length > 0);
 
     // A model sometimes answers with one paragraph: use its sentences instead.
