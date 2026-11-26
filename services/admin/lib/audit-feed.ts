@@ -37,7 +37,10 @@ export type AuditActionType =
   | 'announcement-deleted'
   | 'goal-created'
   | 'goal-updated'
-  | 'goal-deleted';
+  | 'goal-deleted'
+  | 'data-hold'
+  | 'data-hold-removed'
+  | 'data-deleted';
 
 export const AUDIT_ACTIONS: Record<AuditActionType, string> = {
   'resend-verification': 'Resent verification email',
@@ -58,6 +61,9 @@ export const AUDIT_ACTIONS: Record<AuditActionType, string> = {
   'goal-created': 'Set a team goal',
   'goal-updated': 'Updated a team goal',
   'goal-deleted': 'Deleted a team goal',
+  'data-hold': 'Put account data on hold (kept)',
+  'data-hold-removed': 'Removed the data hold',
+  'data-deleted': 'Deleted account data (retention rules)',
 };
 
 export interface AuditEvent {
@@ -201,12 +207,17 @@ export async function loadAudit(query: AuditQuery): Promise<{ events: AuditEvent
   // Business names for the customers involved.
   const tenantIds = [...new Set(events.map((e) => e.tenantId).filter((t): t is string => !!t))];
   const infos = await getTenantInfos(tenantIds.map((tenantId) => ({ tenantId })));
+  // Accounts deleted by the retention rules (DELETED#<id> records, no personal data).
+  const deleted = new Set(
+    (await queryIndex(config.adminTable, 'DELETED', '0000', '9999')).map((d) => String(d['tenantId'])),
+  );
   for (const e of events) {
     const who = staff.get(e.byId);
     // Free months applied by billing itself, not by a staff member.
     e.byEmail = who?.email ?? (e.byId === 'automatic' ? 'Automatic' : undefined);
     e.byRole = who?.role ?? e.byRole;
-    if (e.tenantId) e.subject = infos.get(e.tenantId)?.businessName ?? e.tenantId;
+    // A deleted account has no name any more: the log keeps the entry, de-identified.
+    if (e.tenantId) e.subject = infos.get(e.tenantId)?.businessName ?? (deleted.has(e.tenantId) ? 'Deleted account' : e.tenantId);
   }
 
   events.sort((a, b) => b.at.localeCompare(a.at));

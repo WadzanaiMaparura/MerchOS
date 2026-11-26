@@ -35,3 +35,30 @@ export const config = {
     return required('CHAT_TABLE');
   },
 };
+
+/** Data retention job only: every place a seller's data is kept. */
+export const retentionConfig = {
+  get tables() {
+    return {
+      inventory: required('INVENTORY_TABLE'),
+      inventoryTransactions: required('INVENTORY_TRANSACTIONS_TABLE'),
+      suppliers: required('SUPPLIERS_TABLE'),
+      importJobs: required('IMPORT_JOBS_TABLE'),
+      imageJobs: required('IMAGE_JOBS_TABLE'),
+      intelligence: required('INTELLIGENCE_TABLE'),
+      invitations: required('INVITATIONS_TABLE'),
+    };
+  },
+  get buckets() {
+    return {
+      rawUploads: required('RAW_UPLOADS_BUCKET'),
+      assets: required('ASSETS_BUCKET'),
+      exports: required('EXPORTS_BUCKET'),
+    };
+  },
+  /** off | dryrun | on. Anything else is off. */
+  get mode(): 'off' | 'dryrun' | 'on' {
+    const m = process.env['DATA_RETENTION'];
+    return m === 'on' || m === 'dryrun' ? m : 'off';
+  },
+};

@@ -173,3 +173,25 @@ export async function markAllRead(tenantId: string): Promise<void> {
     }),
   );
 }
+
+/**
+ * "Last used the dashboard" (data retention: a never-paid account is deleted 12
+ * months after this). Written at most once a day per account, from the bell's
+ * regular check. Never fails the request.
+ */
+export async function touchActivity(tenantId: string, now: Date = new Date()): Promise<void> {
+  const today = now.toISOString().slice(0, 10);
+  try {
+    await db().send(
+      new UpdateCommand({
+        TableName: config.table,
+        Key: { PK: tenantPK(tenantId), SK: 'ACTIVITY' },
+        UpdateExpression: 'SET lastActiveAt = :now, lastActiveDay = :day',
+        ConditionExpression: 'attribute_not_exists(lastActiveDay) OR lastActiveDay < :day',
+        ExpressionAttributeValues: { ':now': now.toISOString(), ':day': today },
+      }),
+    );
+  } catch (error) {
+    if (!isConditionalFailure(error)) console.warn('Activity not recorded', { error: (error as Error).message });
+  }
+}

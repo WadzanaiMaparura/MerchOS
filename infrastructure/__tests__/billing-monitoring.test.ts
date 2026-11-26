@@ -83,6 +83,15 @@ describe('Billing payment monitoring', () => {
     });
   });
 
+  it('invoice PDFs are kept 6 years (SARS), then removed with their old versions', () => {
+    synth().hasResourceProperties('AWS::S3::Bucket', {
+      BucketName: 'merch-os-invoices-dev-123456789012',
+      LifecycleConfiguration: {
+        Rules: [Match.objectLike({ Id: 'KeepInvoices6Years', ExpirationInDays: 2192, NoncurrentVersionExpiration: { NoncurrentDays: 30 }, Status: 'Enabled' })],
+      },
+    });
+  });
+
   it('has no email subscription unless billingAlarmEmail is provided', () => {
     synth().resourceCountIs('AWS::SNS::Subscription', 0);
     const t = synth({ billingAlarmEmail: 'ops@example.com' });

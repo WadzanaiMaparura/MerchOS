@@ -30,7 +30,7 @@ export interface CustomerRow {
 
 export interface AuditEntry {
   at: string;
-  action: 'resend-verification' | 'disable' | 'enable' | 'exempt' | 'remove-exempt';
+  action: 'resend-verification' | 'disable' | 'enable' | 'exempt' | 'remove-exempt' | 'data-hold' | 'data-hold-removed' | 'data-deleted';
   by: string;
   byRole: string;
   reason?: string;
@@ -52,6 +52,14 @@ export interface CustomerDetail extends CustomerRow {
     review?: { rating: number; status: string };
   };
   audit: AuditEntry[];
+  /** Data retention (older API responses may not have it). */
+  dataRetention?: {
+    hold: { by: string; reason: string; at: string } | null;
+    plannedOn: string | null;
+    reason: 'closed' | 'inactive' | null;
+    note?: string;
+    warnedAt?: string;
+  };
 }
 
 export class AdminApiError extends Error {
@@ -93,4 +101,6 @@ export const customersApi = {
   enable: (tenantId: string, reason: string) => post(`/admin/customers/${id(tenantId)}/enable`, { reason }),
   setExempt: (tenantId: string, exempt: boolean, reason: string) =>
     post(`/admin/customers/${id(tenantId)}/exempt`, { exempt, reason }),
+  setHold: (tenantId: string, hold: boolean, reason: string) =>
+    post(`/admin/customers/${id(tenantId)}/hold`, { hold, reason }),
 };

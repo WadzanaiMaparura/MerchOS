@@ -168,7 +168,7 @@ export class AdminApiStack extends cdk.Stack {
       LOG_LEVEL: env === 'production' ? 'WARN' : 'INFO',
     };
 
-    const createFn = (logicalId: string, file: string, statements: iam.PolicyStatement[]) => {
+    const createFn = (logicalId: string, file: string, statements: iam.PolicyStatement[], timeoutSeconds = 29) => {
       const role = new iam.Role(this, `${logicalId}Role`, {
         assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com') as unknown as iam.IPrincipal,
         description: `Execution role for Admin API ${logicalId} Lambda`,
@@ -189,7 +189,7 @@ export class AdminApiStack extends cdk.Stack {
         entry: path.join(handlersPath, file),
         handler: 'handler',
         runtime: lambda.Runtime.NODEJS_20_X,
-        timeout: cdk.Duration.seconds(29),
+        timeout: cdk.Duration.seconds(timeoutSeconds),
         memorySize: 512,
         tracing: lambda.Tracing.ACTIVE,
         role: role as unknown as iam.IRole,
@@ -232,6 +232,8 @@ export class AdminApiStack extends cdk.Stack {
         conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['TENANT#*'] } },
       }),
       adminTableWrite,
+      // Data hold (TENANT#<id> / HOLD): read, set and remove.
+      new iam.PolicyStatement({ actions: ['dynamodb:GetItem', 'dynamodb:DeleteItem'], resources: [this.table.tableArn] }),
       kmsWrite,
     ]);
 
@@ -321,6 +323,113 @@ export class AdminApiStack extends cdk.Stack {
     });
 
     // -----------------------------------------------------------------------
+    // Data retention (daily): deletes closed / unused seller accounts by the
+    // agreed rules. DATA_RETENTION off | dryrun | on (cdk.json dataRetention).
+    // The only role here that may delete seller data, and only by partition:
+    // there is no Scan anywhere in it.
+    // -----------------------------------------------------------------------
+
+    const dataRetention = ['off', 'dryrun', 'on'].includes(envSetting(this, env, 'dataRetention', 'off'))
+      ? envSetting(this, env, 'dataRetention', 'off')
+      : 'off';
+    const sellerTables = {
+      INVENTORY_TABLE: `merch-os-inventory-${env}`,
+      INVENTORY_TRANSACTIONS_TABLE: `merch-os-inventory-transactions-${env}`,
+      SUPPLIERS_TABLE: `merch-os-suppliers-${env}`,
+      IMPORT_JOBS_TABLE: `merch-os-import-jobs-${env}`,
+      IMAGE_JOBS_TABLE: `merch-os-image-jobs-${env}`,
+      INTELLIGENCE_TABLE: `product-intelligence-${env}`,
+      INVITATIONS_TABLE: `merch-os-invitations-${env}`,
+    };
+    const sellerBuckets = {
+      RAW_UPLOADS_BUCKET: `merch-os-raw-uploads-${env}`,
+      ASSETS_BUCKET: `merch-os-assets-${env}`,
+      EXPORTS_BUCKET: `merch-os-exports-${env}`,
+    };
+    // Where each bucket keeps a seller's files (all start with the tenant id).
+    const sellerPrefixes: Array<[string, string]> = [
+      [sellerBuckets.RAW_UPLOADS_BUCKET, 'suppliers/*'],
+      [sellerBuckets.RAW_UPLOADS_BUCKET, 'images/*'],
+      [sellerBuckets.ASSETS_BUCKET, 'assets/*'],
+      [sellerBuckets.ASSETS_BUCKET, 'images/*'],
+      [sellerBuckets.EXPORTS_BUCKET, 'tenants/*'],
+    ];
+    const retentionFn = createFn(
+      'DataRetention',
+      'data-retention.ts',
+      [
+        listSellers,
+        new iam.PolicyStatement({ actions: ['cognito-idp:AdminDeleteUser'], resources: [userPoolArn] }),
+        // Own table: holds, warnings, deletions in progress, proof of deletion, audit.
+        new iam.PolicyStatement({
+          actions: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem', 'dynamodb:Query'],
+          resources: [this.table.tableArn, `${this.table.tableArn}/index/*`],
+        }),
+        // Seller data: read and delete by partition (no Scan).
+        new iam.PolicyStatement({
+          actions: [
+            'dynamodb:GetItem',
+            'dynamodb:BatchGetItem',
+            'dynamodb:Query',
+            'dynamodb:BatchWriteItem',
+            'dynamodb:DeleteItem',
+            'dynamodb:UpdateItem',
+          ],
+          resources: [
+            tenantsTableArn,
+            tableArn(productsTable),
+            tableArn(billingTable),
+            tableArn(engagementTable),
+            ...Object.values(sellerTables).map(tableArn),
+          ],
+        }),
+        kmsWrite,
+        // Files: every version under the seller's own prefixes only.
+        ...[...new Set(sellerPrefixes.map(([b]) => b))].map(
+          (bucket) =>
+            new iam.PolicyStatement({
+              actions: ['s3:ListBucketVersions', 's3:ListBucket'],
+              resources: [`arn:aws:s3:::${bucket}`],
+              conditions: {
+                StringLike: { 's3:prefix': sellerPrefixes.filter(([b]) => b === bucket).map(([, p]) => p) },
+              },
+            }),
+        ),
+        new iam.PolicyStatement({
+          actions: ['s3:DeleteObject', 's3:DeleteObjectVersion'],
+          resources: sellerPrefixes.map(([b, p]) => `arn:aws:s3:::${b}/${p}`),
+        }),
+        // The 30-day warning (engagement sends the seller email) and the report to admin@.
+        new iam.PolicyStatement({
+          actions: ['events:PutEvents'],
+          resources: [`arn:aws:events:${region}:${account}:event-bus/merch-os-events-${env}`],
+        }),
+        new iam.PolicyStatement({
+          actions: ['ses:SendEmail'],
+          resources: [`arn:aws:ses:${region}:${account}:identity/merchos.co.za`],
+        }),
+      ],
+      15 * 60,
+    );
+    for (const [k, v] of Object.entries({ ...sellerTables, ...sellerBuckets })) retentionFn.addEnvironment(k, v);
+    retentionFn.addEnvironment('DATA_RETENTION', dataRetention);
+    // When the rehearsal started: admin is reminded to switch on after 30 days.
+    const dryRunSince = envSetting(this, env, 'dataRetentionDryRunSince');
+    if (dryRunSince) retentionFn.addEnvironment('DATA_RETENTION_DRYRUN_SINCE', dryRunSince);
+    retentionFn.addEnvironment('EVENT_BUS_NAME', `merch-os-events-${env}`);
+    retentionFn.addEnvironment('ALERT_EMAIL', alertEmail);
+    retentionFn.addEnvironment('ALERT_FROM_EMAIL', 'MerchOS Alerts <noreply@merchos.co.za>');
+    retentionFn.addEnvironment('ADMIN_BASE_URL', adminBaseUrl);
+    // Once a day at 03:00 South African time. Never retried by EventBridge: the
+    // next day's run finishes anything left (deletions in progress are resumed).
+    new events.Rule(this, 'DataRetentionSchedule', {
+      ruleName: `merch-os-admin-data-retention-${env}`,
+      description: 'Daily: warn and delete closed or unused seller accounts (DATA_RETENTION)',
+      schedule: events.Schedule.cron({ minute: '0', hour: '1' }),
+      targets: [new targets.LambdaFunction(retentionFn, { retryAttempts: 0 })],
+    });
+
+    // -----------------------------------------------------------------------
     // Library and Team (announcements, goals, team chat)
     // -----------------------------------------------------------------------
 
@@ -380,6 +489,7 @@ export class AdminApiStack extends cdk.Stack {
       ['/admin/customers/{tenantId}/disable', HttpMethod.POST, manageFn],
       ['/admin/customers/{tenantId}/enable', HttpMethod.POST, manageFn],
       ['/admin/customers/{tenantId}/exempt', HttpMethod.POST, manageFn],
+      ['/admin/customers/{tenantId}/hold', HttpMethod.POST, manageFn],
     ];
     const integrations = new Map<lambdaNodejs.NodejsFunction, HttpLambdaIntegration>();
     for (const [routePath, method, fn] of routes) {

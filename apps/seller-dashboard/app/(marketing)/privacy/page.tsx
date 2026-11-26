@@ -50,6 +50,30 @@ export default function PrivacyPage() {
           delete a chat sooner by emailing the address below.
         </p>
 
+        <h2 className="text-lg font-semibold text-[#111827] !mt-10 !mb-4">How Long We Keep Your Data</h2>
+        <ul className="space-y-2">
+          <li>
+            <b>While you use MerchOS</b>, we keep your account, products, listings, photos and imports.
+          </li>
+          <li>
+            <b>If your paid plan ends</b>, your account closes 37 days after your last paid day. We keep everything for
+            12 months after that, so you can come back. Then we delete it.
+          </li>
+          <li>
+            <b>If you never subscribed</b>, we delete your account 12 months after you last signed in.
+          </li>
+          <li>We email you 30 days before we delete anything, so you can sign in or reactivate to keep it.</li>
+          <li>
+            <b>Invoices and payment records</b> are kept for 6 years, because South African tax law requires it, even
+            after your account is deleted.
+          </li>
+          <li>
+            <b>Reviews</b> you agreed to publish on our website stay there, shown only with the name you chose. Ask us
+            and we will remove yours.
+          </li>
+        </ul>
+        <p>Deleted data is removed from our backups within 35 days.</p>
+
         <h2 className="text-lg font-semibold text-[#111827] !mt-10 !mb-4">Contact</h2>
         <p>
           If you have any privacy concerns, please contact:{' '}

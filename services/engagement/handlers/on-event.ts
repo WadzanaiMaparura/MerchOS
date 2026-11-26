@@ -32,7 +32,7 @@ import {
   referralApplied,
   trialUsage,
 } from '../lib/notification-texts';
-import { welcomeBack } from '../lib/billing-templates';
+import { deletionWarning, welcomeBack } from '../lib/billing-templates';
 import { config } from '../lib/config';
 import { ensureReferralCode, sendOnce } from '../lib/lifecycle';
 import { scheduleBillingSteps, scheduleStep } from '../lib/schedule';
@@ -74,6 +74,40 @@ const extendedSchema = z.object({
 
 /** rewardAppliedBy for free months applied by billing (staff ids otherwise). */
 export const AUTOMATIC = 'automatic';
+
+const deletionWarningSchema = z.object({
+  tenantId: z.string().uuid(),
+  deleteOn: z.string().datetime(),
+  reason: z.enum(['closed', 'inactive']),
+});
+
+/** admin.retention.warning: tell the seller 30 days before their account's data is deleted. */
+export async function onDeletionWarning(detail: unknown): Promise<void> {
+  const parsed = deletionWarningSchema.safeParse(detail);
+  if (!parsed.success) {
+    console.warn('admin.retention.warning ignored: unexpected detail');
+    return;
+  }
+  const { tenantId, deleteOn, reason } = parsed.data;
+  const profile = await ensureProfile(tenantId);
+  if (!profile) return;
+  const user = await getUser(profile.userId);
+  if (!user) return;
+  // Sent even to a disabled sign-in: it is the account holder's last chance to keep their data.
+  await sendOnce(
+    profile,
+    user.email,
+    `deletion-warning#${deleteOn.slice(0, 10)}`,
+    deletionWarning({
+      siteUrl: config.siteUrl,
+      firstName: profile.firstName,
+      businessName: profile.businessName,
+      productCount: await countProducts(tenantId),
+      deleteOn,
+      reason,
+    }),
+  );
+}
 
 /** Paid again after the plan had been paused (or closed): past the grace period. */
 export function isComeback(previousPeriodEnd: string | undefined, paidAt: Date): boolean {
@@ -304,6 +338,8 @@ export async function handler(event: EventBridgeEvent<string, unknown>): Promise
       return onSubscriptionActivated(event.detail, eventTime(event));
     case 'billing.subscription.extended':
       return onSubscriptionExtended(event.detail, eventTime(event));
+    case 'admin.retention.warning':
+      return onDeletionWarning(event.detail);
     case 'ImportJobCompleted':
     case 'ImportJobFailed':
     case 'ImageModerationRejected':

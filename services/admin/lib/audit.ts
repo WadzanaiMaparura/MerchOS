@@ -29,7 +29,10 @@ export type AuditAction =
   | 'announcement-deleted'
   | 'goal-created'
   | 'goal-updated'
-  | 'goal-deleted';
+  | 'goal-deleted'
+  | 'data-hold'
+  | 'data-hold-removed'
+  | 'data-deleted';
 
 /**
  * Who/what a staff action was about: a customer, an unfinished sign-up, an

@@ -215,6 +215,42 @@ export function dataKeptReminder(i: CycleInput): RenderedEmail {
   );
 }
 
+// ─── Data retention: the 30-day warning ─────────────────────────────────────
+
+/**
+ * Sent 30 days before an account's data is deleted. Closed accounts: "pay to
+ * keep it". Never-paid accounts that have not been used for 12 months: "sign in
+ * to keep it". Always sent (an account notice, not marketing).
+ */
+export function deletionWarning(i: {
+  siteUrl: string;
+  firstName?: string | undefined;
+  businessName?: string | undefined;
+  productCount: number;
+  deleteOn: string;
+  reason: 'closed' | 'inactive';
+}): RenderedEmail {
+  const what = i.productCount > 0 ? `your ${products(i.productCount)}, their listings and your account` : 'your account';
+  const closed = i.reason === 'closed';
+  const body =
+    hello(i.firstName) +
+    para(
+      closed
+        ? `Your MerchOS account${i.businessName ? ` for <b>${escapeHtml(i.businessName)}</b>` : ''} has been closed for almost a year. On <b>${date(i.deleteOn)}</b> we will delete ${what} for good.`
+        : `You have not used your MerchOS account${i.businessName ? ` for <b>${escapeHtml(i.businessName)}</b>` : ''} for almost a year. On <b>${date(i.deleteOn)}</b> we will delete ${what} for good.`,
+    ) +
+    para(closed ? 'To keep everything, reactivate your account before then.' : 'To keep everything, simply sign in before then.') +
+    button(closed ? 'Reactivate my account' : 'Sign in to keep my account', `${i.siteUrl}/dashboard`) +
+    small(
+      'If you do nothing, your account is deleted on that date and cannot be restored. Invoices for payments you made are kept for 6 years, as tax law requires. Reply to this email if you have any questions.',
+    );
+  return render(
+    `Your MerchOS account will be deleted on ${longDate(i.deleteOn)}`,
+    closed ? 'Reactivate before then to keep your products.' : 'Sign in before then to keep your account.',
+    body,
+  );
+}
+
 // ─── Coming back ────────────────────────────────────────────────────────────
 
 export function welcomeBack(i: {

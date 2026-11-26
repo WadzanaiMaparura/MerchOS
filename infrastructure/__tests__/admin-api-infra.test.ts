@@ -18,8 +18,12 @@ const stack = new AdminApiStack(app, 'TestAdminApi', {
   tenantsTableArn: 'arn:aws:dynamodb:eu-west-1:123456789012:table/merch-os-tenants-dev',
 });
 const t = Template.fromStack(stack);
+/** IAM statements of every admin function except the data retention job (checked on its own below). */
 const statements = () =>
-  Object.values(t.findResources('AWS::IAM::Policy')).flatMap(
+  Object.entries(t.findResources('AWS::IAM::Policy'))
+    .filter(([id]) => !id.startsWith('DataRetentionRole'))
+    .map(([, r]) => r)
+    .flatMap(
     (r) => (r['Properties'] as { PolicyDocument: { Statement: Array<{ Action: string | string[]; Resource: unknown }> } }).PolicyDocument.Statement,
   );
 const actionsOn = (resourcePart: string) =>
@@ -43,7 +47,7 @@ describe('Admin API stack', () => {
       JwtConfiguration: { Audience: ['admin-client-id'], Issuer: Match.anyValue() },
     });
     const routes = Object.values(t.findResources('AWS::ApiGatewayV2::Route')).map((r) => r['Properties'] as Record<string, unknown>);
-    expect(routes).toHaveLength(34);
+    expect(routes).toHaveLength(35);
     for (const r of routes) expect(r['AuthorizationType']).toBe('JWT');
   });
 
@@ -100,6 +104,31 @@ describe('Admin API stack', () => {
     });
   });
 
+  it('data retention: daily, off unless switched on, the only role that may delete seller data (never by Scan)', () => {
+    t.hasResourceProperties('AWS::Events::Rule', { ScheduleExpression: 'cron(0 1 * * ? *)' });
+    t.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'merch-os-admin-dataretention-dev',
+      Timeout: 900,
+      Environment: { Variables: Match.objectLike({ DATA_RETENTION: 'off', RAW_UPLOADS_BUCKET: 'merch-os-raw-uploads-dev' }) },
+    });
+    const [, policy] = Object.entries(t.findResources('AWS::IAM::Policy')).find(([id]) => id.startsWith('DataRetentionRole'))!;
+    const st = (policy['Properties'] as { PolicyDocument: { Statement: Array<{ Action: string | string[]; Resource: unknown; Condition?: unknown }> } })
+      .PolicyDocument.Statement;
+    const acts = st.flatMap((s) => ([] as string[]).concat(s.Action));
+    expect(acts).toContain('cognito-idp:AdminDeleteUser');
+    expect(acts).not.toContain('dynamodb:Scan');
+    expect(acts).not.toContain('s3:DeleteBucket');
+    // File deletes only under the seller prefixes; never the invoices bucket.
+    const s3Deletes = st.filter((s) => ([] as string[]).concat(s.Action).includes('s3:DeleteObjectVersion'));
+    expect(JSON.stringify(s3Deletes)).not.toContain('invoices');
+    for (const r of ([] as string[]).concat(s3Deletes[0]!.Resource as string[])) {
+      expect(r).toMatch(/^arn:aws:s3:::merch-os-(raw-uploads|assets|exports)-dev\/(suppliers|images|assets|tenants)\/\*$/);
+    }
+    // Listing versions only within those prefixes.
+    for (const s of st.filter((x) => ([] as string[]).concat(x.Action).includes('s3:ListBucketVersions'))) {
+      expect(JSON.stringify(s.Condition)).toContain('s3:prefix');
+    }
+  });
   it('only the manage function can disable accounts', () => {
     const fns = t.findResources('AWS::IAM::Policy');
     const withDisable = Object.entries(fns).filter(([, r]) => JSON.stringify(r).includes('cognito-idp:AdminDisableUser'));

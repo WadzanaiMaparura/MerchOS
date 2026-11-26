@@ -114,12 +114,12 @@ export function paymentDue(paidUntil: string, autoRenew: boolean, at: string): N
   };
 }
 
-export function planPausedNote(paidUntil: string, closesAt: string, at: string): NewNotification {
+export function planPausedNote(paidUntil: string, closesAt: string, dataKeptUntil: string, at: string): NewNotification {
   return {
     key: `billing-paused:${paidUntil}`,
     kind: 'billing.paused',
     title: 'Your plan is paused',
-    message: `Pay to start adding products again. Your products are kept until ${longDate(closesAt)}.`,
+    message: `Pay to start adding products again. If you do not, your account closes on ${longDate(closesAt)} and your products are kept until ${longDate(dataKeptUntil)}.`,
     link: '/billing',
     at,
   };

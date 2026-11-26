@@ -111,7 +111,7 @@ async function billingStep(step: BillingStep, tenantId: string, paidUntil: strin
   // The bell, next to the email (same conditions; one each per paid period).
   const now = new Date().toISOString();
   if (step === 'due7') await addNotification(tenantId, paymentDue(paidUntil, base.autoRenew, now));
-  if (step === 'paused') await addNotification(tenantId, planPausedNote(paidUntil, dates.closesAt, now));
+  if (step === 'paused') await addNotification(tenantId, planPausedNote(paidUntil, dates.closesAt, dates.dataKeptUntil, now));
   if (step === 'final') await addNotification(tenantId, closingSoon(paidUntil, dates.closesAt, now));
 
   switch (step) {

@@ -7,6 +7,7 @@
  */
 
 import {
+  AdminDeleteUserCommand,
   AdminDisableUserCommand,
   AdminEnableUserCommand,
   AdminGetUserCommand,
@@ -131,6 +132,15 @@ export async function getUser(userId: string): Promise<SellerUser | null> {
 export async function disableUser(userId: string): Promise<void> {
   await cognito().send(new AdminDisableUserCommand({ UserPoolId: config.userPoolId, Username: userId }));
   await cognito().send(new AdminUserGlobalSignOutCommand({ UserPoolId: config.userPoolId, Username: userId }));
+}
+
+/** Data retention only: removes the sign-in account for good. Missing users are fine. */
+export async function deleteUser(userId: string): Promise<void> {
+  try {
+    await cognito().send(new AdminDeleteUserCommand({ UserPoolId: config.userPoolId, Username: userId }));
+  } catch (error) {
+    if ((error as { name?: string }).name !== 'UserNotFoundException') throw error;
+  }
 }
 
 export async function enableUser(userId: string): Promise<void> {
