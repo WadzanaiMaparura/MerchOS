@@ -203,7 +203,8 @@ export async function loadAudit(query: AuditQuery): Promise<{ events: AuditEvent
   const infos = await getTenantInfos(tenantIds.map((tenantId) => ({ tenantId })));
   for (const e of events) {
     const who = staff.get(e.byId);
-    e.byEmail = who?.email;
+    // Free months applied by billing itself, not by a staff member.
+    e.byEmail = who?.email ?? (e.byId === 'automatic' ? 'Automatic' : undefined);
     e.byRole = who?.role ?? e.byRole;
     if (e.tenantId) e.subject = infos.get(e.tenantId)?.businessName ?? e.tenantId;
   }

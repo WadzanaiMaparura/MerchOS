@@ -17,6 +17,7 @@ import middy from '@middy/core';
 import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 import { rbacMiddleware } from '../../shared/middleware/rbac';
 import { LEAVE_REASONS } from '../lib/billing-templates';
+import { isReferralFreeMonthsOn } from '../lib/events';
 import { badRequest, conflict, json, notFound, serverError, type HttpResult } from '../lib/http';
 import {
   REVIEW_STATUSES,
@@ -114,6 +115,7 @@ async function referralsRoute(event: APIGatewayProxyEventV2): Promise<HttpResult
           referrerBusiness: names.get(r.referrerTenantId) ?? '',
           referredBusiness: names.get(r.referredTenantId) || r.referredBusiness || '',
         })),
+        autoApply: isReferralFreeMonthsOn(),
       });
     }
     case 'POST /admin/referrals/{referrerTenantId}/{referredTenantId}/applied': {

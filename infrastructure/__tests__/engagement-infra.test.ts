@@ -87,6 +87,21 @@ describe('Engagement stack', () => {
     }
   });
 
+  it('referral free months: off unless switched on; asks billing on the bus and hears back', () => {
+    for (const name of ['merch-os-engagement-scheduled-dev', 'merch-os-engagement-onevent-dev']) {
+      t.hasResourceProperties('AWS::Lambda::Function', {
+        FunctionName: name,
+        Environment: { Variables: Match.objectLike({ REFERRAL_FREE_MONTHS: 'false', EVENT_BUS_NAME: 'merch-os-events-dev' }) },
+      });
+    }
+    t.hasResourceProperties('AWS::Events::Rule', {
+      EventBusName: 'merch-os-events-dev',
+      EventPattern: { source: ['merch-os.billing'], 'detail-type': ['billing.subscription.extended'] },
+    });
+    expect(policies()).toContain('"events:PutEvents"');
+    expect(policies()).toContain('event-bus/merch-os-events-dev');
+  });
+
   it('only allows our own site and admin origins', () => {
     t.hasResourceProperties('AWS::ApiGatewayV2::Api', {
       ProtocolType: 'HTTP',

@@ -7,8 +7,9 @@
  *   referral         still exists, not opted out, still subscribed
  *   qualify          the referred seller is still subscribed 14 days after paying AND is
  *                    actively using MerchOS (10+ products): the referrer earns one free
- *                    month (recorded; applied by staff until checkout does it). Under 10
- *                    products: checked again weekly, up to 90 days after paying.
+ *                    month. With REFERRAL_FREE_MONTHS on, billing applies it straight
+ *                    away (or after the referrer's next payment); otherwise staff do.
+ *                    Under 10 products: checked again weekly, up to 90 days after paying.
  *   due7 ... wb180   payment cycle (lib/billing-cycle.ts): not paid for a later period
  *                    since, not free unlimited, account enabled; win-back offers respect
  *                    the unsubscribe. Off until BILLING_LIFECYCLE=true.
@@ -37,6 +38,7 @@ import {
   whyDidYouLeave,
 } from '../lib/billing-templates';
 import { config } from '../lib/config';
+import { emitRewardEarned, isReferralFreeMonthsOn } from '../lib/events';
 import {
   REVIEW_MIN_PRODUCTS,
   ensureReferralCode,
@@ -153,8 +155,19 @@ export const REFERRAL_MIN_PRODUCTS = 10;
 /** How long after their first payment they have to get there. */
 export const REFERRAL_ACTIVITY_WINDOW_DAYS = 90;
 
+/** Ask billing to apply an owed free month (no-op unless REFERRAL_FREE_MONTHS is on). */
+async function requestFreeMonth(referrerTenantId: string, referredTenantId: string): Promise<void> {
+  if (!isReferralFreeMonthsOn()) return;
+  await emitRewardEarned({ referrerTenantId, referredTenantId });
+}
+
 async function qualify(tenantId: string, referrerTenantId: string, attempt: number): Promise<StepResult> {
   const referral = await getReferral(referrerTenantId, tenantId);
+  if (referral?.status === 'QUALIFIED' && referral.reward === 'EARNED') {
+    // A retry after the request to billing failed: send it again (billing is idempotent).
+    await requestFreeMonth(referrerTenantId, tenantId);
+    return 'skipped';
+  }
   if (referral?.status !== 'SUBSCRIBED') return 'skipped';
   const now = new Date();
   const nowIso = now.toISOString();
@@ -176,8 +189,11 @@ async function qualify(tenantId: string, referrerTenantId: string, attempt: numb
       lastCheckedAt: nowIso,
       reward: 'EARNED',
     });
-    if (ok) console.info('Referral qualified: free month earned', { referrerTenantId, tenantId });
-    return ok ? 'qualified' : 'skipped';
+    if (!ok) return 'skipped';
+    console.info('Referral qualified: free month earned', { referrerTenantId, tenantId });
+    // Applied now if the referrer is paying; otherwise owed until their next payment.
+    await requestFreeMonth(referrerTenantId, tenantId);
+    return 'qualified';
   }
 
   const paidAt = new Date(referral.subscribedAt ?? nowIso).getTime();

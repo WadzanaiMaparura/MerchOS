@@ -38,6 +38,8 @@ export interface AdminReferral {
   qualifiedAt?: string;
   reward?: 'EARNED' | 'APPLIED';
   rewardAppliedAt?: string;
+  /** Staff id, or 'automatic' when billing applied it. */
+  rewardAppliedBy?: string;
   lapseReason?: 'stopped-paying' | 'not-active';
   productsAtLastCheck?: number;
   lastCheckedAt?: string;
@@ -70,7 +72,11 @@ export const engagementApi = {
   approve: (id: string) => call(`/admin/reviews/${encodeURIComponent(id)}/approve`, { method: 'POST' }),
   reject: (id: string) => call(`/admin/reviews/${encodeURIComponent(id)}/reject`, { method: 'POST' }),
   remove: (id: string) => call(`/admin/reviews/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  referrals: async () => (await call<{ referrals: AdminReferral[] }>('/admin/referrals')).referrals,
+  /** `autoApply`: free months are added to paid-until automatically (REFERRAL_FREE_MONTHS). */
+  referrals: async () => {
+    const out = await call<{ referrals: AdminReferral[]; autoApply?: boolean }>('/admin/referrals');
+    return { referrals: out.referrals, autoApply: out.autoApply === true };
+  },
   markApplied: (referrer: string, referred: string) =>
     call(`/admin/referrals/${encodeURIComponent(referrer)}/${encodeURIComponent(referred)}/applied`, { method: 'POST' }),
   feedback: async () => (await call<{ feedback: LeaveFeedback[] }>('/admin/feedback')).feedback,

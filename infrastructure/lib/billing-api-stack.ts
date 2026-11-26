@@ -27,6 +27,8 @@ import * as sns from 'aws-cdk-lib/aws-sns';
 import * as snsSubs from 'aws-cdk-lib/aws-sns-subscriptions';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as events from 'aws-cdk-lib/aws-events';
+import * as targets from 'aws-cdk-lib/aws-events-targets';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as kms from 'aws-cdk-lib/aws-kms';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
@@ -88,6 +90,8 @@ export class BillingApiStack extends cdk.Stack {
     const billingLifecycle = envFlag(this, env, 'billingLifecycle');
     // Automatic monthly card charges (PayFast subscriptions). Off until switched on.
     const cardSubscriptions = envFlag(this, env, 'cardSubscriptions');
+    // Referral free months added to paid-until automatically. Off until switched on.
+    const referralFreeMonths = envFlag(this, env, 'referralFreeMonths');
     // Where PayFast sends the buyer back to when the client sends no returnUrl.
     const appBaseUrl = envSetting(
       this,
@@ -419,6 +423,33 @@ export class BillingApiStack extends cdk.Stack {
       })
     );
 
+    // Referral free months (engagement.referral.reward-earned): paid-until one
+    // month later, the card's next charge moved at PayFast, the product
+    // allowance extended, then billing.subscription.extended. Off until
+    // referralFreeMonths is switched on (the handler checks it too).
+    const referralFreeMonthFn = createLambda(
+      'ReferralFreeMonth',
+      path.join(handlersPath, 'referral-free-month.ts'),
+      [billingTableAccess, kmsPolicy, payfastSecretRead, trialEntitlementWrite]
+    );
+    referralFreeMonthFn.addEnvironment('PRODUCTS_TABLE', productsTableName);
+    referralFreeMonthFn.addEnvironment('EVENT_BUS_NAME', eventBusName);
+    referralFreeMonthFn.addEnvironment('REFERRAL_FREE_MONTHS', referralFreeMonths);
+    referralFreeMonthFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['events:PutEvents'],
+        resources: [`arn:aws:events:${region}:${this.account}:event-bus/${eventBusName}`],
+      })
+    );
+    new events.Rule(this, 'ReferralRewardEarnedRule', {
+      ruleName: `merch-os-billing-referral-free-month-${env}`,
+      description: 'Referral free month earned: add a month to the referrer\'s paid-until',
+      eventBus: events.EventBus.fromEventBusName(this, 'PlatformBus', eventBusName),
+      eventPattern: { source: ['merch-os.engagement'], detailType: ['engagement.referral.reward-earned'] },
+      targets: [new targets.LambdaFunction(referralFreeMonthFn, { retryAttempts: 8, maxEventAge: cdk.Duration.hours(24) })],
+    });
+
     // Invoice PDF download: issues on demand if the webhook could not, then presigns.
     //
     // Its log group is created explicitly: Lambda only creates one on first
@@ -629,6 +660,12 @@ export class BillingApiStack extends cdk.Stack {
       ]),
       1,
       'A verified ITN did not match our records (amount, checkout or tenant). Possible tampering or a bug; the payment was not applied.'
+    );
+    alarm(
+      'FreeMonthErrors',
+      referralFreeMonthFn.metricErrors({ period: cdk.Duration.minutes(5), statistic: cloudwatch.Stats.SUM }),
+      1,
+      'A referral free month could not be applied (it is retried for 24 hours). If it keeps failing, the referrer may be charged for the free month: check the merch-os-billing-referralfreemonth logs and the PayFast subscription.'
     );
     alarm(
       'CheckoutErrors',

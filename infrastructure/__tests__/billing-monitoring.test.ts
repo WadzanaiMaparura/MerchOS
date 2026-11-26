@@ -23,10 +23,10 @@ function synth(context: Record<string, unknown> = {}) {
   return Template.fromStack(stack);
 }
 
-const ALARMS = ['ItnErrors', 'ItnRetrying', 'ItnRejected', 'ItnAnomaly', 'CheckoutErrors', 'InvoiceIssueFailed'];
+const ALARMS = ['ItnErrors', 'ItnRetrying', 'ItnRejected', 'ItnAnomaly', 'FreeMonthErrors', 'CheckoutErrors', 'InvoiceIssueFailed'];
 
 describe('Billing payment monitoring', () => {
-  it('creates the six billing alarms, each notifying the billing topic on ALARM and OK', () => {
+  it('creates the seven billing alarms, each notifying the billing topic on ALARM and OK', () => {
     const t = synth();
     for (const name of ALARMS) {
       t.hasResourceProperties('AWS::CloudWatch::Alarm', {
@@ -178,5 +178,38 @@ describe('Billing permanent address for PayFast (api.merchos.co.za)', () => {
     const t = synth();
     t.resourceCountIs('AWS::ApiGatewayV2::DomainName', 0);
     t.resourceCountIs('AWS::CertificateManager::Certificate', 0);
+  });
+});
+
+describe('Billing referral free months', () => {
+  it('is off unless switched on; listens for engagement.referral.reward-earned and may answer on the bus', () => {
+    const t = synth();
+    t.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'merch-os-billing-referralfreemonth-dev',
+      Environment: {
+        Variables: Match.objectLike({
+          REFERRAL_FREE_MONTHS: 'false',
+          PRODUCTS_TABLE: 'merch-os-products-dev',
+          EVENT_BUS_NAME: 'merch-os-events-dev',
+        }),
+      },
+    });
+    t.hasResourceProperties('AWS::Events::Rule', {
+      EventBusName: 'merch-os-events-dev',
+      EventPattern: { source: ['merch-os.engagement'], 'detail-type': ['engagement.referral.reward-earned'] },
+      Targets: [Match.objectLike({ RetryPolicy: Match.objectLike({ MaximumRetryAttempts: 8 }) })],
+    });
+    t.hasResourceProperties('AWS::IAM::Policy', {
+      Roles: [{ Ref: Match.stringLikeRegexp('ReferralFreeMonthRole') }],
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({ Action: 'events:PutEvents', Resource: 'arn:aws:events:eu-west-1:123456789012:event-bus/merch-os-events-dev' }),
+        ]),
+      },
+    });
+    synth({ referralFreeMonths: 'true' }).hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'merch-os-billing-referralfreemonth-dev',
+      Environment: { Variables: Match.objectLike({ REFERRAL_FREE_MONTHS: 'true' }) },
+    });
   });
 });

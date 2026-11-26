@@ -6,6 +6,7 @@
  * - EventBridge rules on the platform bus:
  *     auth.user.registered            -> trial welcome + trial track
  *     billing.subscription.activated  -> subscription welcome + subscriber track + referral check
+ *     billing.subscription.extended   -> referral free month applied, reminders rebooked
  * - EventBridge Scheduler group for the later steps (day 2/5, day 30/35, +14d)
  * - HTTP API
  *     /reviews, /unsubscribe     public (signed links; origin check + rate limit in handler)
@@ -223,6 +224,9 @@ export class EngagementStack extends cdk.Stack {
       BILLING_LIFECYCLE: envFlag(this, env, 'billingLifecycle'),
       // Card on file: reminders say "we will charge your card" instead of "please pay".
       CARD_SUBSCRIPTIONS: envFlag(this, env, 'cardSubscriptions'),
+      // Referral free months applied by billing automatically (else staff mark them).
+      REFERRAL_FREE_MONTHS: envFlag(this, env, 'referralFreeMonths'),
+      EVENT_BUS_NAME: `merch-os-events-${env}`,
       POWERTOOLS_SERVICE_NAME: 'engagement',
       LOG_LEVEL: env === 'production' ? 'WARN' : 'INFO',
     };
@@ -359,6 +363,21 @@ export class EngagementStack extends cdk.Stack {
       eventPattern: { source: ['merch-os.billing'], detailType: ['billing.subscription.activated'] },
       targets: [target],
     });
+    new events.Rule(this, 'SubscriptionExtendedRule', {
+      ruleName: `merch-os-engagement-subscription-extended-${env}`,
+      description: 'Referral free month added: reward applied, reminders for the new paid-until',
+      eventBus: bus,
+      eventPattern: { source: ['merch-os.billing'], detailType: ['billing.subscription.extended'] },
+      targets: [target],
+    });
+
+    // Free months owed are requested from billing (engagement.referral.reward-earned):
+    // when a referral qualifies (Scheduled) and after each payment (OnEvent).
+    const putEvents = new iam.PolicyStatement({
+      actions: ['events:PutEvents'],
+      resources: [`arn:aws:events:${region}:${account}:event-bus/merch-os-events-${env}`],
+    });
+    for (const fn of [scheduledFn, onEventFn]) fn.addToRolePolicy(putEvents);
 
     // -----------------------------------------------------------------------
     // Routes

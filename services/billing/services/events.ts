@@ -4,6 +4,9 @@
  *   billing.subscription.activated   a payment landed and the plan is active.
  *     Sent for every applied payment (first and renewals). Consumers must be
  *     idempotent and decide "first activation" themselves (engagement does).
+ *   billing.subscription.extended    paid-until moved a month later without a
+ *     payment (referral free month). Engagement marks the reward applied and
+ *     books the reminders for the new date.
  *
  * Detail: { tenantId, planId, planName, monthlyProducts, mPaymentId, periodStart, periodEnd }
  * No personal data (no names, emails or card details).
@@ -32,7 +35,18 @@ export function _setEventBridgeClient(value: EventBridgeClient | undefined): voi
   client = value;
 }
 
-export async function emitSubscriptionActivated(detail: SubscriptionActivatedDetail): Promise<void> {
+export interface SubscriptionExtendedDetail {
+  tenantId: string;
+  planId: string;
+  reason: 'referral-free-month';
+  /** The referred seller who earned it. */
+  referredTenantId: string;
+  /** New paid-until, and the one before. */
+  periodEnd: string;
+  previousPeriodEnd: string;
+}
+
+async function put(detailType: string, detail: unknown): Promise<void> {
   const bus = process.env['EVENT_BUS_NAME'];
   if (!bus) throw new Error('EVENT_BUS_NAME is not configured');
   client ??= new EventBridgeClient({});
@@ -41,7 +55,7 @@ export async function emitSubscriptionActivated(detail: SubscriptionActivatedDet
       Entries: [
         {
           Source: BILLING_EVENT_SOURCE,
-          DetailType: 'billing.subscription.activated',
+          DetailType: detailType,
           Detail: JSON.stringify(detail),
           EventBusName: bus,
         },
@@ -51,4 +65,13 @@ export async function emitSubscriptionActivated(detail: SubscriptionActivatedDet
   if (out.FailedEntryCount) {
     throw new Error(`EventBridge rejected the event: ${out.Entries?.[0]?.ErrorCode ?? 'unknown'}`);
   }
+}
+
+export async function emitSubscriptionActivated(detail: SubscriptionActivatedDetail): Promise<void> {
+  await put('billing.subscription.activated', detail);
+}
+
+/** Paid-until moved without a payment (a referral free month). */
+export async function emitSubscriptionExtended(detail: SubscriptionExtendedDetail): Promise<void> {
+  await put('billing.subscription.extended', detail);
 }
