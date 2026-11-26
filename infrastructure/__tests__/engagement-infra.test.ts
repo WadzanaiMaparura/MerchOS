@@ -87,6 +87,13 @@ describe('Engagement stack', () => {
     }
   });
 
+  it('data retention: the 30-day deletion warning comes from the admin job', () => {
+    t.hasResourceProperties('AWS::Events::Rule', {
+      EventBusName: 'merch-os-events-dev',
+      EventPattern: { source: ['merch-os.admin'], 'detail-type': ['admin.retention.warning'] },
+    });
+  });
+
   it('referral free months: off unless switched on; asks billing on the bus and hears back', () => {
     for (const name of ['merch-os-engagement-scheduled-dev', 'merch-os-engagement-onevent-dev']) {
       t.hasResourceProperties('AWS::Lambda::Function', {

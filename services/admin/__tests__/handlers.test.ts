@@ -29,6 +29,7 @@ vi.mock('../lib/data', () => ({
   getSubscriptions: async () => new Map(),
   countProducts: async (t: string) => (t === TENANT ? 6 : 0),
   getConsent: async () => ({ granted: true }),
+  batchGet: async () => [],
   listInvoices: async () => [],
   getEngagement: async () => ({ emailsSent: [{ email: 'trial-welcome', sentAt: '2026-11-21T10:01:00Z' }], marketingOptOut: false, referralsMade: 0, freeMonthsEarned: 0 }),
 }));
@@ -37,6 +38,12 @@ vi.mock('../lib/audit', () => ({
   listAudit: async () => state.audit,
   getState: async () => null,
   putState: async () => undefined,
+}));
+const holds = vi.hoisted(() => new Map<string, { by: string; reason: string; at: string }>());
+vi.mock('../lib/retention-store', () => ({
+  getHold: async (t: string) => holds.get(t) ?? null,
+  setHold: async (t: string, h: { by: string; reason: string; at: string } | null) => void (h ? holds.set(t, h) : holds.delete(t)),
+  getRetention: async () => null,
 }));
 vi.mock('../lib/exempt', async () => {
   const actual = await vi.importActual<typeof import('../lib/exempt')>('../lib/exempt');
@@ -79,6 +86,7 @@ const call = async (fn: (e: APIGatewayProxyEventV2, c: unknown) => unknown, e: A
 
 beforeEach(() => {
   process.env['COGNITO_ISSUER'] = ISSUER;
+  process.env['ENGAGEMENT_TABLE'] = 'engagement-test';
   state.users = [
     { userId: 'owner-1', email: 'thandi@example.co.za', emailVerified: true, tenantId: TENANT, role: 'owner', status: 'CONFIRMED', enabled: true, createdAt: '2026-11-21T10:00:00Z' },
     { userId: 'editor-1', email: 'team@example.co.za', emailVerified: true, tenantId: TENANT, role: 'editor', status: 'CONFIRMED', enabled: true, createdAt: '2026-11-22T10:00:00Z' },
@@ -160,5 +168,22 @@ describe('actions', () => {
     expect((await call(manageApi, event('POST /admin/customers/{tenantId}/exempt', 'Admin', { path, body: { exempt: false, reason: 'Demo over' } }))).status).toBe(200);
     expect(state.entitlement.get(TENANT)).toEqual({ status: 'active' });
     expect((await call(manageApi, event('POST /admin/customers/{tenantId}/disable', 'Admin', { path: { tenantId: 'bad' }, body: { reason: 'x x x' } }))).status).toBe(400);
+  });
+
+  it('data hold on and off (Admin only, audited), shown on the detail', async () => {
+    const path = { tenantId: TENANT };
+    const hold = (on: boolean, group: 'Admin' | 'Support' = 'Admin') =>
+      call(manageApi, event('POST /admin/customers/{tenantId}/hold', group, { path, body: { hold: on, reason: 'Chargeback dispute' } }));
+    expect((await hold(true, 'Support')).status).toBe(403);
+    expect((await hold(true)).status).toBe(200);
+    expect(holds.get(TENANT)).toMatchObject({ by: 'staff-Admin', reason: 'Chargeback dispute' });
+    const detail = await call(readApi, event('GET /admin/customers/{tenantId}', 'Support', { path }));
+    expect((detail.body['customer'] as { dataRetention: { hold: unknown; plannedOn: unknown } }).dataRetention).toMatchObject({
+      hold: { by: 'staff-Admin' },
+      plannedOn: null,
+    });
+    expect((await hold(false)).status).toBe(200);
+    expect(holds.has(TENANT)).toBe(false);
+    expect(state.audit.map((a) => a['action'])).toEqual(expect.arrayContaining(['data-hold', 'data-hold-removed']));
   });
 });

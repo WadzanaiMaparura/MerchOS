@@ -189,8 +189,10 @@ export class BillingApiStack extends cdk.Stack {
     // Invoice PDFs: private bucket, never served directly
     //
     // Sellers download through short-lived presigned URLs issued by the API.
-    // Invoices are accounting records (SARS expects 5 years), so the bucket is
-    // versioned, retained on stack deletion, and has NO expiry rule.
+    // Invoices are accounting records. SARS (Tax Administration Act s29) needs
+    // them for 5 years from when the return was submitted, which can be up to a
+    // year after the invoice: each PDF is kept 6 years from its creation, then
+    // removed (with its old versions). Versioned, retained on stack deletion.
     // -----------------------------------------------------------------------
     this.invoicesBucket = new s3.Bucket(this, 'InvoicesBucket', {
       bucketName: `merch-os-invoices-${env}-${this.account}`,
@@ -200,6 +202,13 @@ export class BillingApiStack extends cdk.Stack {
       versioned: true,
       objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
+      lifecycleRules: [
+        {
+          id: 'KeepInvoices6Years',
+          expiration: cdk.Duration.days(6 * 365 + 2),
+          noncurrentVersionExpiration: cdk.Duration.days(30),
+        },
+      ],
     });
 
     // Optional per-deployment overrides for the legal details printed on invoices

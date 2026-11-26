@@ -162,3 +162,10 @@ export const fakeNotifications = {
     notifMem.lastReadAt.set(tenantId, new Date().toISOString());
   },
 };
+
+export const activityMem = new Map<string, string>();
+Object.assign(fakeNotifications, {
+  touchActivity: async (tenantId: string, now: Date = new Date()) => {
+    activityMem.set(tenantId, now.toISOString());
+  },
+});

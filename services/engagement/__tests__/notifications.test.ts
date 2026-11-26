@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { _setDb } from '../lib/store';
-import { addNotification, listNotifications, markAllRead, markRead } from '../lib/notifications';
+import { addNotification, listNotifications, markAllRead, markRead, touchActivity } from '../lib/notifications';
 import * as texts from '../lib/notification-texts';
 
 process.env['ENGAGEMENT_TABLE'] = 'engagement-test';
@@ -38,6 +38,13 @@ const fakeDb = {
         const existing = table.get(k(i.Key));
         if (i.ConditionExpression === 'attribute_exists(PK)' && !existing) throw conditional();
         const item = existing ?? { ...i.Key };
+        if (String(i.UpdateExpression).includes('lastActiveDay')) {
+          if (item['lastActiveDay'] && !(item['lastActiveDay'] < i.ExpressionAttributeValues[':day'])) throw conditional();
+          item['lastActiveAt'] = i.ExpressionAttributeValues[':now'];
+          item['lastActiveDay'] = i.ExpressionAttributeValues[':day'];
+          table.set(k(i.Key), item);
+          return {};
+        }
         if (String(i.UpdateExpression).includes('readAt')) item['readAt'] ??= i.ExpressionAttributeValues[':now'];
         if (String(i.UpdateExpression).includes('lastReadAt')) item['lastReadAt'] = i.ExpressionAttributeValues[':now'];
         table.set(k(i.Key), item);
@@ -83,6 +90,15 @@ describe('seller notification store', () => {
     expect((await listNotifications(T)).unreadCount).toBe(0);
   });
 
+  it('"last used" is written at most once a day', async () => {
+    const day1 = new Date('2026-11-26T08:00:00Z');
+    await touchActivity(T, day1);
+    await touchActivity(T, new Date('2026-11-26T20:00:00Z'));
+    expect(table.get(`TENANT#${T}|ACTIVITY`)).toMatchObject({ lastActiveAt: '2026-11-26T08:00:00.000Z', lastActiveDay: '2026-11-26' });
+    await touchActivity(T, new Date('2026-11-27T07:00:00Z'));
+    expect(table.get(`TENANT#${T}|ACTIVITY`)).toMatchObject({ lastActiveAt: '2026-11-27T07:00:00.000Z' });
+  });
+
   it('refuses keys that could break the sort key', async () => {
     await expect(addNotification(T, { ...texts.importFailed('x', false, iso(1)), key: 'bad key/../' })).rejects.toThrow(
       'Invalid notification key',
@@ -107,7 +123,7 @@ describe('notification wording', () => {
     texts.referralApplied('r1', '2027-01-25T10:00:00.000Z', iso(1)),
     texts.paymentDue('2026-12-25T10:00:00.000Z', false, iso(1)),
     texts.paymentDue('2026-12-25T10:00:00.000Z', true, iso(1)),
-    texts.planPausedNote('2026-12-25T10:00:00.000Z', '2027-01-31T10:00:00.000Z', iso(1)),
+    texts.planPausedNote('2026-12-25T10:00:00.000Z', '2027-01-31T10:00:00.000Z', '2028-01-31T10:00:00.000Z', iso(1)),
     texts.closingSoon('2026-12-25T10:00:00.000Z', '2027-01-31T10:00:00.000Z', iso(1)),
     texts.trialUsage(12, 15, iso(1)),
     texts.trialUsage(15, 15, iso(1)),

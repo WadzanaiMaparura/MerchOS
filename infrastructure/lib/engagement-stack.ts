@@ -363,6 +363,13 @@ export class EngagementStack extends cdk.Stack {
       eventPattern: { source: ['merch-os.billing'], detailType: ['billing.subscription.activated'] },
       targets: [target],
     });
+    new events.Rule(this, 'DeletionWarningRule', {
+      ruleName: `merch-os-engagement-deletion-warning-${env}`,
+      description: 'Data retention: email the seller 30 days before their account data is deleted',
+      eventBus: bus,
+      eventPattern: { source: ['merch-os.admin'], detailType: ['admin.retention.warning'] },
+      targets: [target],
+    });
     new events.Rule(this, 'SubscriptionExtendedRule', {
       ruleName: `merch-os-engagement-subscription-extended-${env}`,
       description: 'Referral free month added: reward applied, reminders for the new paid-until',

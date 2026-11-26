@@ -46,7 +46,7 @@ export async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Pr
 }
 
 /** BatchGet across one table (chunks of 100, retries unprocessed keys). */
-async function batchGet(table: string, keys: Array<{ PK: string; SK: string }>): Promise<Item[]> {
+export async function batchGet(table: string, keys: Array<{ PK: string; SK: string }>): Promise<Item[]> {
   const out: Item[] = [];
   for (let i = 0; i < keys.length; i += 100) {
     let pending: Array<Record<string, unknown>> | undefined = keys.slice(i, i + 100);

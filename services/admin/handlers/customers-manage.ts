@@ -5,8 +5,10 @@
  *                                                           sign-in blocked, signed out everywhere
  *   POST /admin/customers/{tenantId}/enable    { reason }
  *   POST /admin/customers/{tenantId}/exempt    { exempt: true|false, reason }   free unlimited account
+ *   POST /admin/customers/{tenantId}/hold      { hold: true|false, reason }     keep this account's data
+ *                                                           (the data retention job skips it)
  *
- * Data is never deleted. Every action is written to the audit log with who did it and why.
+ * Nothing here deletes data. Every action is written to the audit log with who did it and why.
  */
 
 import middy from '@middy/core';
@@ -18,11 +20,13 @@ import { putState, recordAudit } from '../lib/audit';
 import { disableUser, enableUser, listSellerUsers } from '../lib/cognito';
 import { getEntitlements, getSubscriptions } from '../lib/data';
 import { grantExempt, removeExempt, statusAfterExempt } from '../lib/exempt';
+import { getHold, setHold } from '../lib/retention-store';
 import { UUID, badRequest, conflict, json, notFound, readJson, serverError, staffOf, type HttpResult } from '../lib/http';
 
 const reason = z.string().trim().min(3, 'Please give a reason (it goes in the audit log).').max(500);
 const stateSchema = z.object({ reason });
 const exemptSchema = z.object({ exempt: z.boolean(), reason });
+const holdSchema = z.object({ hold: z.boolean(), reason });
 const firstIssue = (e: z.ZodError) => e.issues[0]?.message ?? 'Invalid request';
 
 async function members(tenantId: string) {
@@ -80,6 +84,22 @@ async function setExempt(event: APIGatewayProxyEventV2, tenantId: string): Promi
   return json(200, { exempt: parsed.data.exempt });
 }
 
+/** Keep this account's data: the retention job skips it while the hold is on. */
+async function setDataHold(event: APIGatewayProxyEventV2, tenantId: string): Promise<HttpResult> {
+  const parsed = holdSchema.safeParse(readJson(event));
+  if (!parsed.success) return badRequest(firstIssue(parsed.error));
+  const staff = staffOf(event);
+  if (!(await members(tenantId)).length) return notFound('Customer not found');
+  const current = await getHold(tenantId);
+  if (parsed.data.hold === !!current) return json(200, { hold: parsed.data.hold });
+  await setHold(tenantId, parsed.data.hold ? { by: staff.userId, reason: parsed.data.reason, at: new Date().toISOString() } : null);
+  await recordAudit(
+    { tenantId },
+    { action: parsed.data.hold ? 'data-hold' : 'data-hold-removed', by: staff.userId, byRole: staff.role, reason: parsed.data.reason },
+  );
+  return json(200, { hold: parsed.data.hold });
+}
+
 async function baseHandler(event: APIGatewayProxyEventV2): Promise<HttpResult> {
   try {
     const tenantId = event.pathParameters?.['tenantId'];
@@ -91,6 +111,8 @@ async function baseHandler(event: APIGatewayProxyEventV2): Promise<HttpResult> {
         return await setDisabled(event, tenantId, false);
       case 'POST /admin/customers/{tenantId}/exempt':
         return await setExempt(event, tenantId);
+      case 'POST /admin/customers/{tenantId}/hold':
+        return await setDataHold(event, tenantId);
       default:
         return notFound();
     }

@@ -21,7 +21,9 @@ export type EmailKey =
   /** Payment cycle, once per paid period: "<step>#<paidUntil>" (see billing-cycle.ts). */
   | `${BillingStep}#${string}`
   /** Coming back after the plan was paused or closed, once per return. */
-  | `welcome-back#${string}`;
+  | `welcome-back#${string}`
+  /** Data retention: "your account will be deleted on ..." (transactional), once per date. */
+  | `deletion-warning#${string}`;
 
 export const MARKETING_EMAILS: ReadonlySet<string> = new Set(['review-request', 'referral-invite']);
 

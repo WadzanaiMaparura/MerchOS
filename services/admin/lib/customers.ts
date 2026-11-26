@@ -8,7 +8,11 @@
 import { PLAN_CATALOGUE } from '../../billing/config/plans';
 import { listAudit, getState, type AccountState, type AuditEntry } from './audit';
 import { listSellerUsers, listUnfinishedSignUps, type SellerUser } from './cognito';
+import { config } from './config';
+import { plannedDeletion, type RetentionReason } from './retention-rules';
+import { getHold, getRetention, type Hold } from './retention-store';
 import {
+  batchGet,
   countProducts,
   getConsent,
   getEngagement,
@@ -186,13 +190,23 @@ export interface CustomerDetail extends CustomerRow {
   engagement: EngagementInfo & { referredByBusiness?: string | undefined };
   state: AccountState | null;
   audit: AuditEntry[];
+  /** Data retention: kept (and why), on hold, or deleted on a date if nothing changes. */
+  dataRetention: {
+    hold: Hold | null;
+    /** When the data would be deleted if nothing changes (null: never automatically). */
+    plannedOn: string | null;
+    reason: RetentionReason | null;
+    /** Disabled accounts and free unlimited ones are never deleted automatically. */
+    note?: string | undefined;
+    warnedAt?: string | undefined;
+  };
 }
 
 export async function loadCustomer(tenantId: string, now: Date = new Date()): Promise<CustomerDetail | null> {
   const { rows, team } = await loadCustomers(now);
   const row = rows.find((r) => r.tenantId === tenantId);
   if (!row) return null;
-  const [consent, entitlements, subscriptions, invoices, engagement, state, audit] = await Promise.all([
+  const [consent, entitlements, subscriptions, invoices, engagement, state, audit, hold, retention, activity] = await Promise.all([
     getConsent(tenantId, row.ownerUserId),
     getEntitlements([tenantId]),
     getSubscriptions([tenantId]),
@@ -200,7 +214,33 @@ export async function loadCustomer(tenantId: string, now: Date = new Date()): Pr
     getEngagement(tenantId),
     getState(tenantId),
     listAudit(tenantId),
+    getHold(tenantId),
+    getRetention(tenantId),
+    batchGet(config.engagementTable, [{ PK: `TENANT#${tenantId}`, SK: 'ACTIVITY' }]),
   ]);
+  const entitlement = entitlements.get(tenantId);
+  const lastActiveAt = typeof activity[0]?.['lastActiveAt'] === 'string' ? (activity[0]['lastActiveAt'] as string) : undefined;
+  const planned = plannedDeletion(
+    {
+      tenantId,
+      entitlement,
+      ...(state?.disabled ? { disabled: { since: state.changedAt } } : {}),
+      onHold: !!hold,
+      lastActiveAt,
+      createdAt: row.signedUpAt,
+    },
+    now,
+  );
+  const note =
+    entitlement?.status === 'exempt'
+      ? 'Free unlimited accounts are never deleted.'
+      : state?.disabled
+        ? 'Disabled accounts are never deleted automatically. You are reminded after 12 months.'
+        : hold
+          ? 'On hold: kept until the hold is removed.'
+          : !planned
+            ? 'Paying: nothing is deleted while the plan is paid or paused.'
+            : undefined;
   const referredBy = engagement.referredByTenantId ? rows.find((r) => r.tenantId === engagement.referredByTenantId) : undefined;
   return {
     ...row,
@@ -213,11 +253,18 @@ export async function loadCustomer(tenantId: string, now: Date = new Date()): Pr
       emailVerified: u.emailVerified,
     })),
     marketingConsent: consent,
-    entitlement: entitlements.get(tenantId),
+    entitlement,
     subscription: subscriptions.get(tenantId),
     invoices,
     engagement: { ...engagement, referredByBusiness: referredBy?.businessName },
     state,
     audit,
+    dataRetention: {
+      hold,
+      plannedOn: planned?.on ?? null,
+      reason: planned?.reason ?? null,
+      ...(note ? { note } : {}),
+      ...(retention?.warnedAt ? { warnedAt: retention.warnedAt } : {}),
+    },
   };
 }

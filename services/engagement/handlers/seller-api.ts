@@ -16,7 +16,7 @@ import { ensureProfile } from '../lib/accounts';
 import { badRequest, conflict, json, notFound, readJson, serverError, tooMany, type HttpResult } from '../lib/http';
 import { ensureReferralCode, referralLink } from '../lib/lifecycle';
 import { normaliseCode } from '../lib/referral-code';
-import { listNotifications, markAllRead, markRead } from '../lib/notifications';
+import { listNotifications, markAllRead, markRead, touchActivity } from '../lib/notifications';
 import { createReferral, listReferralsBy, tenantForReferralCode, withinRateLimit } from '../lib/store';
 import { z } from 'zod';
 
@@ -118,6 +118,8 @@ async function notificationsRoute(event: APIGatewayProxyEventV2): Promise<HttpRe
     if (!caller) return json(401, { error: { code: 'UNAUTHORIZED', message: 'Please sign in again.' } });
     switch (event.routeKey) {
       case 'GET /notifications':
+        // The bell checks every minute while the dashboard is open: the account is in use.
+        await touchActivity(caller.tenantId);
         return json(200, await listNotifications(caller.tenantId));
       case 'POST /notifications/read': {
         const parsed = readSchema.safeParse(readJson(event));

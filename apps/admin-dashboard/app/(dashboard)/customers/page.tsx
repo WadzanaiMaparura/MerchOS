@@ -65,6 +65,9 @@ const ACTION_LABEL: Record<AuditEntry['action'], string> = {
   enable: 'enabled the account',
   exempt: 'gave a free unlimited account',
   'remove-exempt': 'removed the free unlimited account',
+  'data-hold': 'put the account data on hold',
+  'data-hold-removed': 'removed the data hold',
+  'data-deleted': 'deleted the account data (12-month rules)',
 };
 
 const day = (iso?: string) =>
@@ -216,7 +219,7 @@ function Customers() {
 
 // ─── Detail panel ────────────────────────────────────────────────────────────
 
-type Pending = { kind: 'disable' | 'enable' | 'exempt' | 'remove-exempt' } | null;
+type Pending = { kind: 'disable' | 'enable' | 'exempt' | 'remove-exempt' | 'hold' | 'remove-hold' } | null;
 
 function CustomerPanel({ row, onClose }: { row: CustomerRow; onClose: () => void }) {
   const queryClient = useQueryClient();
@@ -267,6 +270,8 @@ function CustomerPanel({ row, onClose }: { row: CustomerRow; onClose: () => void
     if (pending.kind === 'enable') void run(() => customersApi.enable(t, reason), 'Account enabled.');
     if (pending.kind === 'exempt') void run(() => customersApi.setExempt(t, true, reason), 'This is now a free unlimited account.');
     if (pending.kind === 'remove-exempt') void run(() => customersApi.setExempt(t, false, reason), 'Free unlimited account removed.');
+    if (pending.kind === 'hold') void run(() => customersApi.setHold(t, true, reason), 'Data on hold: it will not be deleted.');
+    if (pending.kind === 'remove-hold') void run(() => customersApi.setHold(t, false, reason), 'Hold removed: the normal rules apply again.');
   };
 
   const copyEmail = async () => {
@@ -287,6 +292,8 @@ function CustomerPanel({ row, onClose }: { row: CustomerRow; onClose: () => void
     enable: 'Enable this account? Everyone in the business can sign in again.',
     exempt: 'Make this a free unlimited account? The 15-product trial limit stops applying, and billing never overwrites it.',
     'remove-exempt': 'Remove the free unlimited account? It goes back to paying (if a paid period is running) or the free trial.',
+    hold: 'Put this account\'s data on hold? It will not be deleted by the 12-month rules until you remove the hold (for example during a dispute or a legal request).',
+    'remove-hold': 'Remove the hold? The normal rules apply again, and the seller is warned 30 days before any deletion.',
   };
 
   return (
@@ -359,6 +366,20 @@ function CustomerPanel({ row, onClose }: { row: CustomerRow; onClose: () => void
                   ))}
             </Row>
           )}
+          {c.dataRetention && (
+            <Row k="Data">
+              {c.dataRetention.hold
+                ? `On hold since ${day(c.dataRetention.hold.at)}: kept until the hold is removed`
+                : c.dataRetention.plannedOn
+                  ? `Deleted on ${day(c.dataRetention.plannedOn)} if nothing changes (${
+                      c.dataRetention.reason === 'closed' ? 'closed for 12 months' : 'not used for 12 months'
+                    })`
+                  : c.dataRetention.note ?? 'Kept'}
+              {c.dataRetention.warnedAt && (
+                <span className="block text-xs text-amber-800">Deletion warning emailed {day(c.dataRetention.warnedAt)}</span>
+              )}
+            </Row>
+          )}
         </Section>
       )}
 
@@ -419,6 +440,14 @@ function CustomerPanel({ row, onClose }: { row: CustomerRow; onClose: () => void
             <>
               <button type="button" className={btnSecondary} disabled={busy} onClick={() => setPending({ kind: exempt ? 'remove-exempt' : 'exempt' })}>
                 {exempt ? 'Remove free unlimited' : 'Make free unlimited'}
+              </button>
+              <button
+                type="button"
+                className={btnSecondary}
+                disabled={busy}
+                onClick={() => setPending({ kind: c.dataRetention?.hold ? 'remove-hold' : 'hold' })}
+              >
+                {c.dataRetention?.hold ? 'Remove data hold' : 'Keep data (hold)'}
               </button>
               <button
                 type="button"

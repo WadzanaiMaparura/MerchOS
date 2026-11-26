@@ -27,7 +27,7 @@ const routeKeys = (t: Template) =>
   );
 
 describe('Billing invoice infrastructure', () => {
-  it('stores invoices in a private, encrypted, versioned, retained bucket with no expiry', () => {
+  it('stores invoices in a private, encrypted, versioned, retained bucket, kept 6 years', () => {
     const t = synth();
     t.hasResourceProperties('AWS::S3::Bucket', {
       BucketName: 'merch-os-invoices-dev-123456789012',
@@ -42,9 +42,12 @@ describe('Billing invoice infrastructure', () => {
       OwnershipControls: { Rules: [{ ObjectOwnership: 'BucketOwnerEnforced' }] },
     });
     t.hasResource('AWS::S3::Bucket', { DeletionPolicy: 'Retain', UpdateReplacePolicy: 'Retain' });
-    // Accounting records: nothing may expire them.
-    const bucket = Object.values(t.findResources('AWS::S3::Bucket'))[0] as { Properties: Record<string, unknown> };
-    expect(bucket.Properties['LifecycleConfiguration']).toBeUndefined();
+    // Accounting records: one rule only, and never earlier than 6 years (SARS: 5 years from the return).
+    const bucket = Object.values(t.findResources('AWS::S3::Bucket'))[0] as {
+      Properties: { LifecycleConfiguration: { Rules: Array<{ ExpirationInDays: number }> } };
+    };
+    expect(bucket.Properties.LifecycleConfiguration.Rules).toHaveLength(1);
+    expect(bucket.Properties.LifecycleConfiguration.Rules[0]!.ExpirationInDays).toBeGreaterThanOrEqual(6 * 365);
     // TLS only.
     t.hasResourceProperties('AWS::S3::BucketPolicy', {
       PolicyDocument: { Statement: Match.arrayWith([Match.objectLike({ Effect: 'Deny', Condition: { Bool: { 'aws:SecureTransport': 'false' } } })]) },

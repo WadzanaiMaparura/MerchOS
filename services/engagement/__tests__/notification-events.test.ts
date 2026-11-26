@@ -12,8 +12,15 @@ vi.mock('../lib/accounts', () => ({
   getUser: vi.fn(async () => null),
 }));
 vi.mock('../lib/schedule', () => ({ scheduleBillingSteps: vi.fn(async () => []), scheduleStep: vi.fn(async () => undefined) }));
+const mailed = vi.hoisted(() => [] as Array<{ to: string; subject: string; html: string }>);
+vi.mock('../lib/mailer', () => ({
+  sendEmail: vi.fn(async (e: { to: string; subject: string; html: string }) => {
+    mailed.push(e);
+    return 'msg';
+  }),
+}));
 
-import { getProductTitle } from '../lib/accounts';
+import { ensureProfile, getUser, getProductTitle } from '../lib/accounts';
 import { handler } from '../handlers/on-event';
 
 const T = '7e22ed36-cf82-4ba2-b194-8bd4cfab5166';
@@ -80,6 +87,29 @@ describe('seller notifications from platform events', () => {
     );
     expect(notifMem.of(R)[0]).toMatchObject({ title: 'Free month added', link: '/referrals' });
     expect(notifMem.of(R)[0]!.message).toContain('25 January 2027');
+  });
+
+  it('data retention warning: one email per deletion date, with the right words for each case', async () => {
+    mailed.length = 0;
+    const profile = { tenantId: T, userId: 'owner', email: 'x', firstName: 'Thandi', businessName: 'Thandi Home Goods', createdAt: '' };
+    vi.mocked(ensureProfile).mockResolvedValue(profile as never);
+    mem.profiles.set(T, profile as never);
+    vi.mocked(getUser).mockResolvedValue({ email: 'thandi@example.co.za', enabled: false });
+    const warn = (reason: string, deleteOn = '2028-02-07T00:00:00.000Z') =>
+      handler(ev('admin.retention.warning', { tenantId: T, deleteOn, reason }));
+    await warn('closed');
+    await warn('closed');
+    expect(mailed).toHaveLength(1);
+    expect(mailed[0]).toMatchObject({ to: 'thandi@example.co.za', subject: 'Your MerchOS account will be deleted on 7 February 2028' });
+    expect(mailed[0]!.html).toContain('has been closed for almost a year');
+    expect(mailed[0]!.html).toContain('Reactivate my account');
+    expect(mailed[0]!.html).toContain('kept for 6 years');
+
+    await warn('inactive', '2028-03-10T09:00:00.000Z');
+    expect(mailed[1]!.html).toContain('You have not used your MerchOS account');
+    expect(mailed[1]!.html).toContain('Sign in to keep my account');
+    for (const m of mailed) expect(m.html).not.toMatch(/\u2014|\bAI\b/);
+    vi.mocked(ensureProfile).mockResolvedValue(null);
   });
 
   it('ignores events for no tenant or with unexpected fields', async () => {

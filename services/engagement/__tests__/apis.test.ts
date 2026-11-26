@@ -225,8 +225,11 @@ describe('seller notifications API (the bell)', () => {
     });
   });
 
-  it('lists my notifications only, newest first, with the unread count', async () => {
+  it('lists my notifications only, newest first, with the unread count; records that the account is in use', async () => {
+    const { activityMem } = await import('./fake-store');
+    activityMem.clear();
     const r = await call(notificationsHandler, http('GET /notifications', { tenantId: TENANT }));
+    expect(activityMem.has(TENANT)).toBe(true);
     expect(r.status).toBe(200);
     expect((r.body['notifications'] as Array<{ title: string }>).map((n) => n.title)).toEqual(['Payment received', 'Import failed']);
     expect(r.body['unreadCount']).toBe(2);
