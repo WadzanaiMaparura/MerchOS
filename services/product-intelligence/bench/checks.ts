@@ -111,6 +111,8 @@ function accuracy(c: BenchCase, o: BenchOutput, source: string): CheckFinding[] 
 // ─── Completeness ────────────────────────────────────────────────────────────
 
 const words = (s: string | undefined) => (s ?? '').trim().split(/\s+/).filter(Boolean).length;
+/** Attributes that are measurements and need a unit. */
+const MEASURE_KEY = /capacity|volume|power|wattage|weight|mass|length|width|height|depth|size|diameter|voltage|battery|storage|memory|screen|display/i;
 
 function completeness(c: BenchCase, o: BenchOutput): CheckFinding[] {
   const f: CheckFinding[] = [];
@@ -125,6 +127,12 @@ function completeness(c: BenchCase, o: BenchOutput): CheckFinding[] {
   else if (bullets < TARGET_BULLETS) f.push({ area, level: 'warn', message: `Only ${bullets} bullet points (aim for ${TARGET_BULLETS})` });
   const attrs = o.attributes ?? [];
   if (attrs.length < MIN_ATTRIBUTES) f.push({ area, level: 'warn', message: `Only ${attrs.length} attributes found` });
+  // "capacity: 25" is unusable on a marketplace: 25 what?
+  for (const a of attrs) {
+    if (MEASURE_KEY.test(a.key) && /^\s*\d+(?:[.,]\d+)?\s*$/.test(a.value)) {
+      f.push({ area, level: 'warn', message: `Attribute "${a.key}" has no unit (${a.value})` });
+    }
+  }
   const have = new Set(attrs.map((a) => lc(a.key).replace(/[\s_-]/g, '')));
   for (const req of c.expect?.requiredAttributes ?? []) {
     if (!have.has(lc(req).replace(/[\s_-]/g, ''))) f.push({ area, level: 'fail', message: `Required attribute missing: ${req}` });
@@ -169,6 +177,12 @@ function rules(o: BenchOutput, marketplace: MarketplaceId): CheckFinding[] {
     }
   }
   if (o.title && /[.!?,;:]$/.test(o.title.trim())) f.push({ area, level: 'warn', message: 'Title ends with punctuation' });
+  if (o.title) {
+    const seen = new Set<string>();
+    const twice = new Set<string>();
+    for (const wd of lc(o.title).split(/[^\p{L}\p{N}]+/u).filter((x) => x.length > 3)) (seen.has(wd) ? twice : seen).add(wd);
+    if (twice.size) f.push({ area, level: 'warn', message: `Title repeats a word (${[...twice].join(', ')})` });
+  }
   return f;
 }
 

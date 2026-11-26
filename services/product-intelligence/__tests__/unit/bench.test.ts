@@ -107,6 +107,17 @@ describe('bench checks', () => {
     expect(secure.findings.filter((f) => f.area === 'rules')).toEqual([]);
   });
 
+  it('found by the second live run: attributes without units, a word repeated in the title', () => {
+    const s = scoreCase(
+      { ...mug, expect: {} },
+      { ...good, title: 'Example Electric Cordless Electric Kettle 1.7L', attributes: [...good.attributes!, { key: 'capacity', value: '1.7', confidence: 0.9 }, { key: 'power', value: '2200', confidence: 0.9 }, { key: 'pack_size', value: '1', confidence: 0.9 }] },
+      'Kettle 1.7L 2200 W\n' + source,
+    );
+    const m = s.findings.map((f) => f.message);
+    expect(m).toEqual(expect.arrayContaining(['Attribute "capacity" has no unit (1.7)', 'Attribute "power" has no unit (2200)', 'Title repeats a word (electric)']));
+    expect(m.some((x) => x.includes('pack_size'))).toBe(true); // "size" is a measurement word; a bare count is flagged for a look
+  });
+
   it('a step that failed counts as a completeness problem; no category expectation means it is not scored', () => {
     const s = scoreCase({ ...mug, expect: {} }, { ...good, errors: [{ step: 'Bullets', message: 'Bedrock unavailable' }] }, source);
     expect(s.byArea.category).toBeNull();
