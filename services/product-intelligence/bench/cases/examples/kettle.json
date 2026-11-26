@@ -1,0 +1,13 @@
+{
+  "id": "example-kettle",
+  "label": "Example: electric kettle (supplier CSV row)",
+  "group": "appliances",
+  "marketplace": "takealot",
+  "example": true,
+  "source": { "kind": "csv", "file": "supplier.csv", "row": 1 },
+  "expect": {
+    "category": ["Kettle"],
+    "facts": ["1.7", "2200 W"],
+    "mustNotSay": ["warranty", "rapid boil in 60 seconds"]
+  }
+}

@@ -60,3 +60,7 @@ yarn.lock
 pnpm-lock.yaml
 
 next-env.d.ts
+
+# Listing quality bench: real products and run results stay local
+services/product-intelligence/bench/cases/private/
+services/product-intelligence/bench/runs/

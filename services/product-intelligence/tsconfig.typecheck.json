@@ -19,5 +19,7 @@
     "jsx": "react-jsx",
     "composite": false,
     "noEmit": true
-  }
+  },
+  // The quality bench (bench/) is checked too; it is never bundled into a Lambda.
+  "include": ["handlers/**/*.ts", "services/**/*.ts", "schemas/**/*.ts", "utils/**/*.ts", "types/**/*.ts", "bench/**/*.ts"]
 }

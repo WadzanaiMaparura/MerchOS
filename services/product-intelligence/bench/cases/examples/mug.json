@@ -1,0 +1,30 @@
+{
+  "id": "example-mug",
+  "label": "Example: ceramic coffee mug (typed in)",
+  "group": "home",
+  "marketplace": "takealot",
+  "example": true,
+  "source": {
+    "kind": "manual",
+    "title": "Ceramic Coffee Mug 350ml Matte Black",
+    "brand": "Example Home",
+    "category": "Kitchen > Drinkware > Mugs",
+    "description": "Matte black ceramic mug. Holds 350 ml. Comfortable C-shaped handle. Sold as a single mug.",
+    "attributes": { "Material": "Ceramic", "Capacity": "350 ml", "Colour": "Matte black", "Pack size": 1 }
+  },
+  "expect": {
+    "category": ["Mugs", "Drinkware"],
+    "requiredAttributes": ["Material", "Capacity", "Colour"],
+    "facts": ["350 ml", "ceramic"],
+    "mustNotSay": ["dishwasher safe", "microwave safe", "set of"]
+  },
+  "gold": {
+    "title": "Example Home Ceramic Coffee Mug, 350 ml, Matte Black",
+    "bullets": [
+      "Holds 350 ml: a full cup of coffee or tea",
+      "Ceramic with a matte black finish",
+      "Comfortable C-shaped handle",
+      "Sold as a single mug"
+    ]
+  }
+}

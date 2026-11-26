@@ -1,0 +1,14 @@
+{
+  "id": "example-backpack",
+  "label": "Example: laptop backpack (saved supplier page)",
+  "group": "bags",
+  "marketplace": "takealot",
+  "example": true,
+  "source": { "kind": "html", "file": "backpack.html", "url": "https://supplier.example.com/backpack-25l" },
+  "expect": {
+    "category": ["Backpack"],
+    "requiredAttributes": ["Capacity", "Material"],
+    "facts": ["25", "15.6"],
+    "mustNotSay": ["waterproof", "anti-theft", "usb charging"]
+  }
+}
