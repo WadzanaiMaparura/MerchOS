@@ -7,6 +7,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { PRODUCTION_PRE_DOMAIN_ORIGINS } from '../lib/cors-origins';
 
 const cdkJson = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'cdk.json'), 'utf8')) as {
   context: Record<string, unknown> & { envConfig: Record<string, Record<string, string>> };
@@ -119,8 +120,12 @@ describe('production app synthesis', () => {
   });
 
   it('uses only production site addresses (no dev, Amplify branch, localhost or merchos.io hosts)', () => {
+    // Production's own Amplify branches are allowed only until the domain switch.
+    const temporary = [...PRODUCTION_PRE_DOMAIN_ORIGINS.seller, ...PRODUCTION_PRE_DOMAIN_ORIGINS.admin];
+    let rest = all;
+    for (const t of temporary) rest = rest.split(t).join('');
     for (const bad of ['dev.merchos.co.za', 'merchos.io', 'amplifyapp.com', 'localhost']) {
-      expect(all, bad).not.toContain(bad);
+      expect(rest, bad).not.toContain(bad);
     }
     expect(all).toContain('https://merchos.co.za');
     expect(all).toContain('https://admin.merchos.co.za');
@@ -135,7 +140,18 @@ describe('production app synthesis', () => {
     expect(apiClient?.Properties?.['CallbackURLs']).toBeUndefined();
     expect(all).not.toContain('example.com');
     const urls = clients.flatMap((c) => (c.Properties?.['CallbackURLs'] as string[] | undefined) ?? []).sort();
-    expect(urls).toEqual(['https://admin.merchos.co.za/callback', 'https://merchos.co.za/callback']);
+    const temporary = [...PRODUCTION_PRE_DOMAIN_ORIGINS.seller, ...PRODUCTION_PRE_DOMAIN_ORIGINS.admin].map((o) => `${o}/callback`);
+    expect(urls).toEqual(['https://admin.merchos.co.za/callback', 'https://merchos.co.za/callback', ...temporary].sort());
+  });
+
+  it('drops the temporary Amplify origins once merchos.co.za is in production (Phase 5)', () => {
+    const production = cdkJson.context.envConfig['production']!;
+    const switched = Boolean(production['hostedZoneId'] || production['billingApiDomain']);
+    const temporary = PRODUCTION_PRE_DOMAIN_ORIGINS.seller.length + PRODUCTION_PRE_DOMAIN_ORIGINS.admin.length;
+    if (switched) expect(temporary, 'set PRODUCTION_PRE_DOMAIN_ORIGINS to [] in lib/cors-origins.ts').toBe(0);
+    for (const o of [...PRODUCTION_PRE_DOMAIN_ORIGINS.seller, ...PRODUCTION_PRE_DOMAIN_ORIGINS.admin]) {
+      expect(o).toMatch(/^https:\/\/main\.[a-z0-9]+\.amplifyapp\.com$/);
+    }
   });
 
   it('applies the production switches', () => {

@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as cdk from 'aws-cdk-lib';
 import { Template } from 'aws-cdk-lib/assertions';
-import { adminDashboardOrigins, sellerDashboardOrigins, siteAddresses } from '../lib/cors-origins';
+import { PRODUCTION_PRE_DOMAIN_ORIGINS, adminDashboardOrigins, sellerDashboardOrigins, siteAddresses } from '../lib/cors-origins';
 import { ProductIntelligenceStack } from '../lib/product-intelligence-stack';
 import { SupplierIntelligenceStack } from '../lib/supplier-intelligence-stack';
 
@@ -24,9 +24,13 @@ describe('sellerDashboardOrigins', () => {
       'http://localhost:3001',
     ]);
   });
-  it('production allows only the live domain (no localhost, no dev or Amplify origins)', () => {
-    expect(sellerDashboardOrigins('production')).toEqual(['https://merchos.co.za']);
-    expect(adminDashboardOrigins('production')).toEqual(['https://admin.merchos.co.za']);
+  it('production allows only the live domain, plus its own Amplify branch until the domain switch', () => {
+    expect(sellerDashboardOrigins('production')).toEqual(['https://merchos.co.za', ...PRODUCTION_PRE_DOMAIN_ORIGINS.seller]);
+    expect(adminDashboardOrigins('production')).toEqual(['https://admin.merchos.co.za', ...PRODUCTION_PRE_DOMAIN_ORIGINS.admin]);
+    // Never dev's Amplify branches or localhost.
+    for (const o of [...sellerDashboardOrigins('production'), ...adminDashboardOrigins('production')]) {
+      expect(o).not.toMatch(/localhost|d1jwaah0zt7pg5|d3katl1796jtte|merchos\.io|dev\./);
+    }
     expect(siteAddresses('production')).toMatchObject({ seller: 'https://merchos.co.za', admin: 'https://admin.merchos.co.za' });
   });
   it('another environment gets its own merchos.co.za subdomain', () => {

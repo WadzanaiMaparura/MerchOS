@@ -25,12 +25,23 @@ export interface SiteAddresses {
   extraAdmin: string[];
 }
 
+/**
+ * TEMPORARY: production's Amplify branch addresses, so the new production sites
+ * can be tested before merchos.co.za moves to the production account. Remove
+ * both (set to []) in Phase 5, when the domain switches. The production test
+ * fails if they are still here once envConfig.production.hostedZoneId is set.
+ */
+export const PRODUCTION_PRE_DOMAIN_ORIGINS = {
+  seller: ['https://main.d3fqjcdjfa8uul.amplifyapp.com'],
+  admin: ['https://main.d1a1h29yzzhjou.amplifyapp.com'],
+};
+
 export const SITES: Record<string, SiteAddresses> = {
   production: {
     seller: 'https://merchos.co.za',
     admin: 'https://admin.merchos.co.za',
-    extraSeller: [],
-    extraAdmin: [],
+    extraSeller: [...PRODUCTION_PRE_DOMAIN_ORIGINS.seller],
+    extraAdmin: [...PRODUCTION_PRE_DOMAIN_ORIGINS.admin],
   },
   dev: {
     seller: 'https://merchos.co.za',
