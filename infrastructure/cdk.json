@@ -25,11 +25,24 @@
         "billingLifecycle": "false",
         "cardSubscriptions": "false",
         "referralFreeMonths": "false",
-        "dataRetention": "dryrun",
-        "dataRetentionDryRunSince": "2026-11-26",
+        "dataRetention": "on",
         "billingApiDomain": "api.merchos.co.za",
         "hostedZoneId": "Z04418812LQLSF1AUT0WU",
         "hostedZoneName": "merchos.co.za"
+      },
+      "production": {
+        "payfastMode": "live",
+        "billingAlarmEmail": "admin@merchos.co.za",
+        "alertEmail": "admin@merchos.co.za",
+        "appBaseUrl": "https://merchos.co.za",
+        "signupsOpen": "false",
+        "checkoutEnabled": "false",
+        "trialEnforcement": "true",
+        "billingLifecycle": "false",
+        "cardSubscriptions": "false",
+        "referralFreeMonths": "false",
+        "dataRetention": "on",
+        "imageSigningPublicKey": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAgxqILzAcTsyy4lMB9X6D\nwaZUGO0TVOxShRKt/15pq71QLxfPFVq+rt2iFW7aysS/IVpdMGJPCnytgM6rmb+2\ncawG26JAbVbszROgjuJqfo1Hm4QYElXe1rZNLLIuiLrC66005HxD/k55+qXmAIyp\noSN8SFqDtOAZh36VqSQgAedg9CHxVyxYBftMiUJaTxWWNXqbAJ4tkbjLarhz7EiV\nCGuoeUVplAYXo0sNjPOcPf0juk6VVKuR9gkLfVcIebrsIMZTPe6TWhrmlB1cW/iZ\nQ7WEAwL/SUcTtFJ3BDoUcBUPBIBNOnkkqda81z+a0igK8n2xxeLpdMAr19sTV+dM\niQIDAQAB\n-----END PUBLIC KEY-----"
       }
     }
   }

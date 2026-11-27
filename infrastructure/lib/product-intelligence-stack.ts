@@ -376,10 +376,9 @@ export class ProductIntelligenceStack extends cdk.Stack {
     // Supplier Intelligence and Product Intelligence stacks (all three enforce the cap).
     const trialEnforcement =
       envFlag(this, env, 'trialEnforcement');
-    const trialProductsTableName = ssm.StringParameter.valueForStringParameter(
-      this,
-      `${ssmPrefix}/product-api/table-name`,
-    );
+    // The Product API's table, by its fixed name (not its SSM parameter): the
+    // Product API reads this stack's URL from SSM, so this stack deploys first.
+    const trialProductsTableName = `merch-os-products-${env}`;
     const trialProductsTableArn = `arn:aws:dynamodb:${this.region}:${this.account}:table/merch-os-products-${env}`;
     // usageFn too: the token budget is sized from the seller's plan (entitlement).
     for (const fn of [generateFn, batchFn, usageFn]) {

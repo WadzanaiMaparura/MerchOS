@@ -6,6 +6,7 @@ import * as events from 'aws-cdk-lib/aws-events';
 
 import { AuthStack } from '../lib/auth-stack';
 import { AuthApiStack } from '../lib/auth-api-stack';
+import { PRODUCTION_PRE_DOMAIN_ORIGINS } from '../lib/cors-origins';
 
 /**
  * Builds the Auth + AuthApi stacks against a throwaway foundation providing a
@@ -322,8 +323,9 @@ describe('Auth identity-assignment infrastructure', () => {
       Properties: { CorsConfiguration?: { AllowOrigins?: string[] } };
     };
     const origins = api.Properties.CorsConfiguration?.AllowOrigins ?? [];
-    expect(origins).toContain('https://app.merchos.io');
-    expect(origins).not.toContain('https://merchos.co.za');
+    // Plus production's own Amplify branch, until the domain switch (temporary).
+    expect(origins).toEqual(['https://merchos.co.za', ...PRODUCTION_PRE_DOMAIN_ORIGINS.seller]);
+    expect(origins).not.toContain('https://dev.merchos.co.za');
     expect(origins).not.toContain('https://main.d1jwaah0zt7pg5.amplifyapp.com');
     expect(origins).not.toContain('http://localhost:3000');
     expect(origins).not.toContain('*');

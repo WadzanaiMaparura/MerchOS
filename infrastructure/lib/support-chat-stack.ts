@@ -42,7 +42,7 @@ import {
 } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import { Construct } from 'constructs';
 import * as path from 'path';
-import { adminDashboardOrigins, sellerDashboardOrigins } from './cors-origins';
+import { adminDashboardOrigins, sellerDashboardOrigins, siteAddresses } from './cors-origins';
 import { envSetting } from './env-config';
 
 export interface SupportChatStackProps extends cdk.StackProps {
@@ -84,12 +84,7 @@ export class SupportChatStack extends cdk.Stack {
     // SES identity that authorises the sender (the verified domain).
     const sesIdentity = envSetting(this, env, 'chatSesIdentity', 'merchos.co.za');
     const agentDisplayName = envSetting(this, env, 'chatAgentName', 'Imani');
-    const adminBaseUrl = envSetting(
-      this,
-      env,
-      'adminBaseUrl',
-      env === 'dev' ? 'https://admin.merchos.co.za' : `https://admin-${env}.merchos.io`,
-    );
+    const adminBaseUrl = envSetting(this, env, 'adminBaseUrl', siteAddresses(env).admin);
 
     const adminClientId =
       props.adminClientId ??

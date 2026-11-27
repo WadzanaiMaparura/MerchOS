@@ -7,6 +7,8 @@
     "build": "tsc",
     "synth": "cdk synth --all",
     "deploy:dev": "cdk deploy --all --context env=dev",
+    "diff:production": "cdk diff --all --context env=production --profile merchos-prod",
+    "deploy:production": "cdk deploy --all --context env=production --profile merchos-prod --concurrency 1",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "eslint 'lib/**/*.ts' 'bin/**/*.ts'"
