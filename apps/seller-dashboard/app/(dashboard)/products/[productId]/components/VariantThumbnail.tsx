@@ -16,23 +16,27 @@ export interface VariantThumbnailProps {
   altText?: string;
 }
 
+/** Images imported from a supplier's web address are shown as they are. */
+function isWebAddress(key: string | undefined): key is string {
+  return !!key && /^https?:\/\//i.test(key);
+}
+
 /**
- * Renders a single processed image variant, resolving a short-lived CloudFront
- * signed URL via the Image Intelligence Engine. The assets bucket is private, so
- * a signed URL is the only way to display the image.
+ * Renders a single processed image variant. Our own images are private, so the
+ * thumbnail asks for a short-lived CloudFront signed URL for the image's stored
+ * key (variant.s3Key); supplier web addresses are used directly.
  */
 export function VariantThumbnail({ variant, imageIdOverride, altText }: VariantThumbnailProps) {
-  // Derive the image id for signing. Prefer the explicit override; otherwise use
-  // the last path segment of the s3 key (…/{channel}/{WxH}.jpg → unavailable),
-  // so an override is required for signing to be attempted.
-  const imageId = imageIdOverride;
-  const { data, isLoading, isError } = useImageSignedUrl(imageId, variant.channel);
+  const external = isWebAddress(variant.s3Key);
+  // Any id works for the route; the stored key decides which image is signed.
+  const imageId = external ? undefined : imageIdOverride ?? (variant.s3Key ? 'stored' : undefined);
+  const { data, isLoading, isError } = useImageSignedUrl(imageId, variant.channel, external ? undefined : variant.s3Key);
+  const src = external ? variant.s3Key : data?.url;
 
   const label = altText ?? `${variant.channel} variant`;
 
-  if (!imageId) {
-    // No id to sign with — render a neutral placeholder (shouldn't happen in
-    // normal flows; guards against an incomplete variant).
+  if (!external && !imageId) {
+    // Nothing to show (an incomplete variant).
     return (
       <div
         role="listitem"
@@ -46,17 +50,17 @@ export function VariantThumbnail({ variant, imageIdOverride, altText }: VariantT
   return (
     <figure role="listitem" className="flex flex-col gap-1">
       <div className="relative aspect-square overflow-hidden rounded-md bg-gray-100">
-        {isLoading && (
+        {!external && isLoading && (
           <div className="h-full w-full animate-pulse bg-gray-200" aria-hidden="true" />
         )}
-        {isError && (
+        {!external && isError && (
           <div className="flex h-full w-full items-center justify-center text-xs text-red-500">
             Unavailable
           </div>
         )}
-        {data?.url && (
+        {src && (
           <img
-            src={data.url}
+            src={src}
             alt={label}
             className="h-full w-full object-cover"
             loading="lazy"

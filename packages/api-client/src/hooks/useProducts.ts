@@ -16,12 +16,10 @@ import type {
   ApproveAttributePayload,
   OverrideAttributePayload,
   TransitionPayload,
-  TriggerExportPayload,
-  ExportSummary,
   CanonicalProduct,
 } from '@merch-os/types';
 import type { ApiError } from '../errors';
-import { useProductClient, useExportClient } from '../context';
+import { useProductClient } from '../context';
 
 // ─── Query Keys ──────────────────────────────────────────────────────────────
 
@@ -549,41 +547,9 @@ export function useCanonicalProduct(
   });
 }
 
-// ─── useProductExport: Export selected products ──────────────────────────────
-
-interface ProductExportPayload {
-  productIds: string[];
-  channelId: TriggerExportPayload['channelId'];
-  format: 'csv' | 'json';
-}
-
-/**
- * Mutation to export selected products to a channel.
- * Validates: Requirements 5.11
- */
-export function useProductExport(): UseMutationResult<
-  ExportSummary,
-  ApiError,
-  ProductExportPayload
-> {
-  const client = useExportClient();
-  const queryClient = useQueryClient();
-
-  return useMutation<ExportSummary, ApiError, ProductExportPayload>({
-    mutationFn: async (payload) => {
-      const response = await client.post<ExportSummary>('/exports', {
-        productIds: payload.productIds,
-        channelId: payload.channelId,
-        format: payload.format,
-      });
-      return response.data;
-    },
-    onSuccess: () => {
-      // Invalidate exports list to reflect the new export
-      queryClient.invalidateQueries({ queryKey: ['exports'] });
-    },
-  });
-}
+// Store exports (Exports page) live in ./useChannelExports.ts. The earlier
+// useProductExport posted { productIds, channelId, format } to an /exports
+// route that never existed; it was removed with the Products page panel.
 
 // NOTE: Image upload + hero designation moved to the Image Intelligence Engine
 // hooks (`useImageIntelligence.ts`: useRequestUploadUrl / useStartImageProcessing

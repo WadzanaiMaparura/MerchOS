@@ -8,6 +8,14 @@
     "declaration": false,
     "declarationMap": false
   },
-  "include": ["engine/**/*.ts", "api/**/*.ts", "delivery/**/*.ts"],
-  "exclude": ["node_modules", "dist", "engine/__tests__", "api/__tests__", "delivery/__tests__"]
+  "include": ["engine/**/*.ts", "api/**/*.ts", "delivery/**/*.ts", "channels/**/*.ts", "data/**/*.ts"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "engine/__tests__",
+    "api/__tests__",
+    "delivery/__tests__",
+    "channels/__tests__",
+    "data/__tests__"
+  ]
 }

@@ -67,6 +67,20 @@ describe('signed-url handler', () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it('refuses to sign a key outside the seller\'s own image folder', async () => {
+    for (const key of ['images/t2/p1/hero.jpg', 'images/t1/../t2/hero.jpg', 'exports/t1/x.csv', 'images/t1//x']) {
+      const res = await invoke({ ...makeEvent('t1', { imageId: 'img1', channel: 'custom' }), queryStringParameters: { key } });
+      expect(res.statusCode, key).toBe(403);
+    }
+  });
+
+  it('accepts only own stored keys', async () => {
+    const { isOwnImageKey } = await import('../../handlers/signed-url');
+    expect(isOwnImageKey('images/t1/p1/hero.jpg', 't1')).toBe(true);
+    expect(isOwnImageKey('images/t1/p1/shopify/2048x2048.jpg', 't1')).toBe(true);
+    expect(isOwnImageKey('images/t10/p1/hero.jpg', 't1')).toBe(false);
+  });
+
   it('returns 500 when signing configuration is absent', async () => {
     delete process.env['CLOUDFRONT_DOMAIN'];
     const res = await invoke(makeEvent('t1', { imageId: 'img1', channel: 'amazon' }));

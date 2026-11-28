@@ -134,6 +134,41 @@ describe('applySynthesis: category', () => {
     // Category always requires seller confirmation regardless of confidence.
     expect(out.enrichment.attributes.category?.flaggedForReview).toBe(true);
   });
+
+  it('also saves the readable path (store category at export), but not the Uncategorized fallback', () => {
+    const cat = (path: string[]): GlueGenerationResult[] => [
+      {
+        type: 'category',
+        status: 'completed',
+        confidenceScore: 0.9,
+        content: { type: 'category', predictions: { predictions: [{ categoryId: 'x', categoryPath: path, confidenceScore: 0.9 }], manualReviewRecommended: false } },
+      },
+    ];
+    expect(applySynthesis(baseContent(), emptyEnrichment(), cat(['Home & Kitchen', ' Drinkware', 'Mugs'])).enrichment.attributes.categoryPath?.value).toBe(
+      'Home & Kitchen > Drinkware > Mugs'
+    );
+    expect(applySynthesis(baseContent(), emptyEnrichment(), cat(['Uncategorized'])).enrichment.attributes.categoryPath).toBeUndefined();
+  });
+});
+
+describe('applySynthesis: keywords', () => {
+  it('saves store tags: primary first, unique, at most 10, no list separators', () => {
+    const terms = [
+      { term: 'long tail phrase', category: 'long-tail', relevanceScore: 0.9 },
+      { term: 'Mug', category: 'primary', relevanceScore: 0.8 },
+      { term: 'mug', category: 'secondary', relevanceScore: 0.9 },
+      { term: 'tea, coffee', category: 'secondary', relevanceScore: 0.7 },
+      ...Array.from({ length: 12 }, (_, i) => ({ term: `extra ${i}`, category: 'long-tail', relevanceScore: 0.1 })),
+    ];
+    const out = applySynthesis(baseContent(), emptyEnrichment(), [
+      { type: 'keywords', status: 'completed', confidenceScore: 0.8, content: { type: 'keywords', keywords: { keywords: terms, overallQualityScore: 0.8 } } },
+    ]);
+    const list = String(out.enrichment.attributes.keywords?.value).split(', ');
+    expect(list.slice(0, 3)).toEqual(['Mug', 'tea coffee', 'long tail phrase']);
+    expect(list).toHaveLength(10);
+    // Tags never touch the listing text itself.
+    expect(out.content.attributes['keywords']).toBeUndefined();
+  });
 });
 
 describe('applySynthesis: robustness', () => {

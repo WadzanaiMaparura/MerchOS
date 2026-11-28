@@ -102,8 +102,19 @@ export async function baseHandler(event: SignedUrlEvent): Promise<APIGatewayProx
 
   // The object key is tenant-scoped; a seller can only ever sign URLs for their
   // own tenant's images because the path prefix embeds their tenantId.
-  const objectPath = `images/${tenantId}/${imageId}/${channel}`;
-  const url = `https://${cfDomain}/${objectPath}`;
+  // ?key=<stored s3Key> signs the image actually stored (images/<tenant>/<productId>/...);
+  // the old imageId/channel form never matched a stored object.
+  const requestedKey = event.queryStringParameters?.['key'];
+  let objectPath: string;
+  if (requestedKey !== undefined) {
+    if (!isOwnImageKey(requestedKey, tenantId)) {
+      return jsonError(403, 'FORBIDDEN', 'Not your image');
+    }
+    objectPath = requestedKey;
+  } else {
+    objectPath = `images/${tenantId}/${imageId}/${channel}`;
+  }
+  const url = `https://${cfDomain}/${objectPath.split('/').map(encodeURIComponent).join('/')}`;
 
   try {
     const privateKey = await getPrivateKey(secretId);
@@ -129,6 +140,12 @@ export async function baseHandler(event: SignedUrlEvent): Promise<APIGatewayProx
     });
     return jsonError(500, 'SIGNED_URL_FAILED', 'Failed to create signed URL');
   }
+}
+
+/** A stored image key inside this tenant's own folder (no path tricks). Exported for tests. */
+export function isOwnImageKey(key: string, tenantId: string): boolean {
+  if (key.length > 512 || key.includes('..') || key.includes('//') || key.includes('\\')) return false;
+  return key.startsWith(`images/${tenantId}/`) && /^[A-Za-z0-9._\-/ ]+$/.test(key);
 }
 
 function jsonError(statusCode: number, code: string, message: string): APIGatewayProxyResultV2 {

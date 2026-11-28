@@ -165,7 +165,7 @@ export function tips(i: { siteUrl: string; firstName?: string | undefined }): Re
       ],
       [
         'One click, every marketplace',
-        'Export the same products as a Takealot loadsheet, a Makro file, or a Shopify or WooCommerce import, without retyping anything.',
+        'Export the same products as a Takealot loadsheet or a Shopify or WooCommerce import, without retyping anything.',
       ],
     ]) +
     para('Tip: add the product barcode (EAN) when you have it. Marketplaces ask for it, and it helps avoid duplicate listings.') +

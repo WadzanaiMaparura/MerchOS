@@ -196,16 +196,19 @@ export function useImageJob(
 export function useImageSignedUrl(
   imageId: string | undefined,
   channel: string | undefined,
+  /** The stored image key (images/<tenant>/...): signs that exact image. */
+  s3Key?: string,
 ): UseQueryResult<SignedUrlResponse, ApiError> {
   const client = useImageClient();
   return useQuery<SignedUrlResponse, ApiError>({
-    queryKey: imageKeys.signedUrl(imageId ?? 'none', channel ?? 'none'),
+    queryKey: [...imageKeys.signedUrl(imageId ?? 'none', channel ?? 'none'), s3Key ?? ''],
     enabled: Boolean(imageId && channel),
     staleTime: 55 * 60_000, // ~55 min (URL TTL is 60 min)
     gcTime: 60 * 60_000,
     queryFn: async () => {
+      const query = s3Key ? `?key=${encodeURIComponent(s3Key)}` : '';
       const response = await client.get<SignedUrlResponse>(
-        `/v1/images/${imageId}/url/${channel}`,
+        `/v1/images/${imageId}/url/${channel}${query}`,
       );
       return response.data;
     },
