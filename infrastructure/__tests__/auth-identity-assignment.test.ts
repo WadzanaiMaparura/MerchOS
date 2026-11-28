@@ -281,9 +281,9 @@ describe('Auth identity-assignment infrastructure', () => {
 
     // Required explicit origins for dev testing.
     expect(origins).toContain('https://dev.merchos.io');
-    // The LIVE seller frontend origin (custom domain served via CloudFront) —
-    // the exact Origin the deployed dev frontend's browser sends.
-    expect(origins).toContain('https://merchos.co.za');
+    // Dev's own seller site; the live merchos.co.za belongs to production.
+    expect(origins).toContain('https://dev.merchos.co.za');
+    expect(origins).not.toContain('https://merchos.co.za');
     expect(origins).toContain('https://main.d1jwaah0zt7pg5.amplifyapp.com');
     expect(origins).toContain('http://localhost:3000');
     // Never a wildcard.

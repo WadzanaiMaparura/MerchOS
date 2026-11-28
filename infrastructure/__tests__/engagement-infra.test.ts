@@ -130,7 +130,7 @@ describe('Engagement stack', () => {
     t.hasResourceProperties('AWS::ApiGatewayV2::Api', {
       ProtocolType: 'HTTP',
       CorsConfiguration: Match.objectLike({
-        AllowOrigins: Match.arrayWith(['https://merchos.co.za', 'https://admin.merchos.co.za']),
+        AllowOrigins: Match.arrayWith(['https://dev.merchos.co.za', 'https://admin.dev.merchos.co.za']),
       }),
     });
   });

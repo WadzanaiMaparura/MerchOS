@@ -63,15 +63,15 @@ describe('Support chat stack', () => {
     t.hasResourceProperties('AWS::ApiGatewayV2::Api', {
       ProtocolType: 'HTTP',
       CorsConfiguration: Match.objectLike({
-        AllowOrigins: Match.arrayWith(['https://merchos.co.za', 'https://admin.merchos.co.za']),
+        AllowOrigins: Match.arrayWith(['https://dev.merchos.co.za', 'https://admin.dev.merchos.co.za']),
       }),
     });
     t.hasResourceProperties('AWS::Lambda::Function', {
       FunctionName: fn('wsconnect'),
       Environment: {
         Variables: Match.objectLike({
-          VISITOR_ORIGINS: Match.stringLikeRegexp('https://merchos.co.za'),
-          AGENT_ORIGINS: Match.stringLikeRegexp('https://admin.merchos.co.za'),
+          VISITOR_ORIGINS: Match.stringLikeRegexp('https://dev.merchos.co.za'),
+          AGENT_ORIGINS: Match.stringLikeRegexp('https://admin.dev.merchos.co.za'),
         }),
       },
     });
