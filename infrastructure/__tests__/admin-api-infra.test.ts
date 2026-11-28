@@ -53,10 +53,10 @@ describe('Admin API stack', () => {
 
   it('only the admin dashboard origins may call it', () => {
     t.hasResourceProperties('AWS::ApiGatewayV2::Api', {
-      CorsConfiguration: Match.objectLike({ AllowOrigins: Match.arrayWith(['https://admin.merchos.co.za']) }),
+      CorsConfiguration: Match.objectLike({ AllowOrigins: Match.arrayWith(['https://admin.dev.merchos.co.za']) }),
     });
     const api = Object.values(t.findResources('AWS::ApiGatewayV2::Api'))[0]!['Properties'] as { CorsConfiguration: { AllowOrigins: string[] } };
-    expect(api.CorsConfiguration.AllowOrigins).not.toContain('https://merchos.co.za');
+    expect(api.CorsConfiguration.AllowOrigins).not.toContain('https://dev.merchos.co.za');
   });
 
   it('other services: read-only, except the trial entitlement write', () => {

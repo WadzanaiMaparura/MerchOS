@@ -8,10 +8,9 @@
  * session.
  *
  *   production   merchos.co.za / admin.merchos.co.za (the live business)
- *   dev          still serves merchos.co.za / admin.merchos.co.za until the
- *                domain moves to the production account; it already accepts its
- *                future addresses dev.merchos.co.za / admin.dev.merchos.co.za,
- *                the raw Amplify branch origins and localhost.
+ *   dev          dev.merchos.co.za / admin.dev.merchos.co.za, plus the raw
+ *                Amplify branch origins and localhost (and, until the website
+ *                cutover, the live addresses it still serves).
  */
 
 export interface SiteAddresses {
@@ -31,9 +30,18 @@ export interface SiteAddresses {
  * both (set to []) in Phase 5, when the domain switches. The production test
  * fails if they are still here once envConfig.production.hostedZoneId is set.
  */
-export const PRODUCTION_PRE_DOMAIN_ORIGINS = {
-  seller: ['https://main.d3fqjcdjfa8uul.amplifyapp.com'],
-  admin: ['https://main.d1a1h29yzzhjou.amplifyapp.com'],
+export const PRODUCTION_PRE_DOMAIN_ORIGINS: { seller: string[]; admin: string[] } = {
+  seller: [],
+  admin: [],
+};
+
+/**
+ * TEMPORARY: the live addresses dev still serves until the website cutover
+ * (Phase 5 step D). Set both to [] right after it.
+ */
+export const DEV_UNTIL_CUTOVER: { seller: string[]; admin: string[] } = {
+  seller: [],
+  admin: [],
 };
 
 export const SITES: Record<string, SiteAddresses> = {
@@ -44,11 +52,12 @@ export const SITES: Record<string, SiteAddresses> = {
     extraAdmin: [...PRODUCTION_PRE_DOMAIN_ORIGINS.admin],
   },
   dev: {
-    seller: 'https://merchos.co.za',
-    admin: 'https://admin.merchos.co.za',
+    seller: 'https://dev.merchos.co.za',
+    admin: 'https://admin.dev.merchos.co.za',
     extraSeller: [
-      // Where dev moves when the production account takes merchos.co.za.
-      'https://dev.merchos.co.za',
+      // TEMPORARY: dev still serves the live addresses until the website
+      // cutover (Phase 5 step D). Remove both (here and below) right after it.
+      ...DEV_UNTIL_CUTOVER.seller,
       // Earlier dev address (kept so nothing that still uses it breaks).
       'https://dev.merchos.io',
       // Raw Amplify branch origin (direct access / pre-custom-domain fallback).
@@ -57,7 +66,7 @@ export const SITES: Record<string, SiteAddresses> = {
       'http://localhost:3000',
     ],
     extraAdmin: [
-      'https://admin.dev.merchos.co.za',
+      ...DEV_UNTIL_CUTOVER.admin,
       'https://admin-dev.merchos.io',
       'https://main.d3katl1796jtte.amplifyapp.com',
       // Local development (admin runs on :3001).

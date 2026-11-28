@@ -3,22 +3,23 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as cdk from 'aws-cdk-lib';
 import { Template } from 'aws-cdk-lib/assertions';
-import { PRODUCTION_PRE_DOMAIN_ORIGINS, adminDashboardOrigins, sellerDashboardOrigins, siteAddresses } from '../lib/cors-origins';
+import { DEV_UNTIL_CUTOVER, PRODUCTION_PRE_DOMAIN_ORIGINS, adminDashboardOrigins, sellerDashboardOrigins, siteAddresses } from '../lib/cors-origins';
 import { ProductIntelligenceStack } from '../lib/product-intelligence-stack';
 import { SupplierIntelligenceStack } from '../lib/supplier-intelligence-stack';
 
 describe('sellerDashboardOrigins', () => {
-  it('dev still serves the live site (merchos.co.za) and already accepts its future dev.merchos.co.za', () => {
+  it('dev lives on dev.merchos.co.za (and still accepts the live site until the cutover)', () => {
+    expect(siteAddresses('dev')).toMatchObject({ seller: 'https://dev.merchos.co.za', admin: 'https://admin.dev.merchos.co.za' });
     expect(sellerDashboardOrigins('dev')).toEqual([
-      'https://merchos.co.za',
       'https://dev.merchos.co.za',
+      ...DEV_UNTIL_CUTOVER.seller,
       'https://dev.merchos.io',
       'https://main.d1jwaah0zt7pg5.amplifyapp.com',
       'http://localhost:3000',
     ]);
     expect(adminDashboardOrigins('dev')).toEqual([
-      'https://admin.merchos.co.za',
       'https://admin.dev.merchos.co.za',
+      ...DEV_UNTIL_CUTOVER.admin,
       'https://admin-dev.merchos.io',
       'https://main.d3katl1796jtte.amplifyapp.com',
       'http://localhost:3001',
@@ -69,12 +70,15 @@ describe('every seller-facing API uses the shared allow-list', () => {
   it.each([
     ['ProductIntelligence', (a: cdk.App) => new ProductIntelligenceStack(a, 'PI', { env: { account: '123456789012', region: 'eu-west-1' }, environment: 'dev' })],
     ['SupplierIntelligence', (a: cdk.App) => new SupplierIntelligenceStack(a, 'SI', { env: { account: '123456789012', region: 'eu-west-1' }, environment: 'dev' })],
-  ])('%s synthesises with merchos.co.za in its CORS config', (_n, make) => {
+  ])('%s synthesises with dev.merchos.co.za in its dev CORS config', (_n, make) => {
     const t = Template.fromStack(make(new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } })));
     const apis = Object.values(t.findResources('AWS::ApiGatewayV2::Api')) as Array<{ Properties: { CorsConfiguration?: { AllowOrigins?: string[] } } }>;
     const withCors = apis.filter((a) => a.Properties.CorsConfiguration);
     expect(withCors.length).toBeGreaterThan(0);
-    for (const a of withCors) expect(a.Properties.CorsConfiguration!.AllowOrigins).toContain('https://merchos.co.za');
+    for (const a of withCors) {
+      expect(a.Properties.CorsConfiguration!.AllowOrigins).toContain('https://dev.merchos.co.za');
+      expect(a.Properties.CorsConfiguration!.AllowOrigins).not.toContain('https://merchos.co.za');
+    }
   });
 });
 

@@ -144,6 +144,16 @@ describe('production app synthesis', () => {
     expect(urls).toEqual(['https://admin.merchos.co.za/callback', 'https://merchos.co.za/callback', ...temporary].sort());
   });
 
+  it('gives PayFast the permanent production address api.merchos.co.za, in the production zone', () => {
+    const billing = Object.values(read(dir, 'Billing' + 'Api').Resources);
+    const record = billing.find((r) => r.Type === 'AWS::Route53::RecordSet');
+    expect(record?.Properties?.['Name']).toBe('api.merchos.co.za.');
+    expect(record?.Properties?.['HostedZoneId']).toBe(cdkJson.context.envConfig['production']!['hostedZoneId']);
+    expect(record?.Properties?.['HostedZoneId']).not.toBe(cdkJson.context.envConfig['dev']!['hostedZoneId']);
+    expect(billing.find((r) => r.Type === 'AWS::CertificateManager::Certificate')?.Properties?.['DomainName']).toBe('api.merchos.co.za');
+    expect(new Set(lambdaEnv(read(dir, 'BillingApi'), 'PAYFAST_NOTIFY_URL'))).toEqual(new Set(['https://api.merchos.co.za/billing/payfast/itn']));
+  });
+
   it('drops the temporary Amplify origins once merchos.co.za is in production (Phase 5)', () => {
     const production = cdkJson.context.envConfig['production']!;
     const switched = Boolean(production['hostedZoneId'] || production['billingApiDomain']);
