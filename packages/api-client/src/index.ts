@@ -110,7 +110,6 @@ export {
   useOverrideAttribute,
   useTransitionLifecycle,
   useProductSearch,
-  useProductExport,
   useCanonicalProduct,
   useCreateProduct,
   useSynthesizeProduct,
@@ -282,6 +281,28 @@ export type {
   ExportProductItem,
   ExportOfferFields,
 } from './hooks/useExport';
+
+// Store exports (Takealot, Shopify, WooCommerce files built on the server)
+export {
+  useCheckChannelExport,
+  useCreateChannelExport,
+  useExportHistory,
+  useExportDownloadLink,
+  useSaveChannelCategory,
+  useShopifyCategorySearch,
+  exportKeys,
+} from './hooks/useChannelExports';
+export type {
+  ExportChannel,
+  ChannelExportOptions,
+  ChannelExportPayload,
+  ChannelFinding,
+  ProductExportCheck,
+  ChannelExportCheck,
+  ExportRecord,
+  CreatedExport,
+  ShopifyCategoryOption,
+} from './hooks/useChannelExports';
 
 // Notifications
 export { WebSocketManager } from './notifications/websocket-manager';

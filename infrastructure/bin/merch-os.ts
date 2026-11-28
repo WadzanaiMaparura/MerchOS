@@ -147,6 +147,9 @@ const exportApiStack = new ExportApiStack(app, `MerchOS-ExportApi-${env}`, {
 });
 exportApiStack.addDependency(foundationStack);
 exportApiStack.addDependency(authStack);
+// Store exports sign image links: CloudFront domain, key id and secret come
+// from ImageIntelligence's SSM parameters.
+exportApiStack.addDependency(imageStack);
 
 // Billing API (subscriptions, credit ledger, PayFast payments). Creates its own
 // billing table + PayFast secret; auth/KMS come from Auth/Foundation. Exports

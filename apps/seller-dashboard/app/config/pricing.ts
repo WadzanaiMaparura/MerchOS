@@ -280,7 +280,7 @@ export const pricingConfig: PricingConfig = {
     {
       question: 'Which marketplaces do you support?',
       answer:
-        'Takealot first, with Makro, Amazon South Africa, Shopify and WooCommerce following.',
+        'Takealot, Shopify and WooCommerce today, with Makro and Amazon South Africa following.',
     },
     {
       question: 'Are prices in Rand?',

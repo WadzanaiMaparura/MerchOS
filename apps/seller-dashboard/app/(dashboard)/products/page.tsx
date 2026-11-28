@@ -10,7 +10,7 @@ import type { ProductSummary, LifecycleState } from '@merch-os/types';
 import Link from 'next/link';
 import { CSVUploadModal } from './components/CSVUploadModal';
 import { TrialBanner } from '../../components/TrialBanner';
-import { ProductExportPanel } from './components/ProductExportPanel';
+import { EXPORT_SELECTION_KEY } from '../exports/selection';
 
 /**
  * Extended ProductSummary including brand field returned by the list API.
@@ -191,11 +191,15 @@ export default function ProductsPage() {
     setSelectedProductIds([]);
   }, []);
 
-  const handleExportSuccess = useCallback(() => {
-    // Optionally clear selection after successful export
-    // Per requirement 5.12, we preserve selection on failure; clear on success is a UX choice
-    setSelectedProductIds([]);
-  }, []);
+  // Hand the ticked products to the Exports page (500 ids do not fit in a URL).
+  const handleExportSelected = useCallback(() => {
+    try {
+      window.sessionStorage.setItem(EXPORT_SELECTION_KEY, JSON.stringify(selectedProductIds));
+    } catch {
+      // Storage unavailable: the Exports page still lets the seller pick.
+    }
+    router.push('/exports');
+  }, [router, selectedProductIds]);
 
   const isViewer = role === 'viewer';
 
@@ -230,12 +234,20 @@ export default function ProductsPage() {
 
       <TrialBanner />
 
-      {/* Export Panel - shown when products are selected (editor+ only) */}
+      {/* Export the ticked products (editor+ only) */}
       {!isViewer && selectedProductIds.length > 0 && (
-        <ProductExportPanel
-          selectedProductIds={selectedProductIds}
-          onExportSuccess={handleExportSuccess}
-        />
+        <div className="flex items-center justify-between rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm">
+          <span className="text-gray-700">
+            {selectedProductIds.length} product{selectedProductIds.length === 1 ? '' : 's'} selected
+          </span>
+          <button
+            type="button"
+            onClick={handleExportSelected}
+            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+          >
+            Export selected
+          </button>
+        </div>
       )}
 
       {/* Filters */}

@@ -70,7 +70,7 @@ export class ExportApiStack extends cdk.Stack {
       description: 'MerchOS Export API — validate + export pipeline endpoints',
       corsPreflight: {
         allowHeaders: ['Content-Type', 'Authorization', 'X-Amz-Date'],
-        allowMethods: [CorsHttpMethod.POST, CorsHttpMethod.OPTIONS],
+        allowMethods: [CorsHttpMethod.GET, CorsHttpMethod.POST, CorsHttpMethod.PUT, CorsHttpMethod.OPTIONS],
         // Exact origins (required with allowCredentials — wildcards are rejected
         // by browsers for credentialed requests). Non-production also permits
         // the local seller-dashboard dev server so the UI is testable locally.
@@ -198,6 +198,76 @@ export class ExportApiStack extends cdk.Stack {
     exportFn.addEnvironment('PLATFORM_KMS_KEY_ARN', props.platformKey.keyArn);
 
     // -----------------------------------------------------------------------
+    // Store exports (Exports page: Takealot, Shopify, WooCommerce)
+    //
+    // Loads the seller's own products server-side, so it may READ the products
+    // table (and update only via conditional UpdateItem: remembered store
+    // category, Shopify handle, export date), READ the inventory table, sign
+    // image links (CloudFront key in Secrets Manager), and write/list the
+    // seller's export files. Tenant comes from the token, never the request.
+    // -----------------------------------------------------------------------
+    const account = this.account;
+    const productsTableArn = `arn:aws:dynamodb:${region}:${account}:table/merch-os-products-${env}`;
+    const inventoryTableArn = `arn:aws:dynamodb:${region}:${account}:table/merch-os-inventory-${env}`;
+    const cdnDomain = ssm.StringParameter.valueForStringParameter(this, `${ssmPrefix}/image-intelligence/cloudfront-domain`);
+    const signingKeyId = ssm.StringParameter.valueForStringParameter(this, `${ssmPrefix}/image-intelligence/signing-key-id`);
+    const signingSecretArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `${ssmPrefix}/image-intelligence/signing-key-secret-arn`
+    );
+    const secretsKeyArn = ssm.StringParameter.valueForStringParameter(this, `${ssmPrefix}/kms/secrets-key-arn`);
+
+    const channelExportsFn = createLambda(
+      'ChannelExports',
+      path.join(servicesRoot, 'export/api/handlers/channel-exports.ts'),
+      [
+        new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          actions: ['dynamodb:BatchGetItem', 'dynamodb:GetItem', 'dynamodb:UpdateItem'],
+          resources: [productsTableArn],
+        }),
+        new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          actions: ['dynamodb:Query'],
+          resources: [inventoryTableArn],
+        }),
+        new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          actions: ['s3:PutObject', 's3:GetObject'],
+          resources: [`${exportsBucket.bucketArn}/tenants/*/exports/*`],
+        }),
+        new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          actions: ['s3:ListBucket'],
+          resources: [exportsBucket.bucketArn],
+          conditions: { StringLike: { 's3:prefix': ['tenants/*/exports/*'] } },
+        }),
+        kmsPolicy,
+        new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          actions: ['secretsmanager:GetSecretValue'],
+          resources: [signingSecretArn],
+        }),
+        new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          actions: ['kms:Decrypt'],
+          resources: [secretsKeyArn],
+        }),
+      ]
+    );
+    // Up to 500 products per file: more memory (CPU) and time than one product.
+    const channelCfn = channelExportsFn.node.defaultChild as lambda.CfnFunction;
+    channelCfn.memorySize = 1024;
+    channelCfn.timeout = 29;
+    channelExportsFn.addEnvironment('PRODUCTS_TABLE', `merch-os-products-${env}`);
+    channelExportsFn.addEnvironment('INVENTORY_TABLE', `merch-os-inventory-${env}`);
+    channelExportsFn.addEnvironment('EXPORTS_BUCKET', exportsBucketName);
+    channelExportsFn.addEnvironment('PLATFORM_KMS_KEY_ARN', props.platformKey.keyArn);
+    channelExportsFn.addEnvironment('CLOUDFRONT_DOMAIN', cdnDomain);
+    channelExportsFn.addEnvironment('CLOUDFRONT_KEY_PAIR_ID', signingKeyId);
+    channelExportsFn.addEnvironment('CLOUDFRONT_PRIVATE_KEY_SECRET_ID', signingSecretArn);
+
+    // -----------------------------------------------------------------------
     // Routes (JWT-authorized)
     // -----------------------------------------------------------------------
 
@@ -214,6 +284,19 @@ export class ExportApiStack extends cdk.Stack {
       integration: new HttpLambdaIntegration('ExportIntegration', exportFn),
       authorizer: jwtAuthorizer,
     });
+
+    const channelIntegration = new HttpLambdaIntegration('ChannelExportsIntegration', channelExportsFn);
+    const channelRoutes: Array<[string, HttpMethod]> = [
+      ['/exports/check', HttpMethod.POST],
+      ['/exports', HttpMethod.POST],
+      ['/exports', HttpMethod.GET],
+      ['/exports/{exportId}/download', HttpMethod.GET],
+      ['/exports/products/{productId}/category', HttpMethod.PUT],
+      ['/exports/shopify-categories', HttpMethod.GET],
+    ];
+    for (const [routePath, method] of channelRoutes) {
+      this.httpApi.addRoutes({ path: routePath, methods: [method], integration: channelIntegration, authorizer: jwtAuthorizer });
+    }
 
     // -----------------------------------------------------------------------
     // SSM exports + stack outputs

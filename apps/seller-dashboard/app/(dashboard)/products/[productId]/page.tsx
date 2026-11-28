@@ -273,7 +273,7 @@ export default function ProductDetailPage() {
       )}
       {synthesize.isPending && (
         <p className="text-sm text-gray-600" aria-live="polite">
-          Writing the title, description, bullet points, attributes and category. This can take up to a minute.
+          Writing the title, description, bullet points, attributes, category and search keywords. This can take up to a minute.
         </p>
       )}
       {aiNotice && (

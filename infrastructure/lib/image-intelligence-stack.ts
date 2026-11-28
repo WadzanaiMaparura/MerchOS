@@ -793,6 +793,12 @@ export class ImageIntelligenceStack extends cdk.Stack {
       stringValue: signingPrivateKeySecret.secretArn,
     });
 
+    // The CloudFront key id, so store exports can sign image links in files.
+    new ssm.StringParameter(this, 'ImageSigningKeyIdParam', {
+      parameterName: `${ssmPrefix}/image-intelligence/signing-key-id`,
+      stringValue: signingPublicKey.publicKeyId,
+    });
+
     new cdk.CfnOutput(this, 'ImageApiEndpoint', {
       value: this.httpApi.apiEndpoint,
       exportName: `${id}-ImageApiEndpoint`,

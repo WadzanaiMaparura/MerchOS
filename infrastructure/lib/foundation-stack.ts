@@ -125,15 +125,14 @@ export class FoundationStack extends cdk.Stack {
     this.exportsBucket = new s3.Bucket(this, 'ExportsBucket', {
       ...bucketDefaults,
       bucketName: `merch-os-exports-${env}`,
+      // Export files can always be made again: delete them after 90 days
+      // (they used to move to Glacier and be kept forever).
       lifecycleRules: [
         {
-          id: 'GlacierAfter90Days',
-          transitions: [
-            {
-              storageClass: s3.StorageClass.GLACIER,
-              transitionAfter: cdk.Duration.days(90),
-            },
-          ],
+          id: 'DeleteExportsAfter90Days',
+          expiration: cdk.Duration.days(90),
+          noncurrentVersionExpiration: cdk.Duration.days(1),
+          abortIncompleteMultipartUploadAfter: cdk.Duration.days(1),
         },
       ],
     });

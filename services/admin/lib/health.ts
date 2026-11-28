@@ -73,7 +73,7 @@ export const AREAS: AreaDef[] = [
   {
     id: 'exports',
     label: 'Exports',
-    covers: 'Takealot, Makro, Amazon, Shopify and WooCommerce files',
+    covers: 'Takealot, Shopify and WooCommerce files',
     prefixes: ['merch-os-export-'],
     whatToDo: 'Sellers may not be able to download export files. Ask them to try again; tell the team if it continues.',
   },

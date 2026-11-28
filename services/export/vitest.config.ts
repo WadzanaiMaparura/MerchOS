@@ -19,6 +19,8 @@ export default defineConfig({
       'engine/__tests__/**/*.test.ts',
       'api/__tests__/**/*.test.ts',
       'delivery/__tests__/**/*.test.ts',
+      'channels/__tests__/**/*.test.ts',
+      'data/__tests__/**/*.test.ts',
     ],
     testTimeout: 30_000,
     coverage: { provider: 'v8' },

@@ -165,7 +165,9 @@ export function applySynthesis(
         const predictions = c['predictions'] as
           | { predictions?: Array<{ categoryId?: string; confidenceScore?: number }> }
           | undefined;
-        const top = predictions?.predictions?.[0];
+        const top = (predictions?.predictions?.[0] ?? undefined) as
+          | { categoryId?: string; categoryPath?: unknown; confidenceScore?: number }
+          | undefined;
         if (top?.categoryId) {
           // Always flag category for seller confirmation in the review loop.
           attributes.category = {
@@ -175,6 +177,30 @@ export function applySynthesis(
             flaggedForReview: true,
           };
         }
+        // The readable path ("Home & Kitchen > Drinkware > Mugs"): the default
+        // store category for WooCommerce and Shopify's "Type" at export.
+        const path = Array.isArray(top?.categoryPath)
+          ? top!.categoryPath.filter((s): s is string => typeof s === 'string' && s.trim() !== '').map((s) => s.trim())
+          : [];
+        if (path.length > 0 && !(path.length === 1 && path[0] === 'Uncategorized')) {
+          attributes.categoryPath = makeAttribute(path.join(' > '), top?.confidenceScore ?? conf, reviewThreshold);
+        }
+        break;
+      }
+      case 'keywords': {
+        // content.type === 'keywords' → { keywords: KeywordGenerationResult }
+        const result = c['keywords'] as
+          | { keywords?: Array<{ term?: string; category?: string; relevanceScore?: number }> }
+          | undefined;
+        const rank = (k: { category?: string }) => (k.category === 'primary' ? 0 : k.category === 'secondary' ? 1 : 2);
+        const terms: string[] = [];
+        for (const k of [...(result?.keywords ?? [])].sort((a, b) => rank(a) - rank(b) || (b.relevanceScore ?? 0) - (a.relevanceScore ?? 0))) {
+          const t = typeof k.term === 'string' ? k.term.replace(/[,;]/g, ' ').replace(/\s+/g, ' ').trim() : '';
+          if (t && t.length <= 60 && !terms.some((x) => x.toLowerCase() === t.toLowerCase())) terms.push(t);
+          if (terms.length >= 10) break;
+        }
+        // Saved for store tags (Shopify, WooCommerce); shown in the review list.
+        if (terms.length > 0) attributes.keywords = makeAttribute(terms.join(', '), conf, reviewThreshold);
         break;
       }
       default:

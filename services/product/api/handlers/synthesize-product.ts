@@ -93,7 +93,8 @@ export function buildProductData(dto: unknown): Record<string, unknown> {
 }
 
 /** Default generation types requested when the caller does not specify. */
-const DEFAULT_TYPES = ['title', 'description', 'bullets', 'attributes', 'category'] as const;
+// keywords: saved as store tags for Shopify and WooCommerce exports.
+const DEFAULT_TYPES = ['title', 'description', 'bullets', 'attributes', 'category', 'keywords'] as const;
 
 /** Extract the raw bearer token from the Authorization header. */
 function extractBearer(event: APIGatewayProxyEventV2): string | null {
