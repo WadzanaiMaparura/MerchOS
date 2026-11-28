@@ -55,15 +55,22 @@ export function searchShopifyCategories(query: string, limit = 20): ShopifyCateg
   const joined = raw.slice(1).map((w, i) => raw[i] + w);
   const compact = (s: string) => s.replace(/[^a-z0-9&]+/g, '');
   const scored: Array<{ c: ShopifyCategory; score: number }> = [];
+  // Every word must match; when nothing does ("coffee mug"), the best partial
+  // matches are returned instead (most matching words first).
+  const strict = all!.some((c) => words.every((w) => c.path.toLowerCase().includes(w)));
   for (const c of all!) {
     const p = c.path.toLowerCase();
-    if (!words.every((w) => p.includes(w))) continue;
+    const hits = words.filter((w) => p.includes(w)).length;
+    if (strict ? hits < words.length : hits === 0) continue;
     const leaf = p.slice(p.lastIndexOf('>') + 1);
-    const leafHits = words.filter((w) => leaf.includes(w)).length;
+    const leafHits = words.filter((w) => leaf.includes(w)).length + hits * 10;
     // The leaf IS the search: joined words ("t shirt") beat a single word ("shirt").
     const joinedExact = joined.some((j) => compact(leaf) === j || compact(leaf) === `${j}s`);
     const wordExact = words.some((w) => compact(leaf) === w || compact(leaf) === `${w}s`);
-    scored.push({ c, score: leafHits * 1000 + (joinedExact ? 6000 : wordExact ? 5000 : 0) - c.path.length });
+    // The last word is usually the thing itself ("coffee MUG").
+    const last = words[words.length - 1]!;
+    const lastBonus = compact(leaf).includes(last) ? 3000 : 0;
+    scored.push({ c, score: leafHits * 1000 + lastBonus + (joinedExact ? 6000 : wordExact ? 5000 : 0) - c.path.length });
   }
   scored.sort((a, b) => b.score - a.score || a.c.path.localeCompare(b.c.path));
   return scored.slice(0, limit).map((s) => s.c);

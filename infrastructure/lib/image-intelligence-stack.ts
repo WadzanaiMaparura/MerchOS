@@ -610,12 +610,14 @@ export class ImageIntelligenceStack extends cdk.Stack {
     // only way clients obtain a viewable link. The signing private key lives in
     // Secrets Manager (rotatable without a code change).
     // -----------------------------------------------------------------------
-    // NOTE: this CDK version (2.155) exposes `S3Origin` (Origin Access Identity)
-    // rather than the newer `S3BucketOrigin.withOriginAccessControl` (OAC). OAI
-    // achieves the same security property here — the assets bucket stays private
-    // and is reachable only through the distribution. Migrate to OAC when the
-    // CDK version is upgraded (tracked as a Phase 3 follow-up).
-    const assetsOrigin = new origins.S3Origin(assetsBucket);
+    // Origin Access Control (OAC). The images are SSE-KMS encrypted with the
+    // platform key, which the older Origin Access Identity cannot decrypt (every
+    // image request was refused by S3). The bucket and the key belong to the
+    // Foundation stack, so the matching read/decrypt grants for CloudFront live
+    // there (see FoundationStack: CloudFrontReadImages / CloudFrontDecryptImages).
+    const assetsOrigin = origins.S3BucketOrigin.withOriginAccessControl(assetsBucket, {
+      originAccessLevels: [cloudfront.AccessLevel.READ],
+    });
 
     // Public key + key group for signed-URL verification. Each environment has its
     // own key pair: cdk.json envConfig.<env>.imageSigningPublicKey, else the

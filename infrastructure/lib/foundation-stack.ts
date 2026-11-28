@@ -11,6 +11,7 @@
  */
 
 import * as cdk from 'aws-cdk-lib';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as kms from 'aws-cdk-lib/aws-kms';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as events from 'aws-cdk-lib/aws-events';
@@ -121,6 +122,35 @@ export class FoundationStack extends cdk.Stack {
       ...bucketDefaults,
       bucketName: `merch-os-assets-${env}`,
     });
+
+    // Product images are served only through the image CDN (CloudFront with
+    // signed URLs and Origin Access Control). CloudFront may READ images/* and
+    // DECRYPT them with the platform key, and only for distributions in this
+    // account (the distribution lives in ImageIntelligence, which deploys after
+    // this stack, so its exact ARN cannot be named here without a cycle).
+    const ownDistributions = `arn:aws:cloudfront::${this.account}:distribution/*`;
+    // (cast: CDK's IPrincipal typing vs exactOptionalPropertyTypes, as elsewhere)
+    const cloudFront = new iam.ServicePrincipal('cloudfront.amazonaws.com') as unknown as iam.IPrincipal;
+    this.assetsBucket.addToResourcePolicy(
+      new iam.PolicyStatement({
+        sid: 'CloudFrontReadImages',
+        effect: iam.Effect.ALLOW,
+        principals: [cloudFront],
+        actions: ['s3:GetObject'],
+        resources: [this.assetsBucket.arnForObjects('images/*')],
+        conditions: { StringLike: { 'AWS:SourceArn': ownDistributions } },
+      })
+    );
+    this.platformKey.addToResourcePolicy(
+      new iam.PolicyStatement({
+        sid: 'CloudFrontDecryptImages',
+        effect: iam.Effect.ALLOW,
+        principals: [cloudFront],
+        actions: ['kms:Decrypt'],
+        resources: ['*'],
+        conditions: { StringLike: { 'AWS:SourceArn': ownDistributions } },
+      })
+    );
 
     this.exportsBucket = new s3.Bucket(this, 'ExportsBucket', {
       ...bucketDefaults,

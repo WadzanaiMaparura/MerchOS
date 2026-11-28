@@ -220,6 +220,8 @@ describe('Shopify categories (bundled official list)', () => {
     expect(searchShopifyCategories('mugs')[0]?.id).toBe('hg-11-10-5-5');
     expect(searchShopifyCategories('t shirts clothing tops')[0]?.id).toBe('aa-1-13-8');
     expect(searchShopifyCategories('')).toEqual([]);
+    // No category has both words: the best partial match still comes back.
+    expect(searchShopifyCategories('coffee mug')[0]?.id).toBe('hg-11-10-5-5');
   });
   it('an unknown saved category blocks the product', () => {
     const p = ep();
